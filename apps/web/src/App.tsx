@@ -1536,6 +1536,7 @@ function SettingsCenter({
                   <DiagnosticRow label="Data directory" value={desktopStatus.dataDir ?? "Not set"} />
                   <DiagnosticRow label="Settings file" value={desktopStatus.settingsPath ?? "Not set"} />
                   <DiagnosticRow label="Secrets file" value={desktopStatus.secretsPath ?? "Not set"} />
+                  <DiagnosticRow label="Runtime state" value={desktopStatus.runtimeStatePath ?? "Not set"} />
                   <DiagnosticRow label="Secret protection" value={desktopStatus.secretsEncrypted ? "Encrypted" : "Not encrypted"} />
                   <DiagnosticRow label="System secure storage" value={desktopStatus.safeStorage} />
                   <DiagnosticRow label="Log file" value={desktopStatus.logPath ?? "Not set"} />
@@ -1574,6 +1575,7 @@ function formatDesktopDiagnostics(status: DesktopStatus) {
     `Data directory: ${status.dataDir ?? "Not set"}`,
     `Settings file: ${status.settingsPath ?? "Not set"}`,
     `Secrets file: ${status.secretsPath ?? "Not set"}`,
+    `Runtime state: ${status.runtimeStatePath ?? "Not set"}`,
     `Secrets encrypted: ${status.secretsEncrypted ? "yes" : "no"}`,
     `System secure storage: ${status.safeStorage}`,
     `Log file: ${status.logPath ?? "Not set"}`,

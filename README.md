@@ -114,6 +114,6 @@ scripts/
 - Phase 3: Built-in assistants and editable skills are in place.
 - Phase 4: Desktop shell, user data directory, encrypted API key storage, settings layout, and Windows installer are in place.
 - Phase 5: Private GitHub repository readiness is complete.
-- Phase 6: Product usability hardening is in progress.
+- Phase 6: Product usability hardening is in progress, including Provider management, settings recovery, diagnostics, and local runtime state persistence.
 
 Automatic updates, app signing, deeper installer QA, full model-provider test coverage, and public open-source release work are intentionally left for later phases.

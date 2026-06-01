@@ -39,6 +39,7 @@ app.whenReady().then(async () => {
     process.env.NEXADESK_DATA_DIR = dataDir;
     process.env.NEXADESK_SETTINGS_PATH = join(dataDir, "settings.json");
     process.env.NEXADESK_SECRETS_PATH = join(dataDir, "secrets.encrypted.json");
+    process.env.NEXADESK_RUNTIME_STATE_PATH = join(dataDir, "runtime-state.json");
     process.env.NEXADESK_LOG_PATH = join(userData, "console.log");
     process.env.NEXADESK_CRASH_LOG_PATH = join(userData, "crash.log");
     process.env.NEXADESK_SAFE_STORAGE = safeStorage.isEncryptionAvailable() ? "available" : "fallback";

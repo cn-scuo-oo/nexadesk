@@ -37,5 +37,8 @@ jobs:
       - name: Settings persistence smoke
         run: npm run settings:smoke
 
+      - name: Runtime state smoke
+        run: npm run runtime:smoke
+
       - name: Desktop smoke
         run: npm run desktop:smoke

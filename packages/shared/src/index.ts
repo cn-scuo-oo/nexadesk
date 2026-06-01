@@ -149,6 +149,7 @@ export interface DesktopStatus {
   dataDir?: string;
   settingsPath?: string;
   secretsPath?: string;
+  runtimeStatePath?: string;
   logPath?: string;
   crashLogPath?: string;
   platform: string;

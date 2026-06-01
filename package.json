@@ -22,6 +22,7 @@
     "desktop": "npm run build:desktop && electron .",
     "desktop:smoke": "npm run build:desktop && node scripts/desktop-smoke.mjs",
     "settings:smoke": "npm run build:server-bundle && node scripts/settings-persistence-smoke.mjs",
+    "runtime:smoke": "npm run build:server-bundle && node scripts/runtime-state-smoke.mjs",
     "dist:win": "npm run build:desktop && electron-builder --win nsis --x64",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },

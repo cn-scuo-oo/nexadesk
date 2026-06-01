@@ -28,6 +28,7 @@ import {
 } from "./agent-tools.js";
 import { addEventClient, publishActivity } from "./events.js";
 import { ProviderRuntimeError, streamProviderEvents, type RuntimeChatMessage } from "./provider-runtime.js";
+import { loadRuntimeState, runtimeStatePath, saveRuntimeState } from "./runtime-state-store.js";
 import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "./settings-store.js";
 
 const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
@@ -134,6 +135,7 @@ app.put("/api/settings", async (req, res, next) => {
       detail: "Model, interface, workspace, permission, and app settings were persisted locally."
     });
     snapshot.activity.unshift(activity);
+    await persistRuntimeState();
     res.json({ settings, activity });
   } catch (error) {
     next(error);
@@ -154,6 +156,7 @@ app.post("/api/settings/recover", async (req, res, next) => {
       detail: result.warning ?? `已重建默认设置，备份文件 ${result.backupPaths.length} 个。`
     });
     snapshot.activity.unshift(activity);
+    await persistRuntimeState();
     res.json({ ...result, activity });
   } catch (error) {
     next(error);
@@ -343,6 +346,7 @@ async function runModelExchange(
     detail: `${runtime.provider.name} used ${runtime.model} to answer a workbench message.`
   });
   snapshot.activity.unshift(activity);
+  await persistRuntimeState();
   onEvent?.({ type: "assistant_done", message: assistantMessage, activity });
 
   return { messages: [userMessage, assistantMessage], activity };
@@ -544,6 +548,7 @@ function createDesktopStatus(): DesktopStatus {
     dataDir: getEnv("NEXADESK_DATA_DIR", "AION_LITE_DATA_DIR"),
     settingsPath: getEnv("NEXADESK_SETTINGS_PATH", "AION_LITE_SETTINGS_PATH"),
     secretsPath: getEnv("NEXADESK_SECRETS_PATH", "AION_LITE_SECRETS_PATH"),
+    runtimeStatePath,
     logPath: getEnv("NEXADESK_LOG_PATH", "AION_LITE_LOG_PATH"),
     crashLogPath: getEnv("NEXADESK_CRASH_LOG_PATH", "AION_LITE_CRASH_LOG_PATH"),
     platform: process.platform,
@@ -558,6 +563,14 @@ function createDesktopStatus(): DesktopStatus {
 
 function getEnv(name: string, legacyName: string) {
   return process.env[name] ?? process.env[legacyName];
+}
+
+async function persistRuntimeState() {
+  try {
+    await saveRuntimeState(snapshot);
+  } catch (error) {
+    console.error("Failed to persist runtime state", error);
+  }
 }
 
 const approvalSchema = z.object({
@@ -588,11 +601,12 @@ app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
         pendingToolApprovals.delete(req.params.approvalId);
       }
       const activity = publishActivity({
-      level: "warning",
-      title: "审批已拒绝",
+        level: "warning",
+        title: "审批已拒绝",
         detail: approval ? approval.action : "Approval resolved"
       });
       snapshot.activity.unshift(activity);
+      await persistRuntimeState();
       res.json({ approval, activity, messages });
       return;
     }
@@ -613,6 +627,7 @@ app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
       detail: approval ? approval.action : "Approval resolved"
     });
     snapshot.activity.unshift(activity);
+    await persistRuntimeState();
     res.json({ approval, activity, messages });
   } catch (error) {
     if (approval?.messageId && approval.toolCallId) {
@@ -645,9 +660,17 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error" });
 });
 
-app.listen(port, host, () => {
-  console.log(`NexaDesk API listening on http://${host}:${port}`);
+void startServer().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
+
+async function startServer() {
+  await loadRuntimeState(snapshot);
+  app.listen(port, host, () => {
+    console.log(`NexaDesk API listening on http://${host}:${port}`);
+  });
+}
 
 async function testProviderConnection(
   provider: ProviderSettings,

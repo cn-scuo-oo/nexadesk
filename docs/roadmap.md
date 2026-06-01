@@ -47,6 +47,8 @@
 - Corrupted settings can be recovered through a local API and UI action that backs up the broken file before rebuilding defaults.
 - Desktop diagnostics can be copied from Settings without exposing Provider API keys.
 - User-facing mojibake in the workbench, tool execution, and model runtime errors has been cleaned up.
+- Sessions, chat messages, activity, and automation state are saved to a local runtime state file and restored after server restart.
+- Runtime state persistence is covered by a smoke test with a fake streaming model provider.
 
 ## Later Phases
 
