@@ -96,6 +96,7 @@ packages/
 docs/
   architecture.md
   github-private.md
+  private-backlog.md
   private-release-checklist.md
   roadmap.md
 scripts/

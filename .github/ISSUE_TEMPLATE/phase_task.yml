@@ -1,0 +1,39 @@
+name: Phase task
+description: Track private NexaDesk phase work.
+title: "[Phase]: "
+labels:
+  - phase
+body:
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - Phase 4 - Desktop hardening
+        - Phase 5 - Private GitHub incubation
+        - Phase 6 - Auto update and signing
+        - Phase 7 - Public release preparation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this task is done?
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Checklist
+      value: |
+        - [ ] Implementation
+        - [ ] Local validation
+        - [ ] Desktop validation
+        - [ ] Documentation update
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risks or notes
+      description: Mention blockers, secrets, installer risk, model-provider risk, or data-loss risk.
