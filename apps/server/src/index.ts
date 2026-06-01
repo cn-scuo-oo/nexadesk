@@ -14,6 +14,7 @@ import {
   type ProviderSettings,
   type ProviderTestRequest,
   type ProviderTestResult,
+  type RecoverSettingsRequest,
   type SaveSettingsRequest,
   type SendMessageRequest
 } from "@nexadesk/shared";
@@ -27,7 +28,7 @@ import {
 } from "./agent-tools.js";
 import { addEventClient, publishActivity } from "./events.js";
 import { ProviderRuntimeError, streamProviderEvents, type RuntimeChatMessage } from "./provider-runtime.js";
-import { getProviderApiKey, loadSettings, saveSettings } from "./settings-store.js";
+import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "./settings-store.js";
 
 const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
 const port = Number(getEnv("NEXADESK_PORT", "AION_LITE_PORT") ?? 3939);
@@ -134,6 +135,26 @@ app.put("/api/settings", async (req, res, next) => {
     });
     snapshot.activity.unshift(activity);
     res.json({ settings, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/settings/recover", async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as RecoverSettingsRequest;
+    const result = await recoverSettings(snapshot.providers, { resetSecrets: Boolean(body.resetSecrets) });
+    snapshot.providers = result.settings.providers;
+    snapshot.agents = result.settings.assistant.agents;
+    snapshot.skills = result.settings.assistant.skills;
+    syncSessionAgents();
+    const activity = publishActivity({
+      level: result.warning ? "warning" : "info",
+      title: "设置已恢复",
+      detail: result.warning ?? `已重建默认设置，备份文件 ${result.backupPaths.length} 个。`
+    });
+    snapshot.activity.unshift(activity);
+    res.json({ ...result, activity });
   } catch (error) {
     next(error);
   }
@@ -456,16 +477,16 @@ async function handleAgentToolRequests({
       });
       snapshot.approvals.unshift(approval);
       onEvent?.({ type: "approval_queued", approval });
-      approvalLines.push(`宸茶繘鍏ュ鎵归槦鍒楋細${approval.action}`);
+      approvalLines.push(`已进入审批队列：${approval.action}`);
       continue;
     }
 
     const toolMessage = appendToolMessage(assistantMessage.sessionId, execution.toolCall.name, execution.result ?? "");
-    resultLines.push(`宸ュ叿 ${execution.toolCall.name} 宸插畬鎴愶細\n${toolMessage.content.slice(0, 1800)}`);
+    resultLines.push(`工具 ${execution.toolCall.name} 已完成：\n${toolMessage.content.slice(0, 1800)}`);
   }
 
   return [...resultLines, ...approvalLines].length
-    ? `宸ュ叿鐘舵€侊細\n${[...resultLines, ...approvalLines].join("\n\n")}`
+    ? `工具状态：\n${[...resultLines, ...approvalLines].join("\n\n")}`
     : "";
 }
 
@@ -475,7 +496,7 @@ function appendToolMessage(sessionId: string, toolName: string, content: string)
     sessionId,
     role: "tool",
     author: toolName,
-    content: content || "宸ュ叿娌℃湁杩斿洖鍐呭銆?",
+    content: content || "工具没有返回内容。",
     createdAt: new Date().toISOString()
   };
   snapshot.messages.push(message);

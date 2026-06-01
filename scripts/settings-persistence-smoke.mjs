@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -157,6 +157,27 @@ try {
     customReadded.providers.find((item) => item.id === customProviderId)?.apiKeyConfigured === false,
     "deleted provider key was not pruned"
   );
+
+  await requestJson("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: customReadded,
+      providerSecrets: [{ providerId, apiKey: "sk-recovery-preserve" }]
+    })
+  });
+  await writeFile(settingsPath, "{ broken settings json", "utf8");
+  const recovered = await requestJson("/api/settings/recover", {
+    method: "POST",
+    body: JSON.stringify({ resetSecrets: false })
+  });
+  assert(recovered.backupPaths.length >= 1, "corrupted settings file was not backed up");
+  assert(recovered.settings.model.activeProviderId, "recovered settings did not include an active provider");
+  assert(
+    recovered.settings.providers.find((item) => item.id === providerId)?.apiKeyConfigured === true,
+    "settings recovery did not preserve readable provider secret state"
+  );
+  const afterRecovery = await requestJson("/api/settings");
+  assert(afterRecovery.updatedAt === recovered.settings.updatedAt, "recovered settings did not persist");
 
   console.log(`NexaDesk settings persistence smoke test passed on port ${port}.`);
 } finally {

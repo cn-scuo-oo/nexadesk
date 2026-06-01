@@ -15,8 +15,8 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Test Provider save/load across restart for OpenAI-compatible, Ollama, DeepSeek, Qwen/DashScope, SiliconFlow, Moonshot, Zhipu, OpenRouter, NewAPI, and Anthropic.
 - Add explicit clear API key and delete custom Provider actions. Done in Phase 6 first pass.
 - Add Provider copy plus non-secret settings import/export. Done in Phase 6 first pass.
-- Add corrupted settings recovery UI instead of only fallback behavior.
-- Add an in-app diagnostics copy button for log paths and app status.
+- Add corrupted settings recovery UI instead of only fallback behavior. Done in Phase 6 second pass.
+- Add an in-app diagnostics copy button for log paths and app status. Done in Phase 6 second pass.
 
 ## Agent Runtime
 

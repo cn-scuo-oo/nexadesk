@@ -44,6 +44,7 @@ import {
   fetchDesktopStatus,
   fetchSettings as fetchAppSettings,
   fetchSnapshot,
+  recoverSettings as recoverAppSettings,
   resolveApproval,
   saveSettings as persistAppSettings,
   streamMessage,
@@ -162,6 +163,7 @@ export function App() {
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [recoveringSettings, setRecoveringSettings] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -456,6 +458,25 @@ export function App() {
     return result.settings;
   }
 
+  async function handleRecoverSettings(resetSecrets = false) {
+    setRecoveringSettings(true);
+    try {
+      const result = await recoverAppSettings(resetSecrets);
+      const refreshedSnapshot = await fetchSnapshot();
+      setSnapshot(refreshedSnapshot);
+      setSettings(result.settings);
+      setMode("live");
+      setError(null);
+      setSettingsStatus(
+        result.warning ?? `设置已恢复，已备份 ${result.backupPaths.length} 个旧文件。`
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Failed to recover settings");
+    } finally {
+      setRecoveringSettings(false);
+    }
+  }
+
   if (loading || !snapshot || !settings) {
     return <LoadingScreen />;
   }
@@ -504,15 +525,16 @@ export function App() {
 
         <section className="sidebar-section">
           <div className="section-heading">
-            <span>绌洪棿</span>
+            <span>空间</span>
           </div>
           <nav className="nav-list" aria-label="Workspace sections">
             <a className="nav-item active" href="#team">
               <LayoutDashboard size={17} />
-              鍥㈤槦椹鹃┒鑸?            </a>
+              团队驾驶舱
+            </a>
             <a className="nav-item" href="#agents">
               <Users size={17} />
-              澶氭櫤鑳戒綋
+              多智能体
               <b>{snapshot.agents.length}</b>
             </a>
             <a className="nav-item" href="#approvals">
@@ -541,8 +563,8 @@ export function App() {
 
         <section className="sidebar-section">
           <div className="section-heading">
-            <span>浼氳瘽</span>
-            <button className="mini-button">鏂板缓</button>
+            <span>会话</span>
+            <button className="mini-button">新建</button>
           </div>
           {snapshot.sessions.map((session) => (
             <button className="session-card active" key={session.id}>
@@ -623,8 +645,16 @@ export function App() {
         </header>
 
         {error ? (
-          <div className="notice">
-            API note: {error}. The workbench is using demo data until the server is available.
+          <div className="notice notice-with-actions">
+            <span>API note: {error}. The workbench is using demo data until the server is available.</span>
+            <button
+              className="mini-button"
+              disabled={recoveringSettings}
+              onClick={() => void handleRecoverSettings(false)}
+              type="button"
+            >
+              {recoveringSettings ? "恢复中..." : "恢复本地设置"}
+            </button>
           </div>
         ) : null}
 
@@ -727,7 +757,7 @@ export function App() {
         <section className="panel-block" id="approvals">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">鏉冮檺缃戝叧</p>
+              <p className="eyebrow">权限网关</p>
               <h3>审批队列</h3>
             </div>
             <ShieldCheck size={18} />
@@ -751,7 +781,7 @@ export function App() {
         <section className="panel-block">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">閭</p>
+              <p className="eyebrow">邮箱</p>
               <h3>智能体消息</h3>
             </div>
             <Mail size={18} />
@@ -770,8 +800,8 @@ export function App() {
         <section className="panel-block">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">涓婁笅鏂</p>
-              <h3>宸ヤ綔鍖烘枃浠</h3>
+              <p className="eyebrow">上下文</p>
+              <h3>工作区文件</h3>
             </div>
             <FileText size={18} />
           </div>
@@ -788,7 +818,7 @@ export function App() {
         <section className="panel-block">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">鏃堕棿绾</p>
+              <p className="eyebrow">时间线</p>
               <h3>活动记录</h3>
             </div>
             <CircleDot size={18} />
@@ -886,6 +916,7 @@ function SettingsCenter({
   const [desktopStatus, setDesktopStatus] = useState<DesktopStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("providers");
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(settings);
@@ -941,6 +972,17 @@ function SettingsCenter({
       setDesktopStatus(await fetchDesktopStatus());
     } catch {
       setDesktopStatus(null);
+    }
+  }
+
+  async function copyDesktopDiagnostics() {
+    try {
+      const nextStatus = desktopStatus ?? (await fetchDesktopStatus());
+      setDesktopStatus(nextStatus);
+      await navigator.clipboard.writeText(formatDesktopDiagnostics(nextStatus));
+      setCopyStatus("诊断信息已复制。");
+    } catch (reason) {
+      setCopyStatus(reason instanceof Error ? `复制失败：${reason.message}` : "复制失败。");
     }
   }
 
@@ -1461,9 +1503,30 @@ function SettingsCenter({
             <details className="diagnostics-box">
               <summary>
                 <span>桌面诊断</span>
-                <button className="mini-button" onClick={() => void refreshDesktopStatus()} type="button">
-                  刷新
-                </button>
+                <span className="diagnostics-actions">
+                  <button
+                    className="mini-button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void refreshDesktopStatus();
+                    }}
+                    type="button"
+                  >
+                    刷新
+                  </button>
+                  <button
+                    className="mini-button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void copyDesktopDiagnostics();
+                    }}
+                    type="button"
+                  >
+                    复制诊断
+                  </button>
+                </span>
               </summary>
               {desktopStatus ? (
                 <div className="diagnostics-grid">
@@ -1479,6 +1542,7 @@ function SettingsCenter({
                   <DiagnosticRow label="Crash log" value={desktopStatus.crashLogPath ?? "Not set"} />
                   <DiagnosticRow label="Platform" value={`${desktopStatus.platform} / ${desktopStatus.arch}`} />
                   <DiagnosticRow label="Uptime" value={`${desktopStatus.uptimeSeconds}s`} />
+                  {copyStatus ? <p className="secret-note">{copyStatus}</p> : null}
                 </div>
               ) : (
                 <p className="secret-note">桌面诊断暂不可用。请确认本地 API 已启动。</p>
@@ -1500,6 +1564,25 @@ function DiagnosticRow({ label, value }: { label: string; value: string }) {
       <code>{value}</code>
     </div>
   );
+}
+
+function formatDesktopDiagnostics(status: DesktopStatus) {
+  return [
+    `App: ${status.appName} ${status.version}`,
+    `Mode: ${status.mode}`,
+    `API: ${status.apiBase}`,
+    `Data directory: ${status.dataDir ?? "Not set"}`,
+    `Settings file: ${status.settingsPath ?? "Not set"}`,
+    `Secrets file: ${status.secretsPath ?? "Not set"}`,
+    `Secrets encrypted: ${status.secretsEncrypted ? "yes" : "no"}`,
+    `System secure storage: ${status.safeStorage}`,
+    `Log file: ${status.logPath ?? "Not set"}`,
+    `Crash log: ${status.crashLogPath ?? "Not set"}`,
+    `Platform: ${status.platform} / ${status.arch}`,
+    `Node: ${status.nodeVersion}`,
+    `Electron: ${status.electronVersion ?? "Not set"}`,
+    `Uptime: ${status.uptimeSeconds}s`
+  ].join("\n");
 }
 
 function ProviderStatusPanel({

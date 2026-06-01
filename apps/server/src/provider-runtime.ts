@@ -67,11 +67,11 @@ async function streamFetch(url: string, init: RequestInit) {
   if (!response.ok) {
     const detail = await response.text();
     throw new ProviderRuntimeError(
-      `妯″瀷鏈嶅姟杩斿洖 HTTP ${response.status}${detail ? `锛?{detail.slice(0, 240)}` : ""}`
+      `模型服务返回 HTTP ${response.status}${detail ? `：${detail.slice(0, 240)}` : ""}`
     );
   }
   if (!response.body) {
-    throw new ProviderRuntimeError("妯″瀷鏈嶅姟娌℃湁杩斿洖鍙鍙栫殑娴併€?");
+    throw new ProviderRuntimeError("模型服务没有返回可读取的流。");
   }
   return response;
 }
@@ -181,7 +181,7 @@ async function* streamOpenAiResponseEvents(request: RuntimeRequest): AsyncGenera
 async function* streamAnthropicMessageEvents(request: RuntimeRequest): AsyncGenerator<RuntimeStreamEvent> {
   const baseUrl = requireBaseUrl(request.provider);
   if (!request.apiKey) {
-    throw new ProviderRuntimeError("Anthropic Provider 闇€瑕?API Key銆?");
+    throw new ProviderRuntimeError("Anthropic Provider 需要 API Key。");
   }
 
   const system = request.messages
@@ -328,7 +328,7 @@ async function* readLines(response: Response): AsyncGenerator<string> {
 function requireBaseUrl(provider: ProviderSettings) {
   const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
   if (!baseUrl) {
-    throw new ProviderRuntimeError("璇峰厛涓哄綋鍓?Provider 濉啓 Base URL銆?");
+    throw new ProviderRuntimeError("请先为当前 Provider 填写 Base URL。");
   }
   return baseUrl;
 }
@@ -338,7 +338,7 @@ function bearerHeaders(request: RuntimeRequest): Record<string, string> {
     return {};
   }
   if (!request.apiKey) {
-    throw new ProviderRuntimeError("褰撳墠 Provider 闇€瑕?API Key锛岃鍏堝湪妯″瀷涓績淇濆瓨銆?");
+    throw new ProviderRuntimeError("当前 Provider 需要 API Key，请先在模型中心保存。");
   }
   return { Authorization: `Bearer ${request.apiKey}` };
 }
@@ -471,4 +471,3 @@ function toolDefinitions() {
     }
   ];
 }
-

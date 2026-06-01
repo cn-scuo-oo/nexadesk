@@ -1,5 +1,7 @@
 ﻿import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { constants } from "node:fs";
+import { access, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   createDefaultProviders,
@@ -25,6 +27,13 @@ const repoRoot = resolve(getEnv("NEXADESK_REPO_ROOT", "AION_LITE_REPO_ROOT") ?? 
 const settingsPath = getEnv("NEXADESK_SETTINGS_PATH", "AION_LITE_SETTINGS_PATH") ?? join(repoRoot, "data", "settings.json");
 const secretsPath =
   getEnv("NEXADESK_SECRETS_PATH", "AION_LITE_SECRETS_PATH") ?? join(repoRoot, "data", "secrets.local.json");
+
+export type SettingsRecoveryResult = {
+  settings: AppSettings;
+  backupPaths: string[];
+  resetSecrets: boolean;
+  warning?: string;
+};
 
 export async function loadSettings(providers: ModelProvider[]): Promise<AppSettings> {
   const defaults = createDefaultSettings(createDefaultProviders());
@@ -63,6 +72,51 @@ export async function getProviderApiKey(providerId: string): Promise<string | un
   return secrets.providerKeys[providerId]?.apiKey;
 }
 
+export async function recoverSettings(
+  providers: ModelProvider[],
+  options: { resetSecrets?: boolean } = {}
+): Promise<SettingsRecoveryResult> {
+  const backupPaths: string[] = [];
+  const settingsBackup = await backupFileIfExists(settingsPath, "recovered-settings");
+  if (settingsBackup) {
+    backupPaths.push(settingsBackup);
+  }
+
+  let secrets: SecretFile = { providerKeys: {} };
+  let warning: string | undefined;
+  const resetSecrets = Boolean(options.resetSecrets);
+
+  if (resetSecrets) {
+    const secretsBackup = await backupFileIfExists(secretsPath, "recovered-secrets");
+    if (secretsBackup) {
+      backupPaths.push(secretsBackup);
+    }
+    await writeSecrets(secrets);
+  } else {
+    try {
+      secrets = await loadSecrets();
+    } catch (error) {
+      const secretsBackup = await backupFileIfExists(secretsPath, "recovered-secrets");
+      if (secretsBackup) {
+        backupPaths.push(secretsBackup);
+      }
+      warning =
+        error instanceof Error
+          ? `Secrets file could not be read and was reset: ${error.message}`
+          : "Secrets file could not be read and was reset.";
+      await writeSecrets(secrets);
+    }
+  }
+
+  const defaults = createDefaultSettings(providers.length ? providers : createDefaultProviders());
+  const recovered = {
+    ...applySecretState(defaults, secrets),
+    updatedAt: new Date().toISOString()
+  };
+  await writeJson(settingsPath, recovered);
+  return { settings: recovered, backupPaths, resetSecrets, warning };
+}
+
 async function readJson<T>(path: string): Promise<T | null> {
   try {
     return JSON.parse(await readFile(path, "utf8")) as T;
@@ -77,6 +131,23 @@ async function readJson<T>(path: string): Promise<T | null> {
 async function writeJson(path: string, value: unknown) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function backupFileIfExists(path: string, label: string) {
+  try {
+    await access(path, constants.F_OK);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${path}.${label}-${timestamp}.bak`;
+  await mkdir(dirname(backupPath), { recursive: true });
+  await rename(path, backupPath);
+  return backupPath;
 }
 
 async function loadSecrets(): Promise<SecretFile> {

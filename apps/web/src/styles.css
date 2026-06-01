@@ -465,6 +465,17 @@ h4 {
   background: #fff8df;
 }
 
+.notice-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notice-with-actions span {
+  min-width: 0;
+}
+
 .hero-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.2fr);
@@ -908,6 +919,13 @@ h4 {
 
 .diagnostics-box summary::-webkit-details-marker {
   display: none;
+}
+
+.diagnostics-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .diagnostics-grid {

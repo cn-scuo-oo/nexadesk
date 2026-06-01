@@ -116,6 +116,18 @@ export interface SaveSettingsRequest {
   providerSecrets?: ProviderSecretUpdate[];
 }
 
+export interface RecoverSettingsRequest {
+  resetSecrets?: boolean;
+}
+
+export interface RecoverSettingsResult {
+  settings: AppSettings;
+  activity: ActivityEvent;
+  backupPaths: string[];
+  resetSecrets: boolean;
+  warning?: string;
+}
+
 export interface ProviderTestRequest {
   provider: ProviderSettings;
   apiKey?: string;

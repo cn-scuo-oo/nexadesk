@@ -74,7 +74,7 @@ export async function prepareToolRequest(
   } catch (error) {
     return {
       toolCall: { ...toolCall, status: "failed" },
-      result: error instanceof Error ? error.message : "宸ュ叿鎵ц澶辫触銆?",
+      result: error instanceof Error ? error.message : "工具执行失败。",
       requiresApproval: false
     };
   }
@@ -97,7 +97,7 @@ export async function executeToolRequest(request: AgentToolRequest, context: Age
     case "image_generate":
       return generateImage(request, context);
     default:
-      return "鏈煡宸ュ叿銆?";
+      return "未知工具。";
   }
 }
 
@@ -113,24 +113,24 @@ export function getToolRisk(tool: AgentToolName): PermissionRisk {
 
 export function summarizeToolRequest(request: AgentToolRequest) {
   if (request.tool === "list_dir") {
-    return `鍒楃洰褰曪細${request.path || "."}`;
+    return `列目录：${request.path || "."}`;
   }
   if (request.tool === "read_file") {
-    return `璇诲彇鏂囦欢锛?{request.path || ""}`;
+    return `读取文件：${request.path || ""}`;
   }
   if (request.tool === "write_file") {
-    return `鍐欏叆鏂囦欢锛?{request.path || ""}`;
+    return `写入文件：${request.path || ""}`;
   }
   if (request.tool === "run_command") {
-    return `鎵ц鍛戒护锛?{request.command || ""}`;
+    return `执行命令：${request.command || ""}`;
   }
   if (request.tool === "search") {
-    return `鎼滅储锛?{request.query || ""}`;
+    return `搜索：${request.query || ""}`;
   }
   if (request.tool === "browser") {
-    return `娴忚鍣ㄦ搷浣滐細${request.url || request.prompt || ""}`;
+    return `浏览器操作：${request.url || request.prompt || ""}`;
   }
-  return `鍥剧墖鐢熸垚锛?{request.prompt || ""}`;
+  return `图片生成：${request.prompt || ""}`;
 }
 
 async function listDir(request: AgentToolRequest, workspace: WorkspaceSettings) {
@@ -144,31 +144,31 @@ async function listDir(request: AgentToolRequest, workspace: WorkspaceSettings) 
 
 async function readWorkspaceFile(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.path) {
-    throw new Error("read_file 闇€瑕?path銆?");
+    throw new Error("read_file 需要 path。");
   }
   const target = resolveWorkspacePath(workspace, request.path);
   const info = await stat(target);
   if (!info.isFile()) {
-    throw new Error("鍙兘璇诲彇鏂囦欢銆?");
+    throw new Error("只能读取文件。");
   }
   if (info.size > 256_000) {
-    throw new Error("鏂囦欢瓒呰繃 256KB锛岃缂╁皬鑼冨洿鍚庡啀璇诲彇銆?");
+    throw new Error("文件超过 256KB，请缩小范围后再读取。");
   }
   return readFile(target, "utf8");
 }
 
 async function writeWorkspaceFile(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.path) {
-    throw new Error("write_file 闇€瑕?path銆?");
+    throw new Error("write_file 需要 path。");
   }
   const target = resolveWorkspacePath(workspace, request.path);
   await writeFile(target, request.content ?? "", "utf8");
-  return `宸插啓鍏?${target}`;
+  return `已写入 ${target}`;
 }
 
 async function searchWorkspace(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.query) {
-    throw new Error("search 闇€瑕?query銆?");
+    throw new Error("search 需要 query。");
   }
   const cwd = resolveWorkspacePath(workspace, request.path || ".");
   const { stdout } = await execFileAsync("rg", ["--line-number", "--hidden", "--glob", "!node_modules", request.query], {
@@ -178,7 +178,7 @@ async function searchWorkspace(request: AgentToolRequest, workspace: WorkspaceSe
     maxBuffer: 256_000
   }).catch((error: any) => {
     if (error?.code === 1) {
-      return { stdout: "娌℃湁鍖归厤缁撴灉銆?" };
+      return { stdout: "没有匹配结果。" };
     }
     throw error;
   });
@@ -187,7 +187,7 @@ async function searchWorkspace(request: AgentToolRequest, workspace: WorkspaceSe
 
 async function runCommand(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.command) {
-    throw new Error("run_command 闇€瑕?command銆?");
+    throw new Error("run_command 需要 command。");
   }
   const cwd = resolveWorkspacePath(workspace, request.path || ".");
   const { stdout, stderr } = await execFileAsync("powershell.exe", ["-NoProfile", "-Command", request.command], {
@@ -201,11 +201,11 @@ async function runCommand(request: AgentToolRequest, workspace: WorkspaceSetting
 
 async function readWebPage(request: AgentToolRequest) {
   if (!request.url) {
-    throw new Error("browser 闇€瑕?url銆?");
+    throw new Error("browser 需要 url。");
   }
   const url = new URL(request.url);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("browser 鍙敮鎸?http/https URL銆?");
+    throw new Error("browser 只支持 http/https URL。");
   }
 
   const controller = new AbortController();
@@ -218,7 +218,7 @@ async function readWebPage(request: AgentToolRequest) {
       signal: controller.signal
     });
     if (!response.ok) {
-      throw new Error(`缃戦〉璇诲彇澶辫触锛欻TTP ${response.status}`);
+      throw new Error(`网页读取失败：HTTP ${response.status}`);
     }
     const contentType = response.headers.get("content-type") ?? "";
     const raw = await response.text();
@@ -233,10 +233,10 @@ async function readWebPage(request: AgentToolRequest) {
 
 async function generateImage(request: AgentToolRequest, context: AgentToolContext) {
   if (!request.prompt?.trim()) {
-    throw new Error("image_generate 闇€瑕?prompt銆?");
+    throw new Error("image_generate 需要 prompt。");
   }
   if (!context.image?.baseUrl) {
-    throw new Error("鍥剧墖鐢熸垚闇€瑕侀厤缃?OpenAI Official API Key锛屾垨璁剧疆 NEXADESK_IMAGE_BASE_URL / NEXADESK_IMAGE_API_KEY銆?");
+    throw new Error("图片生成需要配置 OpenAI Official API Key，或设置 NEXADESK_IMAGE_BASE_URL / NEXADESK_IMAGE_API_KEY。");
   }
 
   const baseUrl = context.image.baseUrl.replace(/\/+$/, "");
@@ -255,13 +255,13 @@ async function generateImage(request: AgentToolRequest, context: AgentToolContex
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`鍥剧墖鐢熸垚澶辫触锛欻TTP ${response.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
+    throw new Error(`图片生成失败：HTTP ${response.status}${detail ? ` - ${detail.slice(0, 240)}` : ""}`);
   }
 
   const payload = (await response.json()) as any;
   const item = payload?.data?.[0];
   if (!item) {
-    throw new Error("鍥剧墖鐢熸垚鎺ュ彛娌℃湁杩斿洖鍥剧墖鏁版嵁銆?");
+    throw new Error("图片生成接口没有返回图片数据。");
   }
 
   await mkdir(context.image.outputDirectory, { recursive: true });
@@ -270,22 +270,22 @@ async function generateImage(request: AgentToolRequest, context: AgentToolContex
   if (typeof item.b64_json === "string") {
     const path = join(context.image.outputDirectory, `${fileBase}.png`);
     await writeFile(path, Buffer.from(item.b64_json, "base64"));
-    return `鍥剧墖宸茬敓鎴愶細${path}`;
+    return `图片已生成：${path}`;
   }
 
   if (typeof item.url === "string") {
     const imageResponse = await fetch(item.url);
     if (!imageResponse.ok) {
-      throw new Error(`鍥剧墖涓嬭浇澶辫触锛欻TTP ${imageResponse.status}`);
+      throw new Error(`图片下载失败：HTTP ${imageResponse.status}`);
     }
     const contentType = imageResponse.headers.get("content-type") ?? "image/png";
     const ext = imageExtension(contentType, item.url);
     const path = join(context.image.outputDirectory, `${fileBase}${ext}`);
     await writeFile(path, Buffer.from(await imageResponse.arrayBuffer()));
-    return `鍥剧墖宸茬敓鎴愶細${path}\n婧愬湴鍧€锛?{item.url}`;
+    return `图片已生成：${path}\n源地址：${item.url}`;
   }
 
-  throw new Error("鍥剧墖鐢熸垚鎺ュ彛杩斿洖鏍煎紡涓嶅彈鏀寔銆?");
+  throw new Error("图片生成接口返回格式不受支持。");
 }
 
 function resolveWorkspacePath(workspace: WorkspaceSettings, inputPath: string) {
@@ -294,7 +294,7 @@ function resolveWorkspacePath(workspace: WorkspaceSettings, inputPath: string) {
   const target = resolve(base, inputPath);
   const normalizedBase = base.endsWith(sep) ? base : `${base}${sep}`;
   if (target !== base && !target.startsWith(normalizedBase)) {
-    throw new Error("璺緞涓嶅湪鍏佽鐨勫伐浣滃尯鑼冨洿鍐呫€?");
+    throw new Error("路径不在允许的工作区范围内。");
   }
   return target;
 }
@@ -368,4 +368,3 @@ function isToolRequest(value: unknown): value is AgentToolRequest {
     tool === "image_generate"
   );
 }
-

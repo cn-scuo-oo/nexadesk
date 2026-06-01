@@ -44,6 +44,9 @@
 - Provider management supports copying providers, deleting custom providers, clearing saved API keys, and importing/exporting non-secret settings JSON.
 - Settings save prunes orphaned provider secrets so deleted custom providers do not leave stale key records.
 - Settings smoke tests cover API key persistence, clearing, and deleted-provider secret pruning.
+- Corrupted settings can be recovered through a local API and UI action that backs up the broken file before rebuilding defaults.
+- Desktop diagnostics can be copied from Settings without exposing Provider API keys.
+- User-facing mojibake in the workbench, tool execution, and model runtime errors has been cleaned up.
 
 ## Later Phases
 

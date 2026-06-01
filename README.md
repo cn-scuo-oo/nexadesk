@@ -19,6 +19,7 @@ The product direction is a local-first cowork space where users can run assistan
 - Electron desktop shell in `apps/desktop`
 - Shared app types and demo data in `packages/shared`
 - Model center, streaming chat, agent tools, approval queue, built-in assistants, custom skills, and Windows packaging
+- Provider management hardening, settings recovery, encrypted API key persistence, and copyable desktop diagnostics
 - Private GitHub readiness docs and CI checks
 
 ## Quick Start

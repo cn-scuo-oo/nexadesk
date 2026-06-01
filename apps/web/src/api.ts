@@ -5,6 +5,7 @@
   ChatStreamEvent,
   ChatMessage,
   DesktopStatus,
+  RecoverSettingsResult,
   ProviderTestRequest,
   ProviderTestResult,
   SaveSettingsRequest,
@@ -56,6 +57,20 @@ export async function saveSettings(payload: SaveSettingsRequest): Promise<{
     throw new Error(`Save settings failed with ${response.status}`);
   }
   return response.json() as Promise<{ settings: AppSettings; activity: ActivityEvent }>;
+}
+
+export async function recoverSettings(resetSecrets = false): Promise<RecoverSettingsResult> {
+  const response = await fetch(`${apiBase}/api/settings/recover`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ resetSecrets })
+  });
+  if (!response.ok) {
+    throw new Error(`Recover settings failed with ${response.status}`);
+  }
+  return response.json() as Promise<RecoverSettingsResult>;
 }
 
 export async function testProvider(payload: ProviderTestRequest): Promise<ProviderTestResult> {
