@@ -999,6 +999,13 @@ h4 {
   font-weight: 800;
 }
 
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .provider-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1128,10 +1135,14 @@ h4 {
 }
 
 .config-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.config-actions .connection-toggle {
+  margin-right: auto;
 }
 
 .connection-toggle {
@@ -1148,6 +1159,16 @@ h4 {
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.danger-button {
+  color: #8a2d2d;
+  background: #f7e5e2;
+}
+
+.danger-button:hover:not(:disabled) {
+  color: #ffffff;
+  background: #a23b33;
 }
 
 .mail-card {

@@ -18,8 +18,9 @@
   X,
   Zap
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  createDefaultProviders,
   createDefaultSettings,
   createDemoSnapshot,
   type ActivityEvent,
@@ -96,6 +97,8 @@ const fontOptions = [
   "Fira Code",
   "Custom"
 ];
+
+const defaultProviderIds = new Set(createDefaultProviders().map((provider) => provider.id));
 
 const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = [
   { id: "providers", label: "模型服务", detail: "API、Key、Base URL" },
@@ -910,14 +913,17 @@ function SettingsCenter({
     };
   }, []);
 
-  async function persist(next: AppSettings, providerSecrets: ProviderSecretUpdate[] = []) {
+  async function persist(next: AppSettings, providerSecrets: ProviderSecretUpdate[] = []): Promise<AppSettings> {
     setSaving(true);
     try {
       const saved = await onSave(next, providerSecrets);
       setDraft(saved);
       setLocalStatus("Settings saved.");
+      return saved;
     } catch (reason) {
-      setLocalStatus(reason instanceof Error ? reason.message : "Failed to save settings.");
+      const message = reason instanceof Error ? reason.message : "Failed to save settings.";
+      setLocalStatus(message);
+      throw reason instanceof Error ? reason : new Error(message);
     } finally {
       setSaving(false);
     }
@@ -993,7 +999,7 @@ function SettingsCenter({
           </p>
         </div>
         <div className="topbar-actions">
-          <button className="primary-button" disabled={saving} onClick={() => persist(draft)} type="button">
+          <button className="primary-button" disabled={saving} onClick={() => void persist(draft).catch(() => undefined)} type="button">
             {saving ? "保存中..." : "保存全部"}
           </button>
         </div>
@@ -1019,7 +1025,12 @@ function SettingsCenter({
         <div className="settings-detail">
         {activeTab === "providers" ? (
         <ProviderConfigPanel
+          settings={draft}
           providers={draft.providers}
+          onSaveSettings={(next, providerSecrets = []) => {
+            setDraft(next);
+            return persist(next, providerSecrets);
+          }}
           onSaveProvider={(provider, providerSecrets = []) => {
             const exists = draft.providers.some((item) => item.id === provider.id);
             const next = {
@@ -1527,11 +1538,15 @@ function ProviderStatusPanel({
 }
 
 function ProviderConfigPanel({
+  settings,
   providers,
+  onSaveSettings,
   onSaveProvider
 }: {
+  settings: AppSettings;
   providers: ProviderSettings[];
-  onSaveProvider?: (provider: ProviderSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<void> | void;
+  onSaveSettings?: (settings: AppSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<AppSettings> | AppSettings;
+  onSaveProvider?: (provider: ProviderSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<unknown> | unknown;
 }) {
   const [selectedProviderId, setSelectedProviderId] = useState(providers[0]?.id ?? "");
   const [drafts, setDrafts] = useState<Record<string, ProviderDraft>>({});
@@ -1539,6 +1554,8 @@ function ProviderConfigPanel({
   const [testProviderId, setTestProviderId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
+  const [providerNotice, setProviderNotice] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDrafts((current) => {
@@ -1563,6 +1580,7 @@ function ProviderConfigPanel({
     drafts[selectedProviderId] ??
     (selectedProvider ? createProviderDraft(selectedProvider) : providers[0] ? createProviderDraft(providers[0]) : null);
   const models = selectedDraft ? parseModels(selectedDraft.modelsText) : [];
+  const canDeleteSelectedProvider = selectedDraft ? !defaultProviderIds.has(selectedDraft.id) : false;
 
   function updateSelected(patch: Partial<ProviderDraft>) {
     if (!selectedDraft) {
@@ -1577,6 +1595,7 @@ function ProviderConfigPanel({
     }));
     setSavedProviderId(null);
     setTestProviderId(null);
+    setProviderNotice(null);
   }
 
   function updateCapability(capability: ProviderCapability, enabled: boolean) {
@@ -1612,6 +1631,7 @@ function ProviderConfigPanel({
         }
       }));
       setSavedProviderId(selectedDraft.id);
+      setProviderNotice("Provider 已保存。");
     } finally {
       setSavingProviderId(null);
     }
@@ -1637,6 +1657,150 @@ function ProviderConfigPanel({
     }));
     setSelectedProviderId(id);
     await onSaveProvider?.(provider, []);
+    setProviderNotice("已新增自定义 Provider。");
+  }
+
+  async function handleCopyProvider() {
+    if (!selectedDraft) {
+      return;
+    }
+    const id = `custom-copy-${crypto.randomUUID().slice(0, 8)}`;
+    const provider: ProviderSettings = {
+      ...providerDraftToSettings(selectedDraft),
+      id,
+      name: `${selectedDraft.name} Copy`,
+      connected: false,
+      apiKeyConfigured: false
+    };
+    setDrafts((current) => ({
+      ...current,
+      [id]: createProviderDraft(provider)
+    }));
+    setSelectedProviderId(id);
+    await onSaveProvider?.(provider, []);
+    setProviderNotice("已复制为新的自定义 Provider，API Key 不会被复制。");
+  }
+
+  async function handleClearApiKey() {
+    if (!selectedDraft) {
+      return;
+    }
+    setSavingProviderId(selectedDraft.id);
+    try {
+      const provider = {
+        ...providerDraftToSettings(selectedDraft),
+        apiKeyConfigured: false
+      };
+      await onSaveProvider?.(provider, [{ providerId: selectedDraft.id, clearApiKey: true }]);
+      setDrafts((current) => ({
+        ...current,
+        [selectedDraft.id]: {
+          ...selectedDraft,
+          apiKey: "",
+          apiKeyConfigured: false
+        }
+      }));
+      setSavedProviderId(selectedDraft.id);
+      setProviderNotice("API Key 已清除。");
+    } finally {
+      setSavingProviderId(null);
+    }
+  }
+
+  async function handleDeleteProvider() {
+    if (!selectedDraft || !onSaveSettings) {
+      return;
+    }
+    if (!canDeleteSelectedProvider) {
+      setProviderNotice("内置 Provider 不能删除，可以停用或复制后自定义。");
+      return;
+    }
+    const confirmed = window.confirm(`删除 Provider「${selectedDraft.name}」？这会同时清除它保存的 API Key。`);
+    if (!confirmed) {
+      return;
+    }
+
+    const remainingProviders = settings.providers.filter((provider) => provider.id !== selectedDraft.id);
+    const fallbackProvider = remainingProviders.find((provider) => provider.connected) ?? remainingProviders[0];
+    const nextSettings: AppSettings = {
+      ...settings,
+      providers: remainingProviders,
+      model:
+        settings.model.activeProviderId === selectedDraft.id
+          ? {
+              activeProviderId: fallbackProvider?.id ?? "",
+              activeModel: fallbackProvider?.defaultModel || fallbackProvider?.models[0] || ""
+            }
+          : settings.model,
+      assistant: {
+        ...settings.assistant,
+        agents: settings.assistant.agents.map((agent) =>
+          agent.providerId === selectedDraft.id ? { ...agent, providerId: fallbackProvider?.id ?? "" } : agent
+        )
+      }
+    };
+
+    setSavingProviderId(selectedDraft.id);
+    try {
+      await onSaveSettings(nextSettings, [{ providerId: selectedDraft.id, clearApiKey: true }]);
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[selectedDraft.id];
+        return next;
+      });
+      setSelectedProviderId(fallbackProvider?.id ?? remainingProviders[0]?.id ?? "");
+      setProviderNotice("Provider 已删除，关联 API Key 已清除。");
+    } finally {
+      setSavingProviderId(null);
+    }
+  }
+
+  function handleExportSettings() {
+    const exported: AppSettings = {
+      ...settings,
+      providers: settings.providers.map((provider) => ({
+        ...provider,
+        apiKeyConfigured: false
+      })),
+      updatedAt: new Date().toISOString()
+    };
+    const blob = new Blob([`${JSON.stringify(exported, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `nexadesk-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setProviderNotice("已导出配置。导出文件不包含 API Key。");
+  }
+
+  async function handleImportSettings(file: File | undefined) {
+    if (!file || !onSaveSettings) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const imported = sanitizeImportedSettings(parsed, settings);
+      const confirmed = window.confirm("导入配置会覆盖当前设置，但不会导入 API Key。继续吗？");
+      if (!confirmed) {
+        return;
+      }
+      const saved = await onSaveSettings(imported, []);
+      setDrafts(
+        saved.providers.reduce<Record<string, ProviderDraft>>((record, provider) => {
+          record[provider.id] = createProviderDraft(provider);
+          return record;
+        }, {})
+      );
+      setSelectedProviderId(saved.model.activeProviderId || saved.providers[0]?.id || "");
+      setProviderNotice("配置已导入。请重新填写需要的 API Key。");
+    } catch (reason) {
+      setProviderNotice(reason instanceof Error ? `导入失败：${reason.message}` : "导入失败。");
+    } finally {
+      if (importInputRef.current) {
+        importInputRef.current.value = "";
+      }
+    }
   }
 
   async function handleTestProvider() {
@@ -1681,9 +1845,24 @@ function ProviderConfigPanel({
       <div className="provider-config">
         <div className="config-toolbar">
           <span>内置预设 + 自定义第三方接口</span>
-          <button className="mini-button" onClick={handleAddCustomProvider} type="button">
-            新增自定义
-          </button>
+          <div className="toolbar-actions">
+            <button className="mini-button" onClick={handleAddCustomProvider} type="button">
+              新增自定义
+            </button>
+            <button className="mini-button" onClick={handleExportSettings} type="button">
+              导出配置
+            </button>
+            <button className="mini-button" onClick={() => importInputRef.current?.click()} type="button">
+              导入配置
+            </button>
+            <input
+              ref={importInputRef}
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => void handleImportSettings(event.target.files?.[0])}
+              type="file"
+            />
+          </div>
         </div>
 
         <div className="provider-picker" aria-label="Provider list">
@@ -1770,6 +1949,26 @@ function ProviderConfigPanel({
           <button className="secondary-button" disabled={testProviderId === selectedDraft.id} onClick={handleTestProvider} type="button">
             {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
           </button>
+          <button className="secondary-button" onClick={handleCopyProvider} type="button">
+            复制
+          </button>
+          <button
+            className="secondary-button"
+            disabled={savingProviderId === selectedDraft.id || (!selectedDraft.apiKeyConfigured && !selectedDraft.apiKey.trim())}
+            onClick={handleClearApiKey}
+            type="button"
+          >
+            清除 Key
+          </button>
+          <button
+            className="secondary-button danger-button"
+            disabled={savingProviderId === selectedDraft.id || !canDeleteSelectedProvider}
+            onClick={handleDeleteProvider}
+            title={canDeleteSelectedProvider ? "删除这个自定义 Provider" : "内置 Provider 不能删除"}
+            type="button"
+          >
+            删除
+          </button>
           <button
             className="primary-button"
             disabled={savingProviderId === selectedDraft.id}
@@ -1820,7 +2019,7 @@ function ProviderConfigPanel({
         </div>
 
         <p className="secret-note">
-          {renderProviderNote(selectedDraft, savedProviderId, testResults[selectedDraft.id])}
+          {providerNotice ?? renderProviderNote(selectedDraft, savedProviderId, testResults[selectedDraft.id])}
         </p>
       </div>
     </section>
@@ -1858,6 +2057,86 @@ function providerDraftToSettings(draft: ProviderDraft): ProviderSettings {
     apiKeyConfigured: draft.apiKeyConfigured || Boolean(draft.apiKey.trim()),
     capabilities: capabilityOptions.filter((option) => draft.capabilities[option.value]).map((option) => option.value)
   };
+}
+
+function sanitizeImportedSettings(value: unknown, fallback: AppSettings): AppSettings {
+  if (!isRecord(value) || !Array.isArray(value.providers)) {
+    throw new Error("文件不是 NexaDesk 设置 JSON。");
+  }
+
+  const providers = value.providers
+    .map((item) => sanitizeImportedProvider(item))
+    .filter((provider): provider is ProviderSettings => Boolean(provider));
+
+  if (providers.length === 0) {
+    throw new Error("导入文件里没有可用 Provider。");
+  }
+  const firstProvider = providers[0];
+  if (!firstProvider) {
+    throw new Error("导入文件里没有可用 Provider。");
+  }
+
+  const model = isRecord(value.model) ? value.model : {};
+  const activeProviderId =
+    typeof model.activeProviderId === "string" && providers.some((provider) => provider.id === model.activeProviderId)
+      ? model.activeProviderId
+      : firstProvider.id;
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? firstProvider;
+
+  return {
+    ...fallback,
+    ...(value as Partial<AppSettings>),
+    providers,
+    model: {
+      activeProviderId,
+      activeModel:
+        typeof model.activeModel === "string" && model.activeModel
+          ? model.activeModel
+          : activeProvider.defaultModel || activeProvider.models[0] || ""
+    },
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function sanitizeImportedProvider(value: unknown): ProviderSettings | null {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
+    return null;
+  }
+
+  const models = Array.isArray(value.models)
+    ? value.models.filter((model): model is string => typeof model === "string" && Boolean(model.trim()))
+    : [];
+  const apiMode = apiModeOptions.some((option) => option.value === value.apiMode)
+    ? (value.apiMode as ProviderApiMode)
+    : "chat_completions";
+  const capabilities = Array.isArray(value.capabilities)
+    ? value.capabilities.filter((capability): capability is ProviderCapability =>
+        capabilityOptions.some((option) => option.value === capability)
+      )
+    : [];
+
+  return {
+    id: value.id,
+    name: value.name,
+    kind:
+      value.kind === "local" || value.kind === "openai_compatible" || value.kind === "anthropic" || value.kind === "google"
+        ? value.kind
+        : "custom",
+    apiMode,
+    connected: Boolean(value.connected),
+    baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : undefined,
+    models: models.length ? models : ["model-name"],
+    defaultModel:
+      typeof value.defaultModel === "string" && value.defaultModel
+        ? value.defaultModel
+        : models[0] ?? "model-name",
+    apiKeyConfigured: false,
+    capabilities: capabilities.length ? capabilities : ["streaming"]
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function renderProviderNote(

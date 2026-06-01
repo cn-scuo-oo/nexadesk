@@ -88,6 +88,76 @@ try {
   assert(secrets.encrypted === true, "secrets file was not encrypted");
   assert(!secretsRaw.includes("sk-test-persistence"), "plain API key leaked into secrets file");
 
+  await requestJson("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: reloaded,
+      providerSecrets: [{ providerId, clearApiKey: true }]
+    })
+  });
+  const cleared = await requestJson("/api/settings");
+  assert(
+    cleared.providers.find((item) => item.id === providerId)?.apiKeyConfigured === false,
+    "provider API key clear did not persist"
+  );
+
+  const customProviderId = "custom-prune-smoke";
+  const customProvider = {
+    id: customProviderId,
+    name: "Custom prune smoke",
+    kind: "openai_compatible",
+    apiMode: "chat_completions",
+    connected: true,
+    baseUrl: "https://api.example.com/v1",
+    models: ["custom-model"],
+    defaultModel: "custom-model",
+    apiKeyConfigured: false,
+    capabilities: ["streaming"]
+  };
+  const withCustomProvider = {
+    ...cleared,
+    providers: [...cleared.providers, customProvider]
+  };
+  await requestJson("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: withCustomProvider,
+      providerSecrets: [{ providerId: customProviderId, apiKey: "sk-custom-prune" }]
+    })
+  });
+  const customSaved = await requestJson("/api/settings");
+  assert(
+    customSaved.providers.find((item) => item.id === customProviderId)?.apiKeyConfigured === true,
+    "custom provider key was not saved"
+  );
+
+  const withoutCustomProvider = {
+    ...customSaved,
+    providers: customSaved.providers.filter((provider) => provider.id !== customProviderId)
+  };
+  await requestJson("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ settings: withoutCustomProvider, providerSecrets: [] })
+  });
+  const customDeleted = await requestJson("/api/settings");
+  assert(!customDeleted.providers.some((item) => item.id === customProviderId), "custom provider was not deleted");
+
+  await requestJson("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: {
+        ...customDeleted,
+        providers: [...customDeleted.providers, customProvider]
+      },
+      providerSecrets: []
+    })
+  });
+  const customReadded = await requestJson("/api/settings");
+  assert(
+    customReadded.providers.find((item) => item.id === customProviderId)?.apiKeyConfigured === false,
+    "deleted provider key was not pruned"
+  );
+
   console.log(`NexaDesk settings persistence smoke test passed on port ${port}.`);
 } finally {
   child.kill();

@@ -32,11 +32,18 @@
 
 ## Phase 5 - Private GitHub Incubation
 
-- Status: in progress
+- Status: complete
 - The project is prepared for a private GitHub repository, not a public open-source release.
 - Public release language has been removed from the main package metadata and README.
 - Private CI validates typecheck, build, settings persistence, and desktop startup smoke tests.
 - Private release and repository hygiene checklists are documented.
+
+## Phase 6 - Product Usability Hardening
+
+- Status: in progress
+- Provider management supports copying providers, deleting custom providers, clearing saved API keys, and importing/exporting non-secret settings JSON.
+- Settings save prunes orphaned provider secrets so deleted custom providers do not leave stale key records.
+- Settings smoke tests cover API key persistence, clearing, and deleted-provider secret pruning.
 
 ## Later Phases
 

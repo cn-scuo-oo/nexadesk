@@ -41,18 +41,20 @@ export async function saveSettings(
   const defaults = createDefaultSettings(createDefaultProviders());
   const currentSecrets = await loadSecrets();
   const updatedSecrets = applySecretUpdates(currentSecrets, providerSecrets);
-  const next = applySecretState(mergeSettings(defaults, input), updatedSecrets);
+  const merged = mergeSettings(defaults, input);
+  const prunedSecrets = pruneSecretsToProviders(updatedSecrets, merged.providers);
+  const next = applySecretState(merged, prunedSecrets);
   const sanitized: AppSettings = {
     ...next,
     providers: next.providers.map((provider) => ({
       ...provider,
-      apiKeyConfigured: Boolean(updatedSecrets.providerKeys[provider.id])
+      apiKeyConfigured: Boolean(prunedSecrets.providerKeys[provider.id])
     })),
     updatedAt: new Date().toISOString()
   };
 
   await writeJson(settingsPath, sanitized);
-  await writeSecrets(updatedSecrets);
+  await writeSecrets(prunedSecrets);
   return sanitized;
 }
 
@@ -113,6 +115,15 @@ function applySecretUpdates(secrets: SecretFile, updates: ProviderSecretUpdate[]
   }
 
   return next;
+}
+
+function pruneSecretsToProviders(secrets: SecretFile, providers: AppSettings["providers"]): SecretFile {
+  const providerIds = new Set(providers.map((provider) => provider.id));
+  return {
+    providerKeys: Object.fromEntries(
+      Object.entries(secrets.providerKeys).filter(([providerId]) => providerIds.has(providerId))
+    )
+  };
 }
 
 function encryptSecrets(secrets: SecretFile): EncryptedSecretFile | null {
