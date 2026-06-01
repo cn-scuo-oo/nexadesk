@@ -1,0 +1,83 @@
+{
+  "name": "nexadesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private incubation build of the NexaDesk multi-agent desktop workbench.",
+  "author": "NexaDesk Contributors",
+  "main": "apps/desktop/main.cjs",
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "brand:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-brand-assets.ps1",
+    "dev:web": "npm run dev --workspace @nexadesk/web",
+    "dev:server": "npm run dev --workspace @nexadesk/server",
+    "build": "npm run build --workspaces --if-present",
+    "build:server-bundle": "node scripts/build-server.mjs",
+    "build:desktop": "npm run build && npm run build:server-bundle",
+    "desktop": "npm run build:desktop && electron .",
+    "desktop:smoke": "npm run build:desktop && node scripts/desktop-smoke.mjs",
+    "settings:smoke": "npm run build:server-bundle && node scripts/settings-persistence-smoke.mjs",
+    "dist:win": "npm run build:desktop && electron-builder --win nsis --x64",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.3.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
+    "rcedit": "^5.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.3"
+  },
+  "build": {
+    "appId": "com.nexadesk.desktop",
+    "productName": "NexaDesk",
+    "directories": {
+      "output": "release"
+    },
+    "afterPack": "scripts/after-pack.mjs",
+    "files": [
+      "apps/desktop/**/*",
+      "apps/web/dist/**/*",
+      "apps/server/dist/**/*",
+      "build-resources/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build-resources/icon.ico",
+      "legalTrademarks": "NexaDesk",
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "installerIcon": "build-resources/icon.ico",
+      "uninstallerIcon": "build-resources/icon.ico",
+      "installerHeaderIcon": "build-resources/icon.ico",
+      "installerHeader": "build-resources/installer-header.bmp",
+      "installerSidebar": "build-resources/installer-sidebar.bmp",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "NexaDesk",
+      "uninstallDisplayName": "NexaDesk",
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true
+    }
+  }
+}
+
