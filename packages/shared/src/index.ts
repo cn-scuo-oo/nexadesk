@@ -138,6 +138,37 @@ export interface PermissionSettings {
   autoApproveLowRisk: boolean;
 }
 
+export type McpServerTransport = "stdio" | "http";
+
+export interface McpServerSettings {
+  id: string;
+  name: string;
+  description: string;
+  transport: McpServerTransport;
+  enabled: boolean;
+  command?: string;
+  args?: string[];
+  url?: string;
+}
+
+export interface McpSettings {
+  servers: McpServerSettings[];
+}
+
+export interface McpServerTestRequest {
+  server: McpServerSettings;
+  timeoutMs?: number;
+}
+
+export interface McpServerTestResult {
+  ok: boolean;
+  message: string;
+  checkedAt: string;
+  transport: McpServerTransport;
+  resolvedTarget?: string;
+  status?: number;
+}
+
 export interface DesktopAppSettings {
   launchAtStartup: boolean;
   autoUpdate: boolean;
@@ -164,6 +195,7 @@ export interface AppSettings {
   appearance: AppearanceSettings;
   workspace: WorkspaceSettings;
   permissions: PermissionSettings;
+  mcp: McpSettings;
   app: DesktopAppSettings;
   updatedAt: string;
 }
@@ -890,6 +922,45 @@ export function createDefaultSkills(): SkillProfile[] {
   ];
 }
 
+export function createDefaultMcpServers(): McpServerSettings[] {
+  return [
+    {
+      id: "filesystem-mcp",
+      name: "文件系统 MCP",
+      description: "读文件、列目录和受控写入，默认交给 NexaDesk 权限网关审批。",
+      transport: "stdio",
+      enabled: true,
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+    },
+    {
+      id: "browser-mcp",
+      name: "浏览器 MCP",
+      description: "网页打开、截图、点击和浏览器自动化。",
+      transport: "stdio",
+      enabled: false,
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-puppeteer"]
+    },
+    {
+      id: "image-mcp",
+      name: "图片生成 MCP",
+      description: "图片生成、素材输出和视觉资源处理。",
+      transport: "http",
+      enabled: false,
+      url: "http://127.0.0.1:8787/mcp"
+    },
+    {
+      id: "office-mcp",
+      name: "Office MCP",
+      description: "Word、Excel、PPT 文档级工具和导出工作流。",
+      transport: "http",
+      enabled: false,
+      url: "http://127.0.0.1:8788/mcp"
+    }
+  ];
+}
+
 export function createDefaultSettings(
   providers: ModelProvider[] = createDefaultProviders(),
   now = new Date().toISOString()
@@ -935,6 +1006,9 @@ export function createDefaultSettings(
       mcp: "ask",
       automation: "deny",
       autoApproveLowRisk: false
+    },
+    mcp: {
+      servers: createDefaultMcpServers()
     },
     app: {
       launchAtStartup: false,

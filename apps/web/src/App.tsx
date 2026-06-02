@@ -36,6 +36,8 @@ import {
   type ChatMessage,
   type ChatStreamEvent,
   type DesktopStatus,
+  type McpServerSettings,
+  type McpServerTestResult,
   type ModelProvider,
   type PermissionRequest,
   type ProviderModelsResult,
@@ -71,6 +73,7 @@ import {
   streamMessage,
   subscribeActivity,
   testProvider,
+  testMcpServer,
   updateSession
 } from "./api";
 
@@ -387,6 +390,9 @@ export function App() {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameSessionDraft, setRenameSessionDraft] = useState("");
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [editingMcpServerId, setEditingMcpServerId] = useState<string | null>(null);
+  const [mcpTestResults, setMcpTestResults] = useState<Record<string, McpServerTestResult>>({});
+  const [testingMcpServerId, setTestingMcpServerId] = useState<string | null>(null);
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -987,6 +993,72 @@ export function App() {
     await handleSaveSettings(nextSettings);
   }
 
+  async function handleSaveMcpServer(server: McpServerSettings) {
+    if (!settings) {
+      return;
+    }
+    const exists = settings.mcp.servers.some((item) => item.id === server.id);
+    const nextSettings: AppSettings = {
+      ...settings,
+      mcp: {
+        servers: exists
+          ? settings.mcp.servers.map((item) => (item.id === server.id ? server : item))
+          : [...settings.mcp.servers, server]
+      }
+    };
+    await handleSaveSettings(nextSettings);
+    setEditingMcpServerId(null);
+  }
+
+  async function handleToggleMcpServer(serverId: string, enabled: boolean) {
+    const server = runtimeSettings.mcp.servers.find((item) => item.id === serverId);
+    if (!server) {
+      return;
+    }
+    await handleSaveMcpServer({ ...server, enabled });
+  }
+
+  async function handleDeleteMcpServer(serverId: string) {
+    if (!settings) {
+      return;
+    }
+    const nextSettings: AppSettings = {
+      ...settings,
+      mcp: {
+        servers: settings.mcp.servers.filter((server) => server.id !== serverId)
+      }
+    };
+    await handleSaveSettings(nextSettings);
+  }
+
+  async function handleTestMcpServer(server: McpServerSettings) {
+    setTestingMcpServerId(server.id);
+    try {
+      const result =
+        mode === "demo"
+          ? {
+              ok: false,
+              message: "演示模式不测试本地 MCP。启动桌面后端后可测试。",
+              checkedAt: new Date().toISOString(),
+              transport: server.transport
+            }
+          : await testMcpServer({ server, timeoutMs: 6000 });
+      setMcpTestResults((current) => ({ ...current, [server.id]: result }));
+    } catch (reason) {
+      setMcpTestResults((current) => ({
+        ...current,
+        [server.id]: {
+          ok: false,
+          message: reason instanceof Error ? reason.message : "MCP 测试失败。",
+          checkedAt: new Date().toISOString(),
+          transport: server.transport
+        }
+      }));
+    } finally {
+      setTestingMcpServerId(null);
+    }
+  }
+
   function handleOpenView(view: AppView) {
     setActiveView(view);
     window.location.hash = view === "new" ? "" : view;
@@ -1405,7 +1477,17 @@ export function App() {
             onToggleSkill={(skillId, enabled) => void handleToggleSkillFromHub(skillId, enabled)}
           />
         ) : activeView === "mcp" ? (
-          <McpHubView onOpenSettings={() => handleOpenSettings("permissions")} />
+          <McpHubView
+            servers={runtimeSettings.mcp.servers}
+            testResults={mcpTestResults}
+            testingServerId={testingMcpServerId}
+            onCreate={() => setEditingMcpServerId("__new__")}
+            onDelete={(serverId) => void handleDeleteMcpServer(serverId)}
+            onEdit={(serverId) => setEditingMcpServerId(serverId)}
+            onOpenSettings={() => handleOpenSettings("permissions")}
+            onTest={(server) => void handleTestMcpServer(server)}
+            onToggle={(serverId, enabled) => void handleToggleMcpServer(serverId, enabled)}
+          />
         ) : (
           <AgentsHubView
             activeAgent={activeAgent}
@@ -1662,6 +1744,17 @@ export function App() {
           onSave={(agent) => void handleSaveAgentFromHub(agent)}
         />
       ) : null}
+      {editingMcpServerId ? (
+        <McpServerEditorModal
+          server={
+            editingMcpServerId === "__new__"
+              ? null
+              : runtimeSettings.mcp.servers.find((server) => server.id === editingMcpServerId) ?? null
+          }
+          onClose={() => setEditingMcpServerId(null)}
+          onSave={(server) => void handleSaveMcpServer(server)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -1833,6 +1926,128 @@ function AgentEditorModal({
           </button>
           <button className="primary-button" type="submit">
             保存 Agent
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function McpServerEditorModal({
+  server,
+  onClose,
+  onSave
+}: {
+  server: McpServerSettings | null;
+  onClose: () => void;
+  onSave: (server: McpServerSettings) => void;
+}) {
+  const [name, setName] = useState(server?.name ?? "自定义 MCP");
+  const [description, setDescription] = useState(server?.description ?? "描述这个 MCP 服务器提供的工具。");
+  const [transport, setTransport] = useState<McpServerSettings["transport"]>(server?.transport ?? "stdio");
+  const [enabled, setEnabled] = useState(server?.enabled ?? true);
+  const [command, setCommand] = useState(server?.command ?? "npx");
+  const [argsText, setArgsText] = useState((server?.args ?? []).join("\n"));
+  const [url, setUrl] = useState(server?.url ?? "http://127.0.0.1:8787/mcp");
+
+  function submitMcpServer(event: FormEvent) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+    const args = argsText
+      .split(/\r?\n/)
+      .map((arg) => arg.trim())
+      .filter(Boolean);
+
+    onSave({
+      id: server?.id ?? `custom-mcp-${crypto.randomUUID().slice(0, 8)}`,
+      name: trimmedName,
+      description: description.trim() || "自定义 MCP 服务器。",
+      transport,
+      enabled,
+      command: transport === "stdio" ? command.trim() || undefined : undefined,
+      args: transport === "stdio" ? args : undefined,
+      url: transport === "http" ? url.trim() || undefined : undefined
+    });
+  }
+
+  return (
+    <div className="agent-editor-backdrop" role="presentation" onMouseDown={onClose}>
+      <form
+        className="agent-editor-modal mcp-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="MCP 编辑器"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={submitMcpServer}
+      >
+        <div className="agent-editor-header">
+          <div>
+            <p className="eyebrow">MCP Server</p>
+            <h2>{server ? "编辑 MCP" : "新增 MCP"}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="关闭 MCP 编辑器">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="agent-editor-grid">
+          <section className="settings-form">
+            <label>
+              <span>名称</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label>
+              <span>描述</span>
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+            </label>
+            <label>
+              <span>连接方式</span>
+              <select value={transport} onChange={(event) => setTransport(event.target.value as McpServerSettings["transport"])}>
+                <option value="stdio">stdio 本地命令</option>
+                <option value="http">HTTP 远程端点</option>
+              </select>
+            </label>
+            <label className="inline-check-row">
+              <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
+              <span>启用这个 MCP</span>
+            </label>
+          </section>
+          <section className="settings-form">
+            {transport === "stdio" ? (
+              <>
+                <label>
+                  <span>命令</span>
+                  <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="npx / node / uvx" />
+                </label>
+                <label>
+                  <span>参数（每行一个）</span>
+                  <textarea
+                    value={argsText}
+                    onChange={(event) => setArgsText(event.target.value)}
+                    placeholder={"-y\n@modelcontextprotocol/server-filesystem"}
+                  />
+                </label>
+              </>
+            ) : (
+              <label>
+                <span>HTTP URL</span>
+                <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="http://127.0.0.1:8787/mcp" />
+              </label>
+            )}
+            <div className="mcp-editor-note">
+              <strong>测试连接</strong>
+              <span>保存后在 MCP 页面点击“测试连接”。stdio 会检查本地命令是否存在，HTTP 会请求端点并返回状态码。</span>
+            </div>
+          </section>
+        </div>
+        <div className="agent-editor-actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            取消
+          </button>
+          <button className="primary-button" type="submit">
+            保存 MCP
           </button>
         </div>
       </form>
@@ -2320,16 +2535,31 @@ function SkillsHubView({
   );
 }
 
-function McpHubView({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const servers = [
-    { name: "文件系统 MCP", status: "已接入", detail: "读文件、列目录和受控写入。" },
-    { name: "浏览器 MCP", status: "待接入", detail: "打开网页、截图、点击和浏览器自动化。" },
-    { name: "图片生成 MCP", status: "待接入", detail: "生成图片、编辑图片和素材输出。" },
-    { name: "Office MCP", status: "规划中", detail: "Word、Excel、PPT 的文档级工具。" }
-  ];
+function McpHubView({
+  servers,
+  testResults,
+  testingServerId,
+  onCreate,
+  onDelete,
+  onEdit,
+  onOpenSettings,
+  onTest,
+  onToggle
+}: {
+  servers: McpServerSettings[];
+  testResults: Record<string, McpServerTestResult>;
+  testingServerId: string | null;
+  onCreate: () => void;
+  onDelete: (serverId: string) => void;
+  onEdit: (serverId: string) => void;
+  onOpenSettings: () => void;
+  onTest: (server: McpServerSettings) => void;
+  onToggle: (serverId: string, enabled: boolean) => void;
+}) {
+  const enabledCount = servers.filter((server) => server.enabled).length;
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="后续在这里管理本地和远程 MCP，避免混进聊天首页。" actionLabel="权限设置" onAction={onOpenSettings} />
+      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="管理本地 stdio 和远程 HTTP MCP，所有高风险动作继续进入审批。" actionLabel="新增 MCP" onAction={onCreate} />
       <div className="mcp-layout">
         <section className="panel-block mcp-gateway-panel">
           <div className="panel-heading compact">
@@ -2339,20 +2569,60 @@ function McpHubView({ onOpenSettings }: { onOpenSettings: () => void }) {
             </div>
             <ShieldCheck size={18} />
           </div>
-          <p>所有写文件、执行命令、浏览器和外部访问动作都会先进入审批队列。</p>
+          <div className="mcp-gateway-stats">
+            <span>
+              启用 <b>{enabledCount}</b>
+            </span>
+            <span>
+              总数 <b>{servers.length}</b>
+            </span>
+          </div>
+          <p>所有写文件、执行命令、浏览器和外部访问动作都会先进入审批队列。这里负责 MCP 连接和可用性测试。</p>
           <button className="secondary-button" onClick={onOpenSettings} type="button">打开权限策略</button>
         </section>
-        <section className="module-grid two-column mcp-server-grid">
-        {servers.map((server) => (
-          <article className="market-card" key={server.name}>
-            <div>
-              <Terminal size={17} />
-              <strong>{server.name}</strong>
-            </div>
-            <p>{server.detail}</p>
-            <span>{server.status}</span>
-          </article>
-        ))}
+        <section className="mcp-server-grid">
+        {servers.map((server) => {
+          const result = testResults[server.id];
+          const target =
+            server.transport === "http"
+              ? server.url || "未配置 URL"
+              : [server.command, ...(server.args ?? [])].filter(Boolean).join(" ") || "未配置命令";
+          return (
+            <article className={server.enabled ? "mcp-server-card enabled" : "mcp-server-card"} key={server.id}>
+              <div className="mcp-server-topline">
+                <Terminal size={17} />
+                <strong>{server.name}</strong>
+                <span className="transport-badge">{server.transport}</span>
+                <span className={server.enabled ? "status ready" : "status muted-status"}>{server.enabled ? "启用" : "停用"}</span>
+              </div>
+              <p>{server.description}</p>
+              <code className="mcp-server-target">{target}</code>
+              {result ? (
+                <div className={result.ok ? "mcp-test-result ok" : "mcp-test-result failed"}>
+                  <strong>{result.ok ? "连接可用" : "连接失败"}</strong>
+                  <span>
+                    {result.message}
+                    {typeof result.status === "number" ? ` · HTTP ${result.status}` : ""}
+                  </span>
+                </div>
+              ) : null}
+              <div className="mcp-card-actions">
+                <button className="secondary-button" onClick={() => onToggle(server.id, !server.enabled)} type="button">
+                  {server.enabled ? "停用" : "启用"}
+                </button>
+                <button className="secondary-button" disabled={testingServerId === server.id} onClick={() => onTest(server)} type="button">
+                  {testingServerId === server.id ? "测试中..." : "测试连接"}
+                </button>
+                <button className="secondary-button" onClick={() => onEdit(server.id)} type="button">
+                  编辑
+                </button>
+                <button className="secondary-button danger-soft-button" onClick={() => onDelete(server.id)} type="button">
+                  删除
+                </button>
+              </div>
+            </article>
+          );
+        })}
         </section>
       </div>
     </section>
@@ -4400,6 +4670,10 @@ function sanitizeImportedSettings(value: unknown, fallback: AppSettings): AppSet
       ? model.activeProviderId
       : firstProvider.id;
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? firstProvider;
+  const importedMcpServers =
+    isRecord(value.mcp) && Array.isArray(value.mcp.servers)
+      ? value.mcp.servers.map((item) => sanitizeImportedMcpServer(item)).filter((item): item is McpServerSettings => Boolean(item))
+      : fallback.mcp.servers;
 
   return {
     ...fallback,
@@ -4412,7 +4686,31 @@ function sanitizeImportedSettings(value: unknown, fallback: AppSettings): AppSet
           ? model.activeModel
           : activeProvider.defaultModel || activeProvider.models[0] || ""
     },
+    mcp: {
+      servers: importedMcpServers.length ? importedMcpServers : fallback.mcp.servers
+    },
     updatedAt: new Date().toISOString()
+  };
+}
+
+function sanitizeImportedMcpServer(value: unknown): McpServerSettings | null {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
+    return null;
+  }
+  const transport = value.transport === "http" ? "http" : "stdio";
+  const args = Array.isArray(value.args)
+    ? value.args.filter((arg): arg is string => typeof arg === "string" && Boolean(arg.trim()))
+    : [];
+
+  return {
+    id: value.id,
+    name: value.name.trim() || "Custom MCP",
+    description: typeof value.description === "string" && value.description.trim() ? value.description : "Custom MCP server.",
+    transport,
+    enabled: Boolean(value.enabled),
+    command: transport === "stdio" && typeof value.command === "string" ? value.command : undefined,
+    args: transport === "stdio" ? args : undefined,
+    url: transport === "http" && typeof value.url === "string" ? value.url : undefined
   };
 }
 

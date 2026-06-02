@@ -8,6 +8,8 @@
   ChatStreamEvent,
   ChatMessage,
   DesktopStatus,
+  McpServerTestRequest,
+  McpServerTestResult,
   ProviderModelsRequest,
   ProviderModelsResult,
   RecoverSettingsResult,
@@ -141,6 +143,20 @@ export async function fetchProviderModels(payload: ProviderModelsRequest): Promi
     throw new Error(`Provider models request failed with ${response.status}`);
   }
   return response.json() as Promise<ProviderModelsResult>;
+}
+
+export async function testMcpServer(payload: McpServerTestRequest): Promise<McpServerTestResult> {
+  const response = await fetch(`${apiBase}/api/mcp/test`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`MCP test failed with ${response.status}`);
+  }
+  return response.json() as Promise<McpServerTestResult>;
 }
 
 export async function updateSession(

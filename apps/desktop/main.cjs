@@ -217,6 +217,23 @@ async function runRendererSmokeTest(apiPort) {
   if (!sessionUpdate.sessions?.[0]?.pinned || sessionUpdate.sessions[0].title !== "Renderer smoke task") {
     throw new Error("Renderer smoke test failed: session pin/rename API did not persist.");
   }
+  const mcpTest = await requestJson(apiPort, "/api/mcp/test", {
+    method: "POST",
+    body: JSON.stringify({
+      server: {
+        id: "smoke-stdio",
+        name: "Smoke stdio",
+        description: "Desktop smoke stdio command lookup.",
+        transport: "stdio",
+        enabled: true,
+        command: process.platform === "win32" ? "cmd" : "sh"
+      },
+      timeoutMs: 5000
+    })
+  });
+  if (typeof mcpTest.ok !== "boolean" || !mcpTest.checkedAt || mcpTest.transport !== "stdio") {
+    throw new Error("Renderer smoke test failed: MCP test API did not return a valid result.");
+  }
 
   const workbenchText = await renderAndReadText(apiPort);
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
@@ -311,7 +328,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const mcpText = await renderAndReadText(apiPort, "mcp");
-  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器")) {
+  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接")) {
     throw new Error("Renderer smoke test failed: MCP workspace was not rendered as a separate view.");
   }
 

@@ -1571,6 +1571,137 @@ h4 {
   justify-self: start;
 }
 
+.mcp-gateway-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.mcp-gateway-stats span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e2d7c2;
+  border-radius: 8px;
+  padding: 10px;
+  color: #6f6252;
+  background: #fffaf0;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mcp-gateway-stats b {
+  color: #162d26;
+  font-size: 22px;
+}
+
+.mcp-server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.mcp-server-card {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  border: 1px solid #ded7ca;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fffdf8;
+}
+
+.mcp-server-card.enabled {
+  border-color: #bdd8c9;
+  box-shadow: inset 3px 0 0 #2d7259;
+}
+
+.mcp-server-topline,
+.mcp-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-server-topline strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #1e332d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transport-badge {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #73561d;
+  background: #fff0c6;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mcp-server-card p {
+  color: #61594d;
+  line-height: 1.45;
+}
+
+.mcp-server-target {
+  overflow: hidden;
+  border: 1px solid #e5dccb;
+  border-radius: 8px;
+  padding: 9px;
+  color: #27453b;
+  background: #f8f3e7;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-test-result {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mcp-test-result.ok {
+  color: #1d5d47;
+  background: #e0f1e9;
+}
+
+.mcp-test-result.failed {
+  color: #842e2e;
+  background: #f7dfdc;
+}
+
+.mcp-card-actions .secondary-button {
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
+.mcp-editor-modal {
+  width: min(760px, 100%);
+}
+
+.mcp-editor-note {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e1d8c7;
+  border-radius: 8px;
+  padding: 12px;
+  color: #5f574b;
+  background: #fff8e8;
+  line-height: 1.45;
+}
+
 .dashboard-filter-row,
 .chip-tabs {
   display: flex;

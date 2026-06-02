@@ -278,6 +278,9 @@ function mergeSettings(defaults: AppSettings, saved: AppSettings | null): AppSet
     appearance: { ...defaults.appearance, ...saved.appearance },
     workspace: { ...defaults.workspace, ...saved.workspace },
     permissions: { ...defaults.permissions, ...saved.permissions },
+    mcp: {
+      servers: mergeMcpServers(defaults.mcp.servers, saved.mcp?.servers ?? [])
+    },
     app: { ...defaults.app, ...saved.app }
   };
 }
@@ -396,4 +399,27 @@ function mergeAgentEngines(
   }));
   const defaultIds = new Set(defaultEngines.map((engine) => engine.id));
   return [...merged, ...savedEngines.filter((engine) => !defaultIds.has(engine.id))];
+}
+
+function mergeMcpServers(defaultServers: AppSettings["mcp"]["servers"], savedServers: AppSettings["mcp"]["servers"]) {
+  const savedById = new Map(savedServers.map((server) => [server.id, server]));
+  const merged = defaultServers.map((server) => ({
+    ...server,
+    ...savedById.get(server.id),
+    name: isCorruptedText(savedById.get(server.id)?.name) ? server.name : savedById.get(server.id)?.name ?? server.name,
+    description: isCorruptedText(savedById.get(server.id)?.description)
+      ? server.description
+      : savedById.get(server.id)?.description ?? server.description
+  }));
+  const defaultIds = new Set(defaultServers.map((server) => server.id));
+  return [
+    ...merged,
+    ...savedServers
+      .filter((server) => !defaultIds.has(server.id))
+      .map((server) => ({
+        ...server,
+        name: isCorruptedText(server.name) ? "Custom MCP server" : server.name,
+        description: isCorruptedText(server.description) ? "Custom MCP server." : server.description
+      }))
+  ];
 }

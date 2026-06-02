@@ -18,6 +18,8 @@ import {
   type ChatStreamEvent,
   type ChatMessage,
   type DesktopStatus,
+  type McpServerTestRequest,
+  type McpServerTestResult,
   type PermissionRequest,
   type ProviderModelsRequest,
   type ProviderModelsResult,
@@ -326,6 +328,33 @@ app.post("/api/settings/recover", async (req, res, next) => {
     snapshot.activity.unshift(activity);
     await persistRuntimeState();
     res.json({ ...result, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const mcpTestSchema = z.object({
+  server: z.object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    description: z.string().trim().optional().default(""),
+    transport: z.enum(["stdio", "http"]),
+    enabled: z.boolean(),
+    command: z.string().trim().optional(),
+    args: z.array(z.string()).optional(),
+    url: z.string().trim().optional()
+  }),
+  timeoutMs: z.number().int().positive().max(15000).optional()
+});
+
+app.post("/api/mcp/test", async (req, res, next) => {
+  try {
+    const parsed = mcpTestSchema.safeParse(req.body as McpServerTestRequest);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    res.json(await testMcpServer(parsed.data.server, parsed.data.timeoutMs ?? 5000));
   } catch (error) {
     next(error);
   }
@@ -1052,6 +1081,96 @@ async function startServer() {
   }
   app.listen(port, host, () => {
     console.log(`NexaDesk API listening on http://${host}:${port}`);
+  });
+}
+
+async function testMcpServer(
+  server: McpServerTestRequest["server"],
+  timeoutMs: number
+): Promise<McpServerTestResult> {
+  const checkedAt = new Date().toISOString();
+  if (server.transport === "http") {
+    const url = server.url?.trim();
+    if (!url) {
+      return { ok: false, checkedAt, transport: "http", message: "请先填写 MCP HTTP URL。" };
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs).unref();
+    try {
+      const response = await fetch(url, { method: "GET", signal: controller.signal });
+      return {
+        ok: response.status < 500,
+        checkedAt,
+        transport: "http",
+        status: response.status,
+        resolvedTarget: url,
+        message:
+          response.status < 500
+            ? `HTTP MCP endpoint reachable: ${response.status}.`
+            : `HTTP MCP endpoint returned ${response.status}.`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        checkedAt,
+        transport: "http",
+        resolvedTarget: url,
+        message: error instanceof Error ? `HTTP MCP test failed: ${error.message}` : "HTTP MCP test failed."
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const command = server.command?.trim();
+  if (!command) {
+    return { ok: false, checkedAt, transport: "stdio", message: "请先填写 stdio MCP 命令。" };
+  }
+  const commandResult = await resolveLocalCommand(command, timeoutMs);
+  return {
+    ok: commandResult.ok,
+    checkedAt,
+    transport: "stdio",
+    resolvedTarget: commandResult.resolvedPath ?? command,
+    message: commandResult.ok
+      ? `stdio command is available: ${commandResult.resolvedPath ?? command}.`
+      : commandResult.message
+  };
+}
+
+function resolveLocalCommand(command: string, timeoutMs: number): Promise<{ ok: boolean; message: string; resolvedPath?: string }> {
+  return new Promise((resolve) => {
+    const lookupCommand = process.platform === "win32" ? "where" : "which";
+    const child = spawn(lookupCommand, [command], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let output = "";
+    let errorOutput = "";
+    const timeout = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, message: `Command lookup timed out: ${command}` });
+    }, timeoutMs).unref();
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      errorOutput += chunk.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      resolve({ ok: false, message: `Command lookup failed: ${error.message}` });
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      const resolvedPath = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0];
+      resolve(
+        code === 0 && resolvedPath
+          ? { ok: true, message: "Command found.", resolvedPath }
+          : { ok: false, message: errorOutput.trim() || `Command not found: ${command}` }
+      );
+    });
   });
 }
 
