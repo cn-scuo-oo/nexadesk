@@ -79,6 +79,17 @@ type ProviderDraft = {
   capabilities: Record<ProviderCapability, boolean>;
 };
 
+type ProviderMatrixItem = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  apiMode: ProviderApiMode;
+  requiredModels: string[];
+  requiredCapabilities: ProviderCapability[];
+  envKey: string;
+  officialUrl: string;
+};
+
 const apiModeOptions: Array<{ value: ProviderApiMode; label: string }> = [
   { value: "responses", label: "OpenAI Responses API" },
   { value: "chat_completions", label: "OpenAI 兼容 Chat Completions" },
@@ -109,6 +120,59 @@ const fontOptions = [
 ];
 
 const defaultProviderIds = new Set(createDefaultProviders().map((provider) => provider.id));
+
+const domesticProviderMatrix: ProviderMatrixItem[] = [
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com",
+    apiMode: "chat_completions",
+    requiredModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+    requiredCapabilities: ["streaming", "function_calling", "structured_output"],
+    envKey: "DEEPSEEK_API_KEY",
+    officialUrl: "https://api-docs.deepseek.com/"
+  },
+  {
+    id: "dashscope-qwen",
+    label: "阿里云百炼 / 通义千问",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiMode: "chat_completions",
+    requiredModels: ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-vl-plus"],
+    requiredCapabilities: ["streaming", "function_calling", "vision", "structured_output"],
+    envKey: "DASHSCOPE_API_KEY",
+    officialUrl: "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope"
+  },
+  {
+    id: "siliconflow-cn",
+    label: "硅基流动 SiliconFlow",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    apiMode: "chat_completions",
+    requiredModels: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"],
+    requiredCapabilities: ["streaming", "function_calling", "structured_output"],
+    envKey: "SILICONFLOW_API_KEY",
+    officialUrl: "https://docs.siliconflow.cn/cn/api-reference/chat-completions/chat-completions"
+  },
+  {
+    id: "moonshot",
+    label: "月之暗面 Kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+    apiMode: "chat_completions",
+    requiredModels: ["kimi-k2.6", "kimi-k2.5", "moonshot-v1-128k"],
+    requiredCapabilities: ["streaming", "function_calling", "vision", "structured_output"],
+    envKey: "MOONSHOT_API_KEY",
+    officialUrl: "https://platform.kimi.com/docs/api/overview"
+  },
+  {
+    id: "zhipu",
+    label: "智谱 GLM",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    apiMode: "chat_completions",
+    requiredModels: ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash"],
+    requiredCapabilities: ["streaming", "function_calling", "web_search", "structured_output"],
+    envKey: "ZHIPU_API_KEY",
+    officialUrl: "https://docs.bigmodel.cn/api-reference"
+  }
+];
 
 const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = [
   { id: "providers", label: "模型服务", detail: "API、Key、Base URL" },
@@ -1826,6 +1890,19 @@ function ProviderConfigPanel({
     (selectedProvider ? createProviderDraft(selectedProvider) : providers[0] ? createProviderDraft(providers[0]) : null);
   const models = selectedDraft ? parseModels(selectedDraft.modelsText) : [];
   const canDeleteSelectedProvider = selectedDraft ? !defaultProviderIds.has(selectedDraft.id) : false;
+  const matrixRows = domesticProviderMatrix.map((item) => {
+    const provider = providers.find((candidate) => candidate.id === item.id);
+    const draft = drafts[item.id] ?? (provider ? createProviderDraft(provider) : null);
+    return {
+      item,
+      provider,
+      draft,
+      result: testResults[item.id],
+      summary: inspectProviderMatrixItem(item, draft)
+    };
+  });
+  const alignedMatrixCount = matrixRows.filter((row) => row.summary.status === "ok").length;
+  const testedMatrixCount = matrixRows.filter((row) => Boolean(row.result)).length;
 
   function updateSelected(patch: Partial<ProviderDraft>) {
     if (!selectedDraft) {
@@ -2109,6 +2186,53 @@ function ProviderConfigPanel({
             />
           </div>
         </div>
+
+        <details className="config-disclosure provider-matrix-disclosure" open>
+          <summary>
+            <span className="summary-main">
+              <strong>国内 Provider 实测矩阵</strong>
+              <small>
+                {alignedMatrixCount}/{domesticProviderMatrix.length} 个默认配置已对齐 · {testedMatrixCount} 个有本次连接测试结果
+              </small>
+            </span>
+          </summary>
+          <div className="disclosure-body">
+            <div className="provider-matrix-list">
+              {matrixRows.map((row) => (
+                <button
+                  className={row.item.id === selectedDraft.id ? "provider-matrix-row active" : "provider-matrix-row"}
+                  key={row.item.id}
+                  onClick={() => {
+                    if (row.provider) {
+                      setSelectedProviderId(row.item.id);
+                      setProviderNotice(null);
+                    } else {
+                      setProviderNotice(`${row.item.label} 预设不存在，请先恢复默认 Provider。`);
+                    }
+                  }}
+                  title={`官方文档：${row.item.officialUrl}`}
+                  type="button"
+                >
+                  <span className={`matrix-status-dot ${row.summary.status}`} />
+                  <span className="matrix-main">
+                    <strong>{row.item.label}</strong>
+                    <small>{row.item.baseUrl}</small>
+                  </span>
+                  <span className="matrix-badges">
+                    <span className={`matrix-badge ${row.summary.status}`}>{row.summary.label}</span>
+                    <span className={`matrix-badge ${providerTestTone(row.result)}`}>{providerTestLabel(row.result)}</span>
+                  </span>
+                  <span className="matrix-meta">
+                    {row.summary.issues.length ? row.summary.issues.slice(0, 2).join("；") : `Key env: ${row.item.envKey}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="secret-note">
+              矩阵检查默认 Base URL、模型名和能力开关；真实可用性仍以“测试连接”为准。CI 会运行静态矩阵校验，live 测试需要你自己的 API Key。
+            </p>
+          </div>
+        </details>
 
         <div className="provider-picker" aria-label="Provider list">
           {providers.map((provider) => {
@@ -2436,6 +2560,66 @@ function renderProviderNote(
     return "已保存到本地设置。API Key 只记录已配置状态，不会回传给前端。";
   }
   return "建议先点击“测试连接”确认 Base URL、API Key 和模型服务可用，再保存启用。";
+}
+
+function inspectProviderMatrixItem(item: ProviderMatrixItem, draft: ProviderDraft | null) {
+  if (!draft) {
+    return {
+      status: "missing" as const,
+      label: "缺少预设",
+      issues: ["默认 Provider 不存在"]
+    };
+  }
+
+  const issues: string[] = [];
+  const models = parseModels(draft.modelsText);
+  const missingModels = item.requiredModels.filter((model) => !models.includes(model));
+  const missingCapabilities = item.requiredCapabilities.filter((capability) => !draft.capabilities[capability]);
+
+  if (normalizeProviderUrl(draft.baseUrl) !== normalizeProviderUrl(item.baseUrl)) {
+    issues.push("Base URL 不一致");
+  }
+  if (draft.apiMode !== item.apiMode) {
+    issues.push("接口类型不一致");
+  }
+  if (missingModels.length) {
+    issues.push(`缺少模型 ${missingModels.slice(0, 2).join(", ")}${missingModels.length > 2 ? "..." : ""}`);
+  }
+  if (missingCapabilities.length) {
+    issues.push(`缺少能力 ${missingCapabilities.join(", ")}`);
+  }
+
+  if (issues.length) {
+    return {
+      status: "warning" as const,
+      label: "有偏差",
+      issues
+    };
+  }
+
+  return {
+    status: "ok" as const,
+    label: "已对齐",
+    issues: []
+  };
+}
+
+function providerTestLabel(result: ProviderTestResult | undefined) {
+  if (!result) {
+    return "未测试";
+  }
+  return result.ok ? "测试通过" : "测试失败";
+}
+
+function providerTestTone(result: ProviderTestResult | undefined) {
+  if (!result) {
+    return "pending";
+  }
+  return result.ok ? "ok" : "fail";
+}
+
+function normalizeProviderUrl(url: string) {
+  return url.trim().replace(/\/+$/, "");
 }
 
 function createCapabilityRecord(capabilities: ProviderCapability[]): Record<ProviderCapability, boolean> {

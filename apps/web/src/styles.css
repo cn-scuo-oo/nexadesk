@@ -1154,6 +1154,112 @@ h4 {
   gap: 8px;
 }
 
+.provider-matrix-list {
+  display: grid;
+  gap: 8px;
+}
+
+.provider-matrix-row {
+  display: grid;
+  grid-template-columns: 10px minmax(180px, 1fr) auto;
+  gap: 8px 10px;
+  align-items: center;
+  border: 1px solid #e1ebe6;
+  border-radius: 8px;
+  padding: 9px;
+  color: #253630;
+  background: #fbfdfc;
+  text-align: left;
+}
+
+.provider-matrix-row.active,
+.provider-matrix-row:hover {
+  border-color: #9ccabc;
+  background: #eef8f3;
+}
+
+.matrix-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #9aaba3;
+}
+
+.matrix-status-dot.ok {
+  background: #2b8a66;
+}
+
+.matrix-status-dot.warning {
+  background: #c08122;
+}
+
+.matrix-status-dot.missing {
+  background: #b9443d;
+}
+
+.matrix-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.matrix-main strong,
+.matrix-main small,
+.matrix-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matrix-main small,
+.matrix-meta {
+  color: #6b7f76;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.matrix-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.matrix-badge {
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #4f6259;
+  background: #edf3f0;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.matrix-badge.ok {
+  color: #1f6b50;
+  background: #dff3e9;
+}
+
+.matrix-badge.warning {
+  color: #795615;
+  background: #f6eccf;
+}
+
+.matrix-badge.missing,
+.matrix-badge.fail {
+  color: #8c2c2c;
+  background: #f7dddd;
+}
+
+.matrix-badge.pending {
+  color: #5a6c65;
+  background: #e9f0ed;
+}
+
+.matrix-meta {
+  grid-column: 2 / -1;
+  white-space: nowrap;
+}
+
 .provider-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

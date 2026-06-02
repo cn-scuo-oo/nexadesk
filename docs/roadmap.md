@@ -53,6 +53,7 @@
 - Settings pages now use collapsible sections for long Provider, assistant, and skill configuration surfaces.
 - Approval history records approved, rejected, and failed tool decisions with optional rejection reasons and restart persistence.
 - Domestic Provider defaults are documented in a verification matrix and checked by `npm run provider:matrix`.
+- The Model Center surfaces the domestic Provider matrix with default-alignment and latest connection-test status.
 
 ## Later Phases
 

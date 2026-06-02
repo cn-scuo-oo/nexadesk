@@ -19,6 +19,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add an in-app diagnostics copy button for log paths and app status. Done in Phase 6 second pass.
 - Collapse long Provider, assistant, and skill configuration surfaces into expandable sections. Done in Phase 6 fifth pass.
 - Add a domestic Provider matrix and static default verification. Done in Phase 6 seventh pass.
+- Show domestic Provider matrix status inside the Model Center. Done in Phase 6 eighth pass.
 
 ## Agent Runtime
 
