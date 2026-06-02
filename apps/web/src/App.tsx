@@ -5,7 +5,6 @@
   FileText,
   Folder,
   KeyRound,
-  LayoutDashboard,
   ListChecks,
   Mail,
   Search,
@@ -342,6 +341,7 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>(() =>
     window.location.hash === "#settings" ? "settings" : "cowork"
   );
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("providers");
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -463,7 +463,6 @@ export function App() {
   }, [activeSession, snapshot]);
 
   const runtimeSettings = settings ?? createDefaultSettings(snapshot?.providers ?? []);
-  const connectedProviders = snapshot?.providers.filter((provider) => provider.connected).length ?? 0;
   const configuredProviders = runtimeSettings.providers.filter((provider) => provider.connected).length;
   const activeApprovals = snapshot?.approvals.length ?? 0;
   const batchApprovableApprovals = snapshot?.approvals.filter((approval) => approval.risk !== "high") ?? [];
@@ -474,6 +473,8 @@ export function App() {
     runtimeSettings.providers[0];
   const activeRuntimeModel =
     runtimeSettings.model.activeModel || activeRuntimeProvider?.defaultModel || activeRuntimeProvider?.models[0] || "";
+  const enabledSkills = snapshot?.skills.filter((skill) => skill.enabled) ?? [];
+  const runningAgents = snapshot?.agents.filter((agent) => agent.status === "running") ?? [];
   const workspaceSignature = [
     runtimeSettings.workspace.defaultWorkspace,
     runtimeSettings.workspace.exportDirectory,
@@ -773,6 +774,12 @@ export function App() {
     });
   }
 
+  function handleOpenSettings(tab: SettingsTab = "providers") {
+    setSettingsInitialTab(tab);
+    window.location.hash = "settings";
+    setActiveView("settings");
+  }
+
   async function handleSaveSettings(nextSettings: AppSettings, providerSecrets: ProviderSecretUpdate[] = []) {
     const updatedSettings = {
       ...nextSettings,
@@ -864,10 +871,7 @@ export function App() {
         <button
           className={activeView === "settings" ? "rail-button active" : "rail-button"}
           aria-label="Settings"
-          onClick={() => {
-            window.location.hash = "settings";
-            setActiveView("settings");
-          }}
+          onClick={() => handleOpenSettings("providers")}
           type="button"
         >
           <Settings size={19} />
@@ -878,62 +882,119 @@ export function App() {
         <div className="product-title">
           <p className="eyebrow">智能体工作台</p>
           <h1>NexaDesk</h1>
+          <span>AI Agentic Workspace</span>
         </div>
 
         <section className="sidebar-section">
           <div className="section-heading">
-            <span>空间</span>
+            <span>导航</span>
           </div>
-          <nav className="nav-list" aria-label="Workspace sections">
-            <a className="nav-item active" href="#team">
-              <LayoutDashboard size={17} />
-              团队驾驶舱
-            </a>
-            <a className="nav-item" href="#agents">
-              <Users size={17} />
-              多智能体
-              <b>{snapshot.agents.length}</b>
-            </a>
-            <a className="nav-item" href="#approvals">
-              <ShieldCheck size={17} />
-              审批
-              <b>{activeApprovals}</b>
-            </a>
-            <a className="nav-item" href="#providers">
-              <KeyRound size={17} />
-              模型
-              <b>{configuredProviders}</b>
-            </a>
+          <nav className="nav-list workspace-nav-list" aria-label="Workspace sections">
             <button
-              className="nav-item nav-button"
+              className="nav-item nav-button active"
               onClick={() => {
-                window.location.hash = "settings";
-                setActiveView("settings");
+                window.location.hash = "";
+                setActiveView("cowork");
               }}
               type="button"
             >
+              <Sparkles size={17} />
+              <span>
+                <strong>快速对话</strong>
+                <small>交给 Cowork 处理</small>
+              </span>
+            </button>
+            <a className="nav-item" href="#workspace-context">
+              <Search size={17} />
+              <span>
+                <strong>搜索</strong>
+                <small>文件与上下文</small>
+              </span>
+            </a>
+            <button className="nav-item nav-button" onClick={() => handleOpenSettings("skills")} type="button">
+              <Workflow size={17} />
+              <span>
+                <strong>插件</strong>
+                <small>技能与工具</small>
+              </span>
+              <b>{enabledSkills.length}</b>
+            </button>
+            <a className="nav-item" href="#tasks">
+              <Zap size={17} />
+              <span>
+                <strong>自动化</strong>
+                <small>任务板与计划</small>
+              </span>
+            </a>
+            <button className="nav-item nav-button" onClick={() => handleOpenSettings("providers")} type="button">
+              <KeyRound size={17} />
+              <span>
+                <strong>模型中心</strong>
+                <small>Provider 与切换</small>
+              </span>
+              <b>{configuredProviders}</b>
+            </button>
+            <a className="nav-item" href="#approvals">
+              <ShieldCheck size={17} />
+              <span>
+                <strong>审批</strong>
+                <small>高风险动作网关</small>
+              </span>
+              <b>{activeApprovals}</b>
+            </a>
+            <button
+              className="nav-item nav-button"
+              onClick={() => handleOpenSettings("appearance")}
+              type="button"
+            >
               <Settings size={17} />
-              设置
+              <span>
+                <strong>设置</strong>
+                <small>模型、字体、权限</small>
+              </span>
             </button>
           </nav>
         </section>
 
         <section className="sidebar-section">
           <div className="section-heading">
-            <span>会话</span>
+            <span>项目</span>
             <button className="mini-button">新建</button>
           </div>
-          {snapshot.sessions.map((session) => (
-            <button className="session-card active" key={session.id}>
-              <strong>{session.title}</strong>
-              <span>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</span>
-            </button>
-          ))}
+          <div className="project-list">
+            {snapshot.sessions.map((session) => (
+              <button className="session-card project-card active" key={session.id}>
+                <span className="project-dot" />
+                <strong>{session.title}</strong>
+                <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+              </button>
+            ))}
+            <article className="project-card quiet-project">
+              <span className="project-dot muted-dot" />
+              <strong>桌面发布 QA</strong>
+              <small>安装包、保留数据、私有分发</small>
+            </article>
+          </div>
+        </section>
+
+        <section className="sidebar-section sidebar-metrics">
+          <div className="sidebar-metric">
+            <span>助手</span>
+            <b>{runningAgents.length}/{snapshot.agents.length}</b>
+          </div>
+          <div className="sidebar-metric">
+            <span>技能</span>
+            <b>{enabledSkills.length}</b>
+          </div>
+          <div className="sidebar-metric">
+            <span>审批</span>
+            <b>{activeApprovals}</b>
+          </div>
         </section>
 
         <section className="sidebar-section grow">
           <div className="section-heading">
-            <span>智能体列表</span>
+            <span>助手</span>
           </div>
           <div className="agent-list">
             {snapshot.agents.map((agent) => (
@@ -957,15 +1018,20 @@ export function App() {
       </aside>
 
       {activeView === "settings" ? (
-        <SettingsCenter settings={settings} status={settingsStatus} onSave={handleSaveSettings} />
+        <SettingsCenter
+          initialTab={settingsInitialTab}
+          settings={settings}
+          status={settingsStatus}
+          onSave={handleSaveSettings}
+        />
       ) : (
       <section className="workspace" id="team">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Team mode preview</p>
-            <h2>{activeSession?.title ?? "No active session"}</h2>
+            <p className="eyebrow">NexaDesk Cowork</p>
+            <h2>{activeAgent?.name ?? activeSession?.title ?? "Cowork Workspace"}</h2>
             <p className="muted">
-              Leader delegates work, teammates run in parallel, approvals stay visible.
+              把任务、模型、文件上下文和审批队列放进同一个 Agent 工作台。
             </p>
           </div>
           <div className="topbar-actions">
@@ -977,7 +1043,7 @@ export function App() {
               >
                 {settings.providers.map((provider) => (
                   <option key={provider.id} value={provider.id}>
-                    {provider.connected ? "鈼?" : "鈼?"}
+                    {provider.connected ? "已启用 - " : "未启用 - "}
                     {provider.name}
                   </option>
                 ))}
@@ -1015,7 +1081,26 @@ export function App() {
           </div>
         ) : null}
 
-        <section className="hero-grid">
+        <section className="workspace-overview">
+          <article className="cowork-start-card">
+            <div className="cowork-start-icon">
+              <Workflow size={28} />
+            </div>
+            <div>
+              <p className="eyebrow">AI Agentic Workspace</p>
+              <h3>今天想让 NexaDesk 做什么？</h3>
+              <p>
+                从这里发起任务，Cowork 会结合当前模型、助手、技能和工作区文件，把执行过程沉淀到消息流和右侧上下文里。
+              </p>
+            </div>
+            <div className="start-chip-row">
+              <span>读文件</span>
+              <span>写报告</span>
+              <span>跑命令</span>
+              <span>模型切换</span>
+            </div>
+          </article>
+
           <article className="leader-card">
             <div className="card-title-row">
               <span className="role-pill">Leader</span>
@@ -1028,16 +1113,24 @@ export function App() {
             <p>{activeAgent?.description ?? "Coordinates the team and owns final synthesis."}</p>
             <div className="leader-stats">
               <Metric label="Agents" value={String(teamAgents.length)} />
-              <Metric label="Skills" value={String(snapshot.skills.filter((skill) => skill.enabled).length)} />
+              <Metric label="Skills" value={String(enabledSkills.length)} />
               <Metric label="Approvals" value={String(activeApprovals)} />
             </div>
           </article>
+        </section>
 
-          <article className="team-map" id="agents">
+        <section className="workspace-summary-strip" aria-label="Workspace status">
+          <Metric label="会话" value={String(snapshot.sessions.length)} />
+          <Metric label="运行助手" value={`${runningAgents.length}/${snapshot.agents.length}`} />
+          <Metric label="已启用技能" value={String(enabledSkills.length)} />
+          <Metric label="模型服务" value={String(configuredProviders)} />
+        </section>
+
+        <section className="team-map workspace-team-map" id="agents">
             <div className="panel-heading compact">
               <div>
-                <p className="eyebrow">Parallel teammates</p>
-                <h3>Agent team</h3>
+                <p className="eyebrow">Agent Team</p>
+                <h3>多助手协作队列</h3>
               </div>
               <Users size={18} />
             </div>
@@ -1046,25 +1139,24 @@ export function App() {
                 <TeamNode key={agent.id} agent={agent} index={index} />
               ))}
             </div>
-          </article>
         </section>
 
         <div className="work-grid">
           <section className="cowork-panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Cowork thread</p>
-                <h3>Shared command stream</h3>
+                <p className="eyebrow">Cowork Thread</p>
+                <h3>共享执行流</h3>
               </div>
               <span className="status ready">
                 <Zap size={14} />
-                Live sync
+                流式同步
               </span>
             </div>
 
             <div className="message-list">
               {activeMessages.length === 0 ? (
-                <EmptyState title="No messages yet" detail="Send a request to start the team session." />
+                <EmptyState title="还没有消息" detail="输入一个目标，让 Cowork 开始规划、调用工具并等待审批。" />
               ) : (
                 activeMessages.map((message) => <MessageBubble key={message.id} message={message} />)
               )}
@@ -1073,7 +1165,7 @@ export function App() {
             <form className="composer" onSubmit={handleSend}>
               <input
                 aria-label="Message"
-                placeholder="Ask the leader to plan, delegate, run, review, or summarize..."
+                placeholder="让 Cowork 规划、读文件、调用工具、总结结果..."
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
               />
@@ -1084,11 +1176,11 @@ export function App() {
             </form>
           </section>
 
-          <section className="task-panel">
+          <section className="task-panel" id="tasks">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Team board</p>
-                <h3>Delegated tasks</h3>
+                <p className="eyebrow">Task Board</p>
+                <h3>任务编排</h3>
               </div>
               <ListChecks size={18} />
             </div>
@@ -1103,12 +1195,17 @@ export function App() {
       )}
 
       <aside className="right-dock">
+        <div className="right-dock-heading">
+          <div>
+            <p className="eyebrow">Live Context</p>
+            <h3>实时工作区</h3>
+          </div>
+          <span>{activeRuntimeModel || "未选择模型"}</span>
+        </div>
+
         <ProviderStatusPanel
           providers={settings.providers}
-          onOpenSettings={() => {
-            window.location.hash = "settings";
-            setActiveView("settings");
-          }}
+          onOpenSettings={() => handleOpenSettings("providers")}
         />
 
         <section className="panel-block" id="approvals">
@@ -1219,7 +1316,10 @@ export function App() {
           </div>
         </section>
 
-        <section className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}>
+        <section
+          className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}
+          id="workspace-context"
+        >
           <div className="panel-heading compact">
             <div>
               <p className="eyebrow">上下文</p>
@@ -1365,10 +1465,12 @@ function applyChatStreamEvent(snapshot: AppSnapshot, event: ChatStreamEvent): Ap
 }
 
 function SettingsCenter({
+  initialTab,
   settings,
   status,
   onSave
 }: {
+  initialTab: SettingsTab;
   settings: AppSettings;
   status: string | null;
   onSave: (settings: AppSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<AppSettings>;
@@ -1377,7 +1479,7 @@ function SettingsCenter({
   const [localStatus, setLocalStatus] = useState<string | null>(status);
   const [desktopStatus, setDesktopStatus] = useState<DesktopStatus | null>(null);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("providers");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1387,6 +1489,10 @@ function SettingsCenter({
   useEffect(() => {
     setLocalStatus(status);
   }, [status]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     let cancelled = false;

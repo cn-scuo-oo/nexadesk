@@ -1,6 +1,6 @@
 :root {
-  color: #17201d;
-  background: #eef3f0;
+  color: #1f241f;
+  background: #f3efe6;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -54,11 +54,12 @@ h4 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 68px 272px minmax(560px, 1fr) 360px;
+  grid-template-columns: 64px 304px minmax(620px, 1fr) 372px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(57, 126, 100, 0.14), transparent 32%),
-    linear-gradient(180deg, #f8fbf9 0%, #eef3f0 100%);
+    radial-gradient(circle at 18% 0%, rgba(46, 111, 92, 0.12), transparent 32%),
+    radial-gradient(circle at 86% 12%, rgba(208, 171, 98, 0.14), transparent 28%),
+    linear-gradient(180deg, #faf7ef 0%, #f1ede4 100%);
 }
 
 .rail {
@@ -66,9 +67,9 @@ h4 {
   align-items: center;
   flex-direction: column;
   gap: 14px;
-  border-right: 1px solid #dbe5df;
+  border-right: 1px solid #ded6c7;
   padding: 18px 12px;
-  background: #fbfdfc;
+  background: rgba(255, 251, 243, 0.92);
 }
 
 .brand-mark,
@@ -83,7 +84,8 @@ h4 {
   height: 42px;
   border-radius: 10px;
   color: #ffffff;
-  background: #1f6b50;
+  background: #18221e;
+  box-shadow: 0 10px 22px rgba(24, 34, 30, 0.18);
 }
 
 .rail-button,
@@ -102,7 +104,7 @@ h4 {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  color: #52675f;
+  color: #655f54;
   background: transparent;
 }
 
@@ -117,14 +119,14 @@ h4 {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  border-right: 1px solid #dbe5df;
-  background: rgba(255, 255, 255, 0.82);
+  border-right: 1px solid #ded6c7;
+  background: rgba(255, 252, 246, 0.86);
   backdrop-filter: blur(12px);
 }
 
 .sidebar {
-  gap: 22px;
-  padding: 22px 18px;
+  gap: 18px;
+  padding: 22px 16px;
 }
 
 .right-dock {
@@ -132,16 +134,23 @@ h4 {
   overflow: auto;
   padding: 18px;
   border-right: 0;
-  border-left: 1px solid #dbe5df;
+  border-left: 1px solid #ded6c7;
 }
 
 .product-title {
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+
+.product-title span {
+  color: #786f61;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .eyebrow {
-  color: #6f837a;
+  color: #746c5f;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -159,12 +168,15 @@ h4 {
 .leader-card p,
 .task-card p,
 .mail-card span,
-.mail-card p {
-  color: #62756d;
+.mail-card p,
+.nav-item small,
+.project-card small {
+  color: #746f65;
 }
 
 .sidebar-section,
 .nav-list,
+.project-list,
 .agent-list,
 .stack-list,
 .provider-list,
@@ -228,7 +240,7 @@ h4 {
 }
 
 .nav-list {
-  gap: 6px;
+  gap: 7px;
 }
 
 .nav-item {
@@ -236,10 +248,10 @@ h4 {
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  min-height: 38px;
+  min-height: 46px;
   border-radius: 8px;
-  padding: 0 10px;
-  color: #30423b;
+  padding: 8px 10px;
+  color: #342f28;
   text-decoration: none;
   font-weight: 700;
 }
@@ -253,34 +265,122 @@ h4 {
 
 .nav-item.active,
 .nav-item:hover {
-  color: #123c31;
-  background: #deeee7;
+  color: #102f28;
+  background: #efe7d7;
 }
 
 .nav-item b {
   min-width: 22px;
   border-radius: 999px;
   padding: 2px 7px;
-  color: #285b4b;
-  background: #cfe5dc;
+  color: #2c5b4c;
+  background: #d8e6dc;
   font-size: 11px;
   text-align: center;
+}
+
+.nav-item span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.nav-item strong,
+.nav-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item small {
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .session-card {
   display: grid;
   gap: 6px;
-  border: 1px solid #d9e5df;
+  border: 1px solid #ded7ca;
   border-radius: 8px;
   padding: 12px;
-  color: #20342d;
-  background: #fbfdfc;
+  color: #2f2a23;
+  background: #fffaf2;
   text-align: left;
 }
 
 .session-card.active {
-  border-color: #a9cabe;
-  background: #eff7f3;
+  border-color: #b9cdbc;
+  background: #f5f0e6;
+}
+
+.project-list {
+  gap: 8px;
+}
+
+.project-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 3px 9px;
+}
+
+.project-card strong,
+.project-card small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card small {
+  grid-column: 2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: #2c7a5e;
+}
+
+.muted-dot {
+  background: #b58a3d;
+}
+
+.quiet-project {
+  border: 1px dashed #d8cfbf;
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 250, 242, 0.62);
+}
+
+.sidebar-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.sidebar-metric {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #ded7ca;
+  border-radius: 8px;
+  padding: 9px;
+  background: #fffaf2;
+}
+
+.sidebar-metric span {
+  color: #766f63;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sidebar-metric b {
+  color: #1f332c;
+  font-size: 16px;
 }
 
 .agent-list {
@@ -302,7 +402,7 @@ h4 {
 
 .agent-pill.active,
 .agent-pill:hover {
-  background: #eff7f3;
+  background: #f2eadb;
 }
 
 .agent-pill span {
@@ -358,7 +458,7 @@ h4 {
 
 .workspace {
   min-width: 0;
-  padding: 20px;
+  padding: 22px;
 }
 
 .topbar {
@@ -386,11 +486,11 @@ h4 {
 
 .runtime-select select {
   min-height: 36px;
-  border: 1px solid #d8e4de;
+  border: 1px solid #d8d0c1;
   border-radius: 8px;
   padding: 0 10px;
-  color: #17201d;
-  background: #ffffff;
+  color: #1f241f;
+  background: #fffdf8;
 }
 
 .primary-button,
@@ -488,19 +588,78 @@ h4 {
   margin-bottom: 14px;
 }
 
+.workspace-overview {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.45fr) minmax(260px, 0.75fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
 .leader-card,
+.cowork-start-card,
 .team-map,
 .cowork-panel,
 .task-panel,
 .panel-block {
-  border: 1px solid #dbe6e0;
+  border: 1px solid #ded7ca;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 32px rgba(49, 76, 66, 0.06);
+  background: rgba(255, 252, 246, 0.94);
+  box-shadow: 0 12px 30px rgba(83, 70, 48, 0.06);
 }
 
 .leader-card {
   padding: 16px;
+}
+
+.cowork-start-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(245, 238, 225, 0.96)),
+    #fffaf2;
+}
+
+.cowork-start-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 10px;
+  color: #fffaf2;
+  background: #1e2b25;
+}
+
+.cowork-start-card h3 {
+  margin-top: 6px;
+  font-size: 24px;
+}
+
+.cowork-start-card p {
+  margin-top: 8px;
+  max-width: 720px;
+  color: #5f5a50;
+  line-height: 1.55;
+}
+
+.start-chip-row {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.start-chip-row span {
+  border: 1px solid #dcd2c0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #3c4038;
+  background: #fffaf2;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .leader-card h3 {
@@ -525,7 +684,7 @@ h4 {
   gap: 4px;
   border-radius: 8px;
   padding: 10px;
-  background: #eff6f2;
+  background: #f4efe6;
 }
 
 .metric strong {
@@ -541,7 +700,7 @@ h4 {
 .panel-heading {
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid #e4ece8;
+  border-bottom: 1px solid #e5ded1;
 }
 
 .panel-heading.compact {
@@ -570,21 +729,32 @@ h4 {
   padding: 14px;
 }
 
+.workspace-team-map {
+  margin-bottom: 14px;
+}
+
+.workspace-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .team-node {
   position: relative;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
-  border: 1px solid #dfe8e4;
+  border: 1px solid #ded7ca;
   border-radius: 8px;
   padding: 12px;
-  background: #fbfdfc;
+  background: #fffaf2;
 }
 
 .team-node.leader {
-  border-color: #9ccabc;
-  background: #eef8f3;
+  border-color: #b8cdbd;
+  background: #f1eadb;
 }
 
 .team-node span,
@@ -626,7 +796,7 @@ h4 {
 
 .work-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -634,7 +804,7 @@ h4 {
 .cowork-panel,
 .task-panel {
   display: flex;
-  min-height: 560px;
+  min-height: 520px;
   flex-direction: column;
 }
 
@@ -650,10 +820,10 @@ h4 {
 
 .message {
   max-width: 88%;
-  border: 1px solid #dfe8e4;
+  border: 1px solid #ded7ca;
   border-radius: 8px;
   padding: 12px;
-  background: #fbfdfc;
+  background: #fffaf2;
 }
 
 .message.assistant {
@@ -662,8 +832,8 @@ h4 {
 
 .message.tool {
   align-self: flex-start;
-  border-color: #d7e5df;
-  background: #f4faf7;
+  border-color: #d9d0c0;
+  background: #f8f0df;
 }
 
 .message.user {
@@ -934,17 +1104,17 @@ h4 {
 .composer {
   gap: 10px;
   padding: 14px;
-  border-top: 1px solid #e4ece8;
+  border-top: 1px solid #e5ded1;
 }
 
 .composer input {
   width: 100%;
   min-height: 42px;
-  border: 1px solid #d4e0da;
+  border: 1px solid #d8d0c1;
   border-radius: 8px;
   padding: 0 12px;
   color: #14201c;
-  background: #ffffff;
+  background: #fffdf8;
 }
 
 .task-list {
@@ -954,10 +1124,10 @@ h4 {
 }
 
 .task-card {
-  border: 1px solid #e0e9e5;
+  border: 1px solid #ded7ca;
   border-radius: 8px;
   padding: 12px;
-  background: #fbfdfc;
+  background: #fffaf2;
 }
 
 .task-card h4 {
@@ -986,6 +1156,30 @@ h4 {
 .file-list {
   gap: 10px;
   padding: 12px;
+}
+
+.right-dock-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #ded7ca;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf2;
+}
+
+.right-dock-heading span {
+  max-width: 150px;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #325345;
+  background: #e4eee4;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .approval-card {
@@ -2437,6 +2631,7 @@ h4 {
   }
 
   .hero-grid,
+  .workspace-overview,
   .work-grid,
   .right-dock,
   .settings-layout,
@@ -2479,8 +2674,18 @@ h4 {
   }
 
   .team-node-row,
-  .leader-stats {
+  .leader-stats,
+  .workspace-summary-strip,
+  .sidebar-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .cowork-start-card {
+    grid-template-columns: 1fr;
+  }
+
+  .start-chip-row {
+    grid-column: auto;
   }
 
   .message {

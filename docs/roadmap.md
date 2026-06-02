@@ -78,6 +78,7 @@
 - Installer builds explicitly disable electron-builder publishing; artifacts are uploaded only as short-lived private workflow artifacts.
 - Packaged desktop smoke coverage validates the built `release/win-unpacked/NexaDesk.exe` before installer artifacts are shared.
 - Desktop smoke scripts tolerate slower GitHub runners and transient Windows user-data cleanup locks.
+- The workbench layout has started moving toward a WeSight-inspired AI Agentic Workspace shell: task navigation, project/session sidebar, central Cowork execution area, and live right-side context.
 - Phase 7 focuses on clean install, reinstall, upgrade, shortcut, uninstall entry, data retention, and trusted-tester handoff checks.
 
 ## Later Phases
