@@ -11,8 +11,10 @@ body:
       options:
         - Phase 4 - Desktop hardening
         - Phase 5 - Private GitHub incubation
-        - Phase 6 - Auto update and signing
-        - Phase 7 - Public release preparation
+        - Phase 6 - Product usability hardening
+        - Phase 7 - Private installer QA
+        - Later - Auto update and signing
+        - Later - Public release preparation
         - Other
     validations:
       required: true

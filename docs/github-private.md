@@ -39,3 +39,10 @@ Replace `<owner>/<private-repo>` with your real private GitHub repository path.
 - Add public contribution and security policies.
 - Audit generated assets and dependencies.
 - Run the full release checklist in `docs/private-release-checklist.md`.
+
+## Private Installer Artifacts
+
+- Use the **Private Installer** GitHub Actions workflow only when you need a trusted-test Windows installer.
+- The workflow runs validation before building `npm run dist:win`.
+- Download artifacts only from the private repository's workflow run page.
+- Do not create a public GitHub Release until the public-release checklist is intentionally started.

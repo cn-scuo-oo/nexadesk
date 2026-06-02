@@ -22,6 +22,7 @@
     "desktop": "npm run build:desktop && electron .",
     "desktop:smoke": "npm run build:desktop && node scripts/desktop-smoke.mjs",
     "desktop:retention-smoke": "npm run build:desktop && node scripts/desktop-retention-smoke.mjs",
+    "desktop:packaged-smoke": "node scripts/packaged-smoke.mjs",
     "provider:matrix": "tsx scripts/provider-matrix-check.mjs",
     "provider:matrix:live": "tsx scripts/provider-matrix-check.mjs --live",
     "settings:smoke": "npm run build:server-bundle && node scripts/settings-persistence-smoke.mjs",

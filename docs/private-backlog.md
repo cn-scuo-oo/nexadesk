@@ -48,7 +48,8 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Test clean install, reinstall, uninstall, and upgrade paths.
 - Decide signing certificate strategy.
 - Decide auto-update strategy only after installer QA is stable.
-- Add manual build workflow for Windows installer artifacts.
+- Add manual build workflow for Windows installer artifacts. Done in Phase 7 first pass.
+- Add packaged desktop smoke coverage for `release/win-unpacked/NexaDesk.exe`. Done in Phase 7 first pass.
 
 ## Public Release Later
 

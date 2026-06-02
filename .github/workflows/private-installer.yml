@@ -1,0 +1,57 @@
+name: Private Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: Optional label added to the uploaded installer artifact name.
+        required: false
+        default: manual
+
+jobs:
+  build-installer:
+    name: Build Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Runtime smoke
+        run: npm run runtime:smoke
+
+      - name: Desktop smoke
+        run: npm run desktop:smoke
+
+      - name: Desktop data retention smoke
+        run: npm run desktop:retention-smoke
+
+      - name: Build NSIS installer
+        run: npm run dist:win
+
+      - name: Packaged desktop smoke
+        run: npm run desktop:packaged-smoke
+
+      - name: Upload private installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexadesk-windows-installer-${{ inputs.artifact_label }}-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          if-no-files-found: error
+          retention-days: 14

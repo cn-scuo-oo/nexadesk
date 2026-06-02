@@ -71,6 +71,14 @@
 - Recently opened workspace files are remembered locally and surfaced in the context panel for quick preview.
 - Agent-bound Provider overrides take priority over the global default Provider when no explicit runtime override is requested, with runtime smoke coverage.
 
+## Phase 7 - Private Installer QA
+
+- Status: in progress
+- A manual private GitHub Actions workflow can build the Windows NSIS installer after typecheck, runtime, desktop, and data-retention smoke tests pass.
+- Installer artifacts are uploaded only as short-lived private workflow artifacts; no public GitHub Release or automatic update channel is created.
+- Packaged desktop smoke coverage validates the built `release/win-unpacked/NexaDesk.exe` before installer artifacts are shared.
+- Phase 7 focuses on clean install, reinstall, upgrade, shortcut, uninstall entry, data retention, and trusted-tester handoff checks.
+
 ## Later Phases
 
 - Public open-source license decision
