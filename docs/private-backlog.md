@@ -20,6 +20,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Collapse long Provider, assistant, and skill configuration surfaces into expandable sections. Done in Phase 6 fifth pass.
 - Add a domestic Provider matrix and static default verification. Done in Phase 6 seventh pass.
 - Show domestic Provider matrix status inside the Model Center. Done in Phase 6 eighth pass.
+- Add one-click Provider model-list refresh from `/models`. Done in Phase 6 ninth pass.
 
 ## Agent Runtime
 

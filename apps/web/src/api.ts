@@ -6,6 +6,8 @@
   ChatStreamEvent,
   ChatMessage,
   DesktopStatus,
+  ProviderModelsRequest,
+  ProviderModelsResult,
   RecoverSettingsResult,
   ProviderTestRequest,
   ProviderTestResult,
@@ -86,6 +88,20 @@ export async function testProvider(payload: ProviderTestRequest): Promise<Provid
     throw new Error(`Provider test failed with ${response.status}`);
   }
   return response.json() as Promise<ProviderTestResult>;
+}
+
+export async function fetchProviderModels(payload: ProviderModelsRequest): Promise<ProviderModelsResult> {
+  const response = await fetch(`${apiBase}/api/providers/models`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`Provider models request failed with ${response.status}`);
+  }
+  return response.json() as Promise<ProviderModelsResult>;
 }
 
 export async function sendMessage(sessionId: string, content: string): Promise<{

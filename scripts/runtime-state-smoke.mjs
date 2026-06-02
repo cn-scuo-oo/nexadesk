@@ -38,6 +38,13 @@ try {
   const model = "fake-runtime-model";
   const provider = initial.providers.find((item) => item.id === providerId);
   assert(provider, "openai-compatible provider was not found");
+  const configuredProvider = {
+    ...provider,
+    connected: true,
+    baseUrl: `http://127.0.0.1:${modelPort}/v1`,
+    models: [model],
+    defaultModel: model
+  };
 
   await requestJson(firstPort, "/api/settings", {
     method: "PUT",
@@ -50,19 +57,23 @@ try {
         },
         providers: initial.providers.map((item) =>
           item.id === providerId
-            ? {
-                ...item,
-                connected: true,
-                baseUrl: `http://127.0.0.1:${modelPort}/v1`,
-                models: [model],
-                defaultModel: model
-              }
+            ? configuredProvider
             : item
         )
       },
       providerSecrets: [{ providerId, apiKey: "sk-runtime-smoke" }]
     })
   });
+
+  const refreshedModels = await requestJson(firstPort, "/api/providers/models", {
+    method: "POST",
+    body: JSON.stringify({ provider: configuredProvider, timeoutMs: 8000 })
+  });
+  assert(refreshedModels.ok === true, "provider models refresh did not succeed");
+  assert(
+    refreshedModels.models.includes("fake-runtime-model"),
+    "provider models refresh did not return the fake model"
+  );
 
   const before = await requestJson(firstPort, "/api/snapshot");
   const sessionId = before.sessions[0]?.id;

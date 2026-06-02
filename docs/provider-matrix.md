@@ -33,7 +33,7 @@ CI runs the static matrix only. Do not put provider API keys into GitHub Actions
 
 ## Notes
 
-- NexaDesk's in-app "Test connection" action and the live matrix script use the same low-cost pattern: `GET {baseUrl}/models` with a Bearer API key.
+- NexaDesk's in-app "Test connection", "Refresh models", and the live matrix script use the same low-cost pattern: `GET {baseUrl}/models` with a Bearer API key.
 - Model catalogs change quickly. The bundled defaults are a practical starting set, not an exhaustive list.
 - If a provider deprecates a model, update `packages/shared/src/index.ts`, this document, and `scripts/provider-matrix-check.mjs` in the same change.
 - Existing installed settings may keep user-edited Provider values. The default matrix applies to new defaults and recovered settings, while user settings remain under user control.

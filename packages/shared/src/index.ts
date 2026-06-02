@@ -142,6 +142,20 @@ export interface ProviderTestResult {
   checkedUrl?: string;
 }
 
+export interface ProviderModelsRequest {
+  provider: ProviderSettings;
+  apiKey?: string;
+  timeoutMs?: number;
+}
+
+export interface ProviderModelsResult {
+  ok: boolean;
+  status?: number;
+  message: string;
+  checkedUrl?: string;
+  models: string[];
+}
+
 export interface DesktopStatus {
   appName: string;
   version: string;

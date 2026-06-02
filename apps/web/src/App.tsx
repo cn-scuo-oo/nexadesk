@@ -33,6 +33,7 @@ import {
   type DesktopStatus,
   type ModelProvider,
   type PermissionRequest,
+  type ProviderModelsResult,
   type ProviderApiMode,
   type ProviderCapability,
   type ProviderSecretUpdate,
@@ -43,6 +44,7 @@ import {
 } from "@nexadesk/shared";
 import {
   fetchDesktopStatus,
+  fetchProviderModels,
   fetchSettings as fetchAppSettings,
   fetchSnapshot,
   recoverSettings as recoverAppSettings,
@@ -1862,6 +1864,8 @@ function ProviderConfigPanel({
   const [savedProviderId, setSavedProviderId] = useState<string | null>(null);
   const [testProviderId, setTestProviderId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
+  const [refreshProviderId, setRefreshProviderId] = useState<string | null>(null);
+  const [modelRefreshResults, setModelRefreshResults] = useState<Record<string, ProviderModelsResult>>({});
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
   const [providerNotice, setProviderNotice] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -2150,6 +2154,60 @@ function ProviderConfigPanel({
     }
   }
 
+  async function handleRefreshModels() {
+    if (!selectedDraft) {
+      return;
+    }
+    setRefreshProviderId(selectedDraft.id);
+    try {
+      const result = await fetchProviderModels({
+        provider: providerDraftToSettings(selectedDraft),
+        apiKey: selectedDraft.apiKey.trim() || undefined,
+        timeoutMs: 10000
+      });
+      setModelRefreshResults((current) => ({ ...current, [selectedDraft.id]: result }));
+      if (!result.ok) {
+        setProviderNotice(`刷新模型失败：${result.message}`);
+        return;
+      }
+      if (!result.models.length) {
+        setProviderNotice("Provider 已响应，但没有返回可识别的模型名。");
+        return;
+      }
+
+      setDrafts((current) => {
+        const currentDraft = current[selectedDraft.id] ?? selectedDraft;
+        const uniqueModels = Array.from(new Set(result.models));
+        const currentDefaultModel = currentDraft.defaultModel.trim();
+        const defaultModel = uniqueModels.includes(currentDefaultModel)
+          ? currentDefaultModel
+          : uniqueModels[0] ?? currentDefaultModel;
+        return {
+          ...current,
+          [selectedDraft.id]: {
+            ...currentDraft,
+            modelsText: uniqueModels.join("\n"),
+            defaultModel
+          }
+        };
+      });
+      setSavedProviderId(null);
+      setProviderNotice(`已刷新 ${result.models.length} 个模型，请确认后点击“保存”。`);
+    } catch (reason) {
+      setModelRefreshResults((current) => ({
+        ...current,
+        [selectedDraft.id]: {
+          ok: false,
+          models: [],
+          message: reason instanceof Error ? reason.message : "刷新模型失败"
+        }
+      }));
+      setProviderNotice(reason instanceof Error ? `刷新模型失败：${reason.message}` : "刷新模型失败。");
+    } finally {
+      setRefreshProviderId(null);
+    }
+  }
+
   if (!selectedDraft) {
     return null;
   }
@@ -2350,6 +2408,14 @@ function ProviderConfigPanel({
               <button className="secondary-button" disabled={testProviderId === selectedDraft.id} onClick={handleTestProvider} type="button">
                 {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
               </button>
+              <button
+                className="secondary-button"
+                disabled={refreshProviderId === selectedDraft.id}
+                onClick={handleRefreshModels}
+                type="button"
+              >
+                {refreshProviderId === selectedDraft.id ? "刷新中..." : "刷新模型"}
+              </button>
               <button className="secondary-button" onClick={handleCopyProvider} type="button">
                 复制
               </button>
@@ -2380,7 +2446,13 @@ function ProviderConfigPanel({
               </button>
             </div>
             <p className="secret-note">
-              {providerNotice ?? renderProviderNote(selectedDraft, savedProviderId, testResults[selectedDraft.id])}
+              {providerNotice ??
+                renderProviderNote(
+                  selectedDraft,
+                  savedProviderId,
+                  testResults[selectedDraft.id],
+                  modelRefreshResults[selectedDraft.id]
+                )}
             </p>
           </div>
         </details>
@@ -2549,17 +2621,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function renderProviderNote(
   draft: ProviderDraft,
   savedProviderId: string | null,
-  testResult: ProviderTestResult | undefined
+  testResult: ProviderTestResult | undefined,
+  refreshResult: ProviderModelsResult | undefined
 ) {
   if (testResult) {
     return `${testResult.ok ? "Test passed" : "Test failed"}: ${testResult.message}${
       testResult.checkedUrl ? ` (${testResult.checkedUrl})` : ""
     }`;
   }
+  if (refreshResult) {
+    return `${refreshResult.ok ? "Models refreshed" : "Refresh failed"}: ${refreshResult.message}${
+      refreshResult.checkedUrl ? ` (${refreshResult.checkedUrl})` : ""
+    }`;
+  }
   if (savedProviderId === draft.id) {
     return "已保存到本地设置。API Key 只记录已配置状态，不会回传给前端。";
   }
-  return "建议先点击“测试连接”确认 Base URL、API Key 和模型服务可用，再保存启用。";
+  return "建议先点击“测试连接”确认服务可用，也可以用“刷新模型”从 /models 自动拉取模型名。";
 }
 
 function inspectProviderMatrixItem(item: ProviderMatrixItem, draft: ProviderDraft | null) {

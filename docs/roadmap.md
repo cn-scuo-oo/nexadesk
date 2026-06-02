@@ -54,6 +54,7 @@
 - Approval history records approved, rejected, and failed tool decisions with optional rejection reasons and restart persistence.
 - Domestic Provider defaults are documented in a verification matrix and checked by `npm run provider:matrix`.
 - The Model Center surfaces the domestic Provider matrix with default-alignment and latest connection-test status.
+- The Model Center can refresh model names from a Provider's `/models` endpoint and stage them for review before saving.
 
 ## Later Phases
 

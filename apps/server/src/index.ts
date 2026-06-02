@@ -12,6 +12,8 @@ import {
   type ChatMessage,
   type DesktopStatus,
   type PermissionRequest,
+  type ProviderModelsRequest,
+  type ProviderModelsResult,
   type ProviderSettings,
   type ProviderTestRequest,
   type ProviderTestResult,
@@ -177,6 +179,26 @@ app.post("/api/providers/test", async (req, res, next) => {
       body.provider,
       body.apiKey?.trim() || storedKey,
       body.timeoutMs ?? 8000
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/providers/models", async (req, res, next) => {
+  try {
+    const body = req.body as ProviderModelsRequest;
+    if (!body?.provider?.id) {
+      res.status(400).json({ ok: false, message: "Invalid provider payload", models: [] });
+      return;
+    }
+
+    const storedKey = await getProviderApiKey(body.provider.id);
+    const result = await fetchProviderModels(
+      body.provider,
+      body.apiKey?.trim() || storedKey,
+      body.timeoutMs ?? 10000
     );
     res.json(result);
   } catch (error) {
@@ -802,6 +824,62 @@ async function testProviderConnection(
   }
 }
 
+async function fetchProviderModels(
+  provider: ProviderSettings,
+  apiKey: string | undefined,
+  timeoutMs: number
+): Promise<ProviderModelsResult> {
+  const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
+  if (!baseUrl) {
+    return { ok: false, message: "请先填写 Base URL", models: [] };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs).unref();
+
+  try {
+    const checkedUrl = buildProviderTestUrl(provider, baseUrl);
+    const headers = buildProviderModelHeaders(provider, apiKey);
+    if ("error" in headers) {
+      return { ok: false, checkedUrl, message: headers.error, models: [] };
+    }
+
+    const response = await fetch(checkedUrl, {
+      headers,
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      return {
+        ok: false,
+        status: response.status,
+        checkedUrl,
+        message: `Fetch models failed: HTTP ${response.status}${detail ? ` - ${detail.slice(0, 180)}` : ""}`,
+        models: []
+      };
+    }
+
+    const payload = (await response.json()) as unknown;
+    const models = extractModelNames(payload);
+    return {
+      ok: true,
+      status: response.status,
+      checkedUrl,
+      models,
+      message: models.length ? `Fetched ${models.length} model(s).` : "Provider responded but did not return model names."
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? `Fetch models failed: ${error.message}` : "Fetch models failed: unknown error",
+      models: []
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function buildProviderTestUrl(provider: ProviderSettings, baseUrl: string) {
   if (provider.apiMode === "ollama_generate") {
     return `${baseUrl}/api/tags`;
@@ -810,4 +888,70 @@ function buildProviderTestUrl(provider: ProviderSettings, baseUrl: string) {
     return `${baseUrl || "https://api.anthropic.com"}/v1/models`;
   }
   return `${baseUrl}/models`;
+}
+
+function buildProviderModelHeaders(provider: ProviderSettings, apiKey: string | undefined): Record<string, string> | { error: string } {
+  if (provider.kind === "anthropic") {
+    if (!apiKey) {
+      return { error: "Anthropic 需要 API Key" };
+    }
+    return {
+      "anthropic-version": "2023-06-01",
+      "x-api-key": apiKey
+    };
+  }
+
+  if (provider.kind === "local") {
+    return {};
+  }
+
+  if (!apiKey) {
+    return { error: "该 Provider 需要 API Key" };
+  }
+
+  return {
+    Authorization: `Bearer ${apiKey}`
+  };
+}
+
+function extractModelNames(payload: unknown): string[] {
+  const names = new Set<string>();
+  collectModelNames(payload, names);
+  return Array.from(names);
+}
+
+function collectModelNames(value: unknown, names: Set<string>) {
+  if (typeof value === "string") {
+    addModelName(names, value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectModelNames(item, names);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  const directName = record.id ?? record.name ?? record.model;
+  if (typeof directName === "string") {
+    addModelName(names, directName);
+  }
+
+  if (Array.isArray(record.data)) {
+    collectModelNames(record.data, names);
+  }
+  if (Array.isArray(record.models)) {
+    collectModelNames(record.models, names);
+  }
+}
+
+function addModelName(names: Set<string>, value: string) {
+  const name = value.trim();
+  if (name) {
+    names.add(name);
+  }
 }
