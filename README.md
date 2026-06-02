@@ -63,6 +63,12 @@ Run the settings persistence and encrypted secret smoke test:
 npm run settings:smoke
 ```
 
+Run the domestic Provider defaults matrix check:
+
+```bash
+npm run provider:matrix
+```
+
 Run the desktop smoke test:
 
 ```bash
@@ -99,10 +105,12 @@ docs/
   github-private.md
   private-backlog.md
   private-release-checklist.md
+  provider-matrix.md
   roadmap.md
 scripts/
   build-server.mjs
   desktop-smoke.mjs
+  provider-matrix-check.mjs
   settings-persistence-smoke.mjs
   dev.mjs
 ```

@@ -345,8 +345,8 @@ export function createDefaultProviders(): ModelProvider[] {
         kind: "openai_compatible",
         apiMode: "chat_completions",
         connected: false,
-        baseUrl: "https://api.deepseek.com/v1",
-        models: ["deepseek-chat", "deepseek-reasoner"],
+        baseUrl: "https://api.deepseek.com",
+        models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
         capabilities: ["streaming", "function_calling", "structured_output"]
       },
       {
@@ -376,8 +376,8 @@ export function createDefaultProviders(): ModelProvider[] {
         apiMode: "chat_completions",
         connected: false,
         baseUrl: "https://api.moonshot.cn/v1",
-        models: ["moonshot-v1-8k", "moonshot-v1-32k", "kimi-k2-0711-preview"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
+        models: ["kimi-k2.6", "kimi-k2.5", "moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
+        capabilities: ["streaming", "function_calling", "vision", "structured_output"]
       },
       {
         id: "zhipu",
@@ -386,8 +386,8 @@ export function createDefaultProviders(): ModelProvider[] {
         apiMode: "chat_completions",
         connected: false,
         baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-        models: ["glm-4-plus", "glm-4-air", "glm-4-flash"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
+        models: ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash"],
+        capabilities: ["streaming", "function_calling", "web_search", "structured_output"]
       },
       {
         id: "openrouter",

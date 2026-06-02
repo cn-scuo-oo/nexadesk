@@ -52,6 +52,7 @@
 - Desktop mode exposes a safe native directory picker for default workspace, export directory, and allowed workspace roots.
 - Settings pages now use collapsible sections for long Provider, assistant, and skill configuration surfaces.
 - Approval history records approved, rejected, and failed tool decisions with optional rejection reasons and restart persistence.
+- Domestic Provider defaults are documented in a verification matrix and checked by `npm run provider:matrix`.
 
 ## Later Phases
 
