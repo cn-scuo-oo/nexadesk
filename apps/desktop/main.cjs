@@ -10,6 +10,7 @@ const {
   readdirSync
 } = require("node:fs");
 const { Menu } = require("electron");
+const { ipcMain } = require("electron");
 const { createServer } = require("node:net");
 const http = require("node:http");
 const { join } = require("node:path");
@@ -24,6 +25,7 @@ app.setAppUserModelId("com.nexadesk.desktop");
 app.whenReady().then(async () => {
   try {
     Menu.setApplicationMenu(null);
+    registerDesktopIpc();
 
     const userData = app.getPath("userData");
     appendStartupLog(userData, "ready appPath=" + app.getAppPath());
@@ -114,7 +116,8 @@ function createMainWindow(apiPort) {
     icon: getIconPath(),
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      preload: getPreloadPath()
     }
   });
 
@@ -186,9 +189,22 @@ async function runRendererSmokeTest(apiPort) {
   if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务")) {
     throw new Error("Renderer smoke test failed: settings UI text was not rendered.");
   }
+
+  const desktopBridgeAvailable = await renderAndEvaluate(
+    apiPort,
+    "settings",
+    "typeof window.nexadeskDesktop?.selectDirectory === 'function'"
+  );
+  if (!desktopBridgeAvailable) {
+    throw new Error("Renderer smoke test failed: desktop directory picker bridge was not exposed.");
+  }
 }
 
 async function renderAndReadText(apiPort, hash) {
+  return renderAndEvaluate(apiPort, hash, "document.body.innerText");
+}
+
+async function renderAndEvaluate(apiPort, hash, script) {
   const smokeWindow = new BrowserWindow({
     show: false,
     width: 1360,
@@ -196,15 +212,16 @@ async function renderAndReadText(apiPort, hash) {
     icon: getIconPath(),
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      preload: getPreloadPath()
     }
   });
 
   await loadRenderer(smokeWindow, apiPort, hash);
   await new Promise((resolve) => setTimeout(resolve, 800));
-  const text = await smokeWindow.webContents.executeJavaScript("document.body.innerText");
+  const result = await smokeWindow.webContents.executeJavaScript(script);
   smokeWindow.close();
-  return text;
+  return result;
 }
 
 function loadRenderer(window, apiPort, hash) {
@@ -224,6 +241,26 @@ function loadRenderer(window, apiPort, hash) {
 function getIconPath() {
   const iconPath = join(app.getAppPath(), "build-resources", "icon.ico");
   return existsSync(iconPath) ? iconPath : undefined;
+}
+
+function getPreloadPath() {
+  return join(__dirname, "preload.cjs");
+}
+
+function registerDesktopIpc() {
+  if (ipcMain.listenerCount("nexadesk:select-directory") > 0) {
+    return;
+  }
+
+  ipcMain.handle("nexadesk:select-directory", async (_event, options) => {
+    const owner = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
+    const result = await dialog.showOpenDialog(owner, {
+      title: typeof options?.title === "string" ? options.title : "选择目录",
+      defaultPath: typeof options?.defaultPath === "string" ? options.defaultPath : undefined,
+      properties: ["openDirectory", "createDirectory"]
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
 }
 
 function migrateLegacyUserData(userData) {

@@ -49,6 +49,7 @@
 - User-facing mojibake in the workbench, tool execution, and model runtime errors has been cleaned up.
 - Sessions, chat messages, activity, and automation state are saved to a local runtime state file and restored after server restart.
 - Runtime state persistence is covered by a smoke test with a fake streaming model provider.
+- Desktop mode exposes a safe native directory picker for default workspace, export directory, and allowed workspace roots.
 
 ## Later Phases
 

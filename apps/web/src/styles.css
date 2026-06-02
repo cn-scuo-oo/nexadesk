@@ -1092,6 +1092,13 @@ h4 {
   line-height: 1.4;
 }
 
+.directory-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .policy-row {
   grid-template-columns: minmax(0, 1fr) 160px;
   align-items: center;
@@ -1353,5 +1360,9 @@ h4 {
 
   .message {
     max-width: 100%;
+  }
+
+  .directory-field {
+    grid-template-columns: 1fr;
   }
 }

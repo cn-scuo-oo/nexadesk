@@ -24,7 +24,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Persist sessions and messages beyond in-memory demo state. Done in Phase 6 third pass.
 - Add per-agent model override tests.
 - Add approval history and rejected-action explanations.
-- Add workspace root selector in desktop mode.
+- Add workspace root selector in desktop mode. Done in Phase 6 fourth pass.
 
 ## Desktop Packaging
 

@@ -52,6 +52,14 @@ import {
   testProvider
 } from "./api";
 
+declare global {
+  interface Window {
+    nexadeskDesktop?: {
+      selectDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | null>;
+    };
+  }
+}
+
 type DataMode = "live" | "demo";
 type AppView = "cowork" | "settings";
 type SettingsTab = "providers" | "model" | "assistants" | "skills" | "appearance" | "workspace" | "permissions" | "desktop";
@@ -975,6 +983,32 @@ function SettingsCenter({
     }
   }
 
+  async function chooseDirectory({
+    title,
+    defaultPath,
+    onSelect
+  }: {
+    title: string;
+    defaultPath?: string;
+    onSelect: (path: string) => void;
+  }) {
+    if (!window.nexadeskDesktop?.selectDirectory) {
+      setLocalStatus("目录选择器只在桌面应用中可用。当前模式可以先手动填写路径。");
+      return;
+    }
+
+    try {
+      const selectedPath = await window.nexadeskDesktop.selectDirectory({ title, defaultPath });
+      if (!selectedPath) {
+        return;
+      }
+      onSelect(selectedPath);
+      setLocalStatus(`已选择目录：${selectedPath}`);
+    } catch (reason) {
+      setLocalStatus(reason instanceof Error ? `目录选择失败：${reason.message}` : "目录选择失败。");
+    }
+  }
+
   async function copyDesktopDiagnostics() {
     try {
       const nextStatus = desktopStatus ?? (await fetchDesktopStatus());
@@ -991,6 +1025,7 @@ function SettingsCenter({
   const runtimeModels = Array.from(new Set([draft.model.activeModel, ...(selectedRuntimeProvider?.models ?? [])])).filter(
     Boolean
   );
+  const canPickDirectory = Boolean(window.nexadeskDesktop?.selectDirectory);
 
   function updateAgent(agentId: string, patch: Partial<AgentProfile>) {
     updateDraft({
@@ -1382,21 +1417,67 @@ function SettingsCenter({
           <div className="settings-form">
             <label className="field-label">
               <span>默认工作区</span>
-              <input
-                value={draft.workspace.defaultWorkspace}
-                onChange={(event) =>
-                  updateDraft({ workspace: { ...draft.workspace, defaultWorkspace: event.target.value } })
-                }
-              />
+              <div className="directory-field">
+                <input
+                  value={draft.workspace.defaultWorkspace}
+                  onChange={(event) =>
+                    updateDraft({ workspace: { ...draft.workspace, defaultWorkspace: event.target.value } })
+                  }
+                />
+                <button
+                  className="mini-button"
+                  disabled={!canPickDirectory}
+                  onClick={() =>
+                    void chooseDirectory({
+                      title: "选择默认工作区",
+                      defaultPath: draft.workspace.defaultWorkspace,
+                      onSelect: (path) =>
+                        updateDraft({
+                          workspace: {
+                            ...draft.workspace,
+                            defaultWorkspace: path,
+                            allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                          }
+                        })
+                    })
+                  }
+                  type="button"
+                >
+                  选择目录
+                </button>
+              </div>
             </label>
             <label className="field-label">
               <span>导出目录</span>
-              <input
-                value={draft.workspace.exportDirectory}
-                onChange={(event) =>
-                  updateDraft({ workspace: { ...draft.workspace, exportDirectory: event.target.value } })
-                }
-              />
+              <div className="directory-field">
+                <input
+                  value={draft.workspace.exportDirectory}
+                  onChange={(event) =>
+                    updateDraft({ workspace: { ...draft.workspace, exportDirectory: event.target.value } })
+                  }
+                />
+                <button
+                  className="mini-button"
+                  disabled={!canPickDirectory}
+                  onClick={() =>
+                    void chooseDirectory({
+                      title: "选择导出目录",
+                      defaultPath: draft.workspace.exportDirectory || draft.workspace.defaultWorkspace,
+                      onSelect: (path) =>
+                        updateDraft({
+                          workspace: {
+                            ...draft.workspace,
+                            exportDirectory: path,
+                            allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                          }
+                        })
+                    })
+                  }
+                  type="button"
+                >
+                  选择目录
+                </button>
+              </div>
             </label>
             <label className="field-label">
               <span>允许访问的根目录</span>
@@ -1416,6 +1497,31 @@ function SettingsCenter({
                 }
               />
             </label>
+            <div className="config-actions">
+              <button
+                className="secondary-button"
+                disabled={!canPickDirectory}
+                onClick={() =>
+                  void chooseDirectory({
+                    title: "添加允许访问的根目录",
+                    defaultPath: draft.workspace.defaultWorkspace,
+                    onSelect: (path) =>
+                      updateDraft({
+                        workspace: {
+                          ...draft.workspace,
+                          allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                        }
+                      })
+                  })
+                }
+                type="button"
+              >
+                添加允许目录
+              </button>
+              <span className="secret-note">
+                目录选择仅在桌面应用中启用。Agent 的读写工具会被限制在允许访问的根目录内。
+              </span>
+            </div>
           </div>
         </section>
         ) : null}
@@ -1585,6 +1691,10 @@ function formatDesktopDiagnostics(status: DesktopStatus) {
     `Electron: ${status.electronVersion ?? "Not set"}`,
     `Uptime: ${status.uptimeSeconds}s`
   ].join("\n");
+}
+
+function uniquePathList(paths: string[]) {
+  return Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
 }
 
 function ProviderStatusPanel({
