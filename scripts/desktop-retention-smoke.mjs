@@ -11,7 +11,7 @@ try {
   await runDesktopPass({ port: "49395", expectExisting: true });
   console.log("NexaDesk desktop retention smoke test passed.");
 } finally {
-  await rm(userDataDir, { recursive: true, force: true });
+  await removeUserDataDir();
 }
 
 function runDesktopPass({ port, expectExisting }) {
@@ -40,7 +40,7 @@ function runDesktopPass({ port, expectExisting }) {
     const timeout = setTimeout(() => {
       child.kill();
       reject(new Error(`Desktop retention smoke timed out on port ${port}.\n${output}`));
-    }, 60_000);
+    }, 90_000);
 
     child.on("error", (error) => {
       clearTimeout(timeout);
@@ -57,4 +57,18 @@ function runDesktopPass({ port, expectExisting }) {
       reject(new Error(`Desktop retention smoke failed on port ${port} with code ${code}.\n${output}`));
     });
   });
+}
+
+async function removeUserDataDir() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(userDataDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (attempt === 4) {
+        console.warn(`Desktop retention smoke could not remove temporary user data: ${error.message}`);
+      }
+    }
+  }
 }

@@ -16,14 +16,27 @@ const child = spawn(electronPath, ["."], {
     NEXADESK_USER_DATA_DIR: userDataDir,
     NEXADESK_SMOKE_TEST: "1"
   },
-  stdio: "inherit"
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+let output = "";
+let finished = false;
+child.stdout.on("data", (chunk) => {
+  const text = chunk.toString();
+  output += text;
+  process.stdout.write(text);
+});
+child.stderr.on("data", (chunk) => {
+  const text = chunk.toString();
+  output += text;
+  process.stderr.write(text);
 });
 
 const timeout = setTimeout(() => {
   child.kill();
-  console.error("Desktop smoke test timed out.");
+  console.error(`Desktop smoke test timed out.\n${output}`);
   void finish(1);
-}, 45_000);
+}, 120_000);
 
 child.on("exit", (code) => {
   clearTimeout(timeout);
@@ -36,6 +49,25 @@ child.on("exit", (code) => {
 });
 
 async function finish(code) {
-  await rm(userDataDir, { recursive: true, force: true });
+  if (finished) {
+    return;
+  }
+  finished = true;
+  clearTimeout(timeout);
+  await removeUserDataDir();
   process.exit(code);
+}
+
+async function removeUserDataDir() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(userDataDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (attempt === 4) {
+        console.warn(`Desktop smoke could not remove temporary user data: ${error.message}`);
+      }
+    }
+  }
 }

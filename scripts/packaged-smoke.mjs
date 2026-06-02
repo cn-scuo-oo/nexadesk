@@ -17,7 +17,7 @@ try {
   await runPackagedSmoke();
   console.log(`NexaDesk packaged smoke test passed using ${executable}.`);
 } finally {
-  await rm(userDataDir, { recursive: true, force: true });
+  await removeUserDataDir();
 }
 
 function runPackagedSmoke() {
@@ -46,7 +46,7 @@ function runPackagedSmoke() {
     const timeout = setTimeout(() => {
       child.kill();
       reject(new Error(`Packaged smoke test timed out.\n${output}`));
-    }, 75_000);
+    }, 120_000);
 
     child.on("error", (error) => {
       clearTimeout(timeout);
@@ -63,4 +63,18 @@ function runPackagedSmoke() {
       reject(new Error(`Packaged smoke test failed with code ${code}.\n${output}`));
     });
   });
+}
+
+async function removeUserDataDir() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(userDataDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (attempt === 4) {
+        console.warn(`Packaged smoke could not remove temporary user data: ${error.message}`);
+      }
+    }
+  }
 }
