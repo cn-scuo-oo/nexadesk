@@ -1194,15 +1194,17 @@ function SettingsCenter({
             <Bot size={18} />
           </div>
           <div className="settings-form">
-            <div className="assistant-grid">
+            <div className="collapse-list">
               {draft.assistant.agents.map((agent) => (
-                <article className={agent.enabled ? "assistant-card enabled" : "assistant-card"} key={agent.id}>
-                  <div className="assistant-card-top">
-                    <div>
+                <details className={agent.enabled ? "config-disclosure enabled" : "config-disclosure"} key={agent.id}>
+                  <summary>
+                    <span className="summary-main">
                       <strong>{agent.name}</strong>
-                      <span>{agent.category}</span>
-                    </div>
-                    <label className="connection-toggle">
+                      <small>
+                        {agent.category} · {agent.description}
+                      </small>
+                    </span>
+                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
                       <input
                         checked={agent.enabled}
                         onChange={(event) => updateAgent(agent.id, { enabled: event.target.checked })}
@@ -1210,30 +1212,31 @@ function SettingsCenter({
                       />
                       <span>{agent.enabled ? "启用" : "停用"}</span>
                     </label>
+                  </summary>
+                  <div className="disclosure-body">
+                    <label className="field-label">
+                      <span>绑定 Provider</span>
+                      <select
+                        value={agent.providerId}
+                        onChange={(event) => updateAgent(agent.id, { providerId: event.target.value })}
+                      >
+                        {draft.providers.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-label">
+                      <span>系统提示词</span>
+                      <textarea
+                        rows={4}
+                        value={agent.instructions}
+                        onChange={(event) => updateAgent(agent.id, { instructions: event.target.value })}
+                      />
+                    </label>
                   </div>
-                  <p>{agent.description}</p>
-                  <label className="field-label">
-                    <span>绑定 Provider</span>
-                    <select
-                      value={agent.providerId}
-                      onChange={(event) => updateAgent(agent.id, { providerId: event.target.value })}
-                    >
-                      {draft.providers.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field-label">
-                    <span>系统提示词</span>
-                    <textarea
-                      rows={3}
-                      value={agent.instructions}
-                      onChange={(event) => updateAgent(agent.id, { instructions: event.target.value })}
-                    />
-                  </label>
-                </article>
+                </details>
               ))}
             </div>
           </div>
@@ -1252,15 +1255,17 @@ function SettingsCenter({
             </button>
           </div>
           <div className="settings-form">
-            <div className="skill-grid">
+            <div className="collapse-list">
               {draft.assistant.skills.map((skill) => (
-                <article className={skill.enabled ? "skill-card enabled" : "skill-card"} key={skill.id}>
-                  <div className="assistant-card-top">
-                    <div>
+                <details className={skill.enabled ? "config-disclosure enabled" : "config-disclosure"} key={skill.id}>
+                  <summary>
+                    <span className="summary-main">
                       <strong>{skill.name}</strong>
-                      <span>{skill.source === "custom" ? "自定义" : "内置"}</span>
-                    </div>
-                    <label className="connection-toggle">
+                      <small>
+                        {skill.source === "custom" ? "自定义" : "内置"} · {skill.description}
+                      </small>
+                    </span>
+                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
                       <input
                         checked={skill.enabled}
                         onChange={(event) => updateSkill(skill.id, { enabled: event.target.checked })}
@@ -1268,31 +1273,33 @@ function SettingsCenter({
                       />
                       <span>{skill.enabled ? "启用" : "停用"}</span>
                     </label>
+                  </summary>
+                  <div className="disclosure-body">
+                    <label className="field-label">
+                      <span>技能名称</span>
+                      <input
+                        disabled={skill.source !== "custom"}
+                        value={skill.name}
+                        onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label">
+                      <span>适用场景</span>
+                      <input
+                        value={skill.description}
+                        onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label">
+                      <span>技能提示词</span>
+                      <textarea
+                        rows={4}
+                        value={skill.instructions}
+                        onChange={(event) => updateSkill(skill.id, { instructions: event.target.value })}
+                      />
+                    </label>
                   </div>
-                  <label className="field-label">
-                    <span>技能名称</span>
-                    <input
-                      disabled={skill.source !== "custom"}
-                      value={skill.name}
-                      onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
-                    />
-                  </label>
-                  <label className="field-label">
-                    <span>适用场景</span>
-                    <input
-                      value={skill.description}
-                      onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
-                    />
-                  </label>
-                  <label className="field-label">
-                    <span>技能提示词</span>
-                    <textarea
-                      rows={3}
-                      value={skill.instructions}
-                      onChange={(event) => updateSkill(skill.id, { instructions: event.target.value })}
-                    />
-                  </label>
-                </article>
+                </details>
               ))}
             </div>
             <p className="secret-note">
@@ -2078,144 +2085,182 @@ function ProviderConfigPanel({
           })}
         </div>
 
-        <div className="field-grid">
-          <label className="field-label">
-            <span>供应商名称</span>
-            <input
-              value={selectedDraft.name}
-              onChange={(event) => updateSelected({ name: event.target.value })}
-              placeholder="OpenAI Official"
-            />
-          </label>
-
-          <label className="field-label">
-            <span>接口类型</span>
-            <select
-              value={selectedDraft.apiMode}
-              onChange={(event) => updateSelected({ apiMode: event.target.value as ProviderApiMode })}
-            >
-              {apiModeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <label className="field-label">
-          <span>Base URL</span>
-          <input
-            value={selectedDraft.baseUrl}
-            onChange={(event) => updateSelected({ baseUrl: event.target.value })}
-            placeholder="https://api.openai.com/v1"
-          />
-        </label>
-
-        <label className="field-label">
-          <span>API Key</span>
-          <input
-            autoComplete="off"
-            value={selectedDraft.apiKey}
-            onChange={(event) => updateSelected({ apiKey: event.target.value })}
-            placeholder={selectedDraft.apiKeyConfigured ? "已配置。输入新 Key 可替换。" : "只保存到后端/桌面安全存储"}
-            type="password"
-          />
-        </label>
-
-        <label className="field-label">
-          <span>默认模型</span>
-          <input
-            value={selectedDraft.defaultModel}
-            onChange={(event) => updateSelected({ defaultModel: event.target.value })}
-            placeholder="gpt-5"
-          />
-        </label>
-
-        <div className="config-actions">
-          <label className="connection-toggle">
-            <input
-              checked={selectedDraft.connected}
-              onChange={(event) => updateSelected({ connected: event.target.checked })}
-              type="checkbox"
-            />
-            <span>{selectedDraft.connected ? "启用" : "停用"}</span>
-          </label>
-          <button className="secondary-button" disabled={testProviderId === selectedDraft.id} onClick={handleTestProvider} type="button">
-            {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
-          </button>
-          <button className="secondary-button" onClick={handleCopyProvider} type="button">
-            复制
-          </button>
-          <button
-            className="secondary-button"
-            disabled={savingProviderId === selectedDraft.id || (!selectedDraft.apiKeyConfigured && !selectedDraft.apiKey.trim())}
-            onClick={handleClearApiKey}
-            type="button"
-          >
-            清除 Key
-          </button>
-          <button
-            className="secondary-button danger-button"
-            disabled={savingProviderId === selectedDraft.id || !canDeleteSelectedProvider}
-            onClick={handleDeleteProvider}
-            title={canDeleteSelectedProvider ? "删除这个自定义 Provider" : "内置 Provider 不能删除"}
-            type="button"
-          >
-            删除
-          </button>
-          <button
-            className="primary-button"
-            disabled={savingProviderId === selectedDraft.id}
-            onClick={handleSaveProvider}
-            type="button"
-          >
-            {savingProviderId === selectedDraft.id ? "保存中..." : "保存"}
-          </button>
-        </div>
-
-        <label className="field-label">
-          <span>模型列表（每行一个，也支持逗号分隔）</span>
-          <textarea
-            value={selectedDraft.modelsText}
-            onChange={(event) => updateSelected({ modelsText: event.target.value })}
-            placeholder={"gpt-5\nqwen-plus\ndeepseek-chat"}
-            rows={4}
-          />
-        </label>
-
-        <div className="model-chips">
-          {models.map((model) => (
-            <span className="model-chip" key={model}>
-              {model}
+        <details className="config-disclosure" open>
+          <summary>
+            <span className="summary-main">
+              <strong>连接与模型</strong>
+              <small>名称、接口类型、Base URL、默认模型和模型列表</small>
             </span>
-          ))}
-        </div>
-
-        <div className="capability-section">
-          <div className="section-heading">
-            <span>能力开关</span>
-          </div>
-          <div className="capability-grid">
-            {capabilityOptions.map((option) => (
-              <label className="capability-toggle" key={option.value}>
+          </summary>
+          <div className="disclosure-body">
+            <div className="field-grid">
+              <label className="field-label">
+                <span>供应商名称</span>
                 <input
-                  checked={selectedDraft.capabilities[option.value]}
-                  onChange={(event) => updateCapability(option.value, event.target.checked)}
-                  type="checkbox"
+                  value={selectedDraft.name}
+                  onChange={(event) => updateSelected({ name: event.target.value })}
+                  placeholder="OpenAI Official"
                 />
-                <span>
-                  <strong>{option.label}</strong>
-                  <small>{option.hint}</small>
-                </span>
               </label>
-            ))}
-          </div>
-        </div>
 
-        <p className="secret-note">
-          {providerNotice ?? renderProviderNote(selectedDraft, savedProviderId, testResults[selectedDraft.id])}
-        </p>
+              <label className="field-label">
+                <span>接口类型</span>
+                <select
+                  value={selectedDraft.apiMode}
+                  onChange={(event) => updateSelected({ apiMode: event.target.value as ProviderApiMode })}
+                >
+                  {apiModeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="field-label">
+              <span>Base URL</span>
+              <input
+                value={selectedDraft.baseUrl}
+                onChange={(event) => updateSelected({ baseUrl: event.target.value })}
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
+
+            <div className="field-grid">
+              <label className="field-label">
+                <span>默认模型</span>
+                <input
+                  value={selectedDraft.defaultModel}
+                  onChange={(event) => updateSelected({ defaultModel: event.target.value })}
+                  placeholder="gpt-5"
+                />
+              </label>
+              <label className="field-label">
+                <span>运行状态</span>
+                <select
+                  value={selectedDraft.connected ? "enabled" : "disabled"}
+                  onChange={(event) => updateSelected({ connected: event.target.value === "enabled" })}
+                >
+                  <option value="enabled">启用</option>
+                  <option value="disabled">停用</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="field-label">
+              <span>模型列表（每行一个，也支持逗号分隔）</span>
+              <textarea
+                value={selectedDraft.modelsText}
+                onChange={(event) => updateSelected({ modelsText: event.target.value })}
+                placeholder={"gpt-5\nqwen-plus\ndeepseek-chat"}
+                rows={4}
+              />
+            </label>
+          </div>
+        </details>
+
+        <details className="config-disclosure" open>
+          <summary>
+            <span className="summary-main">
+              <strong>API Key 与操作</strong>
+              <small>测试连接、保存、复制、清除 Key 或删除自定义 Provider</small>
+            </span>
+          </summary>
+          <div className="disclosure-body">
+            <label className="field-label">
+              <span>API Key</span>
+              <input
+                autoComplete="off"
+                value={selectedDraft.apiKey}
+                onChange={(event) => updateSelected({ apiKey: event.target.value })}
+                placeholder={selectedDraft.apiKeyConfigured ? "已配置。输入新 Key 可替换。" : "只保存到后端/桌面安全存储"}
+                type="password"
+              />
+            </label>
+
+            <div className="config-actions">
+              <button className="secondary-button" disabled={testProviderId === selectedDraft.id} onClick={handleTestProvider} type="button">
+                {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
+              </button>
+              <button className="secondary-button" onClick={handleCopyProvider} type="button">
+                复制
+              </button>
+              <button
+                className="secondary-button"
+                disabled={savingProviderId === selectedDraft.id || (!selectedDraft.apiKeyConfigured && !selectedDraft.apiKey.trim())}
+                onClick={handleClearApiKey}
+                type="button"
+              >
+                清除 Key
+              </button>
+              <button
+                className="secondary-button danger-button"
+                disabled={savingProviderId === selectedDraft.id || !canDeleteSelectedProvider}
+                onClick={handleDeleteProvider}
+                title={canDeleteSelectedProvider ? "删除这个自定义 Provider" : "内置 Provider 不能删除"}
+                type="button"
+              >
+                删除
+              </button>
+              <button
+                className="primary-button"
+                disabled={savingProviderId === selectedDraft.id}
+                onClick={handleSaveProvider}
+                type="button"
+              >
+                {savingProviderId === selectedDraft.id ? "保存中..." : "保存"}
+              </button>
+            </div>
+            <p className="secret-note">
+              {providerNotice ?? renderProviderNote(selectedDraft, savedProviderId, testResults[selectedDraft.id])}
+            </p>
+          </div>
+        </details>
+
+        <details className="config-disclosure">
+          <summary>
+            <span className="summary-main">
+              <strong>能力开关</strong>
+              <small>Streaming、Tool calling、Vision、Search 和结构化输出</small>
+            </span>
+          </summary>
+          <div className="disclosure-body">
+            <div className="capability-grid">
+              {capabilityOptions.map((option) => (
+                <label className="capability-toggle" key={option.value}>
+                  <input
+                    checked={selectedDraft.capabilities[option.value]}
+                    onChange={(event) => updateCapability(option.value, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    <small>{option.hint}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </details>
+
+        <details className="config-disclosure">
+          <summary>
+            <span className="summary-main">
+              <strong>预览与状态</strong>
+              <small>{models.length} 个模型 · {selectedDraft.apiKeyConfigured ? "Key 已保存" : "Key 未保存"}</small>
+            </span>
+          </summary>
+          <div className="disclosure-body">
+            <div className="model-chips">
+              {models.map((model) => (
+                <span className="model-chip" key={model}>
+                  {model}
+                </span>
+              ))}
+            </div>
+          </div>
+        </details>
       </div>
     </section>
   );

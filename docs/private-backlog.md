@@ -17,6 +17,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add Provider copy plus non-secret settings import/export. Done in Phase 6 first pass.
 - Add corrupted settings recovery UI instead of only fallback behavior. Done in Phase 6 second pass.
 - Add an in-app diagnostics copy button for log paths and app status. Done in Phase 6 second pass.
+- Collapse long Provider, assistant, and skill configuration surfaces into expandable sections. Done in Phase 6 fifth pass.
 
 ## Agent Runtime
 

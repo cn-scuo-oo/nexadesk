@@ -899,6 +899,82 @@ h4 {
   padding: 12px;
 }
 
+.collapse-list {
+  display: grid;
+  gap: 10px;
+}
+
+.config-disclosure {
+  border: 1px solid #e2ebe6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fbfdfc;
+}
+
+.config-disclosure.enabled {
+  border-color: #a9cabe;
+  background: #f4faf7;
+}
+
+.config-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  color: #253630;
+  cursor: pointer;
+  list-style: none;
+}
+
+.config-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-disclosure > summary::before {
+  content: "+";
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+  color: #2d5b4d;
+  background: #e2eee8;
+  font-weight: 900;
+}
+
+.config-disclosure[open] > summary::before {
+  content: "-";
+}
+
+.summary-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.summary-main strong,
+.summary-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-main small {
+  color: #6b7f76;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.disclosure-body {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e6efeb;
+  padding: 12px;
+}
+
 .diagnostics-box {
   border: 1px solid #dce7e2;
   border-radius: 8px;
