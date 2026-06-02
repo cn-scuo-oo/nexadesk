@@ -2070,6 +2070,77 @@ h4 {
   gap: 8px;
 }
 
+.workspace-recent-files {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #dfe9e4;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdfc;
+}
+
+.workspace-context-subheading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-context-subheading strong {
+  color: #203b33;
+  font-size: 12px;
+}
+
+.workspace-recent-files p {
+  color: #62756d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workspace-recent-list {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-recent-file {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid #e2ebe6;
+  border-radius: 7px;
+  padding: 7px;
+  color: #243f36;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-recent-file:hover {
+  border-color: #b8d7ca;
+  background: #f1f8f5;
+}
+
+.workspace-recent-file span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.workspace-recent-file strong,
+.workspace-recent-file small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-recent-file small {
+  color: #71857c;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .workspace-search-form {
   display: grid;
   gap: 8px;

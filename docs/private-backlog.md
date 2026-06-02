@@ -37,6 +37,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add send-to-Agent analysis actions on workspace search results. Done in Phase 6 twentieth pass.
 - Compact the workspace file tree and search into a switchable context panel. Done in Phase 6 twenty-first pass.
 - Persist the workspace context panel collapsed state and active view locally. Done in Phase 6 twenty-second pass.
+- Add local recent workspace files to the context panel. Done in Phase 6 twenty-third pass.
 - Persist sessions and messages beyond in-memory demo state. Done in Phase 6 third pass.
 - Add per-agent model override tests.
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.

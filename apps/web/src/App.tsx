@@ -108,6 +108,8 @@ type WorkspaceContextView = "files" | "search";
 
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
 const workspaceContextViewStorageKey = "nexadesk.workspaceContext.view";
+const workspaceRecentFilesStorageKey = "nexadesk.workspaceContext.recentFiles";
+const maxWorkspaceRecentFiles = 8;
 
 const apiModeOptions: Array<{ value: ProviderApiMode; label: string }> = [
   { value: "responses", label: "OpenAI Responses API" },
@@ -246,6 +248,55 @@ function writeStoredWorkspaceContextView(view: WorkspaceContextView) {
   }
 }
 
+function readStoredWorkspaceRecentFiles(): WorkspaceTreeEntry[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(workspaceRecentFilesStorageKey) ?? "[]");
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter(
+        (item): item is WorkspaceTreeEntry =>
+          typeof item?.name === "string" &&
+          typeof item?.path === "string" &&
+          item.kind === "file"
+      )
+      .map((item): WorkspaceTreeEntry => ({
+        name: item.name,
+        path: item.path,
+        kind: "file",
+        size: typeof item.size === "number" ? item.size : undefined,
+        modifiedAt: typeof item.modifiedAt === "string" ? item.modifiedAt : undefined
+      }))
+      .slice(0, maxWorkspaceRecentFiles);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredWorkspaceRecentFiles(entries: WorkspaceTreeEntry[]) {
+  try {
+    window.localStorage.setItem(workspaceRecentFilesStorageKey, JSON.stringify(entries.slice(0, maxWorkspaceRecentFiles)));
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+}
+
+function rememberWorkspaceFile(current: WorkspaceTreeEntry[], entry: WorkspaceTreeEntry) {
+  if (entry.kind !== "file") {
+    return current;
+  }
+
+  return [
+    entry,
+    ...current.filter((item) => item.path !== entry.path)
+  ].slice(0, maxWorkspaceRecentFiles);
+}
+
 const taskBoard = [
   {
     id: "task-1",
@@ -311,6 +362,9 @@ export function App() {
   const [workspaceFileError, setWorkspaceFileError] = useState<string | null>(null);
   const [workspaceContextCollapsed, setWorkspaceContextCollapsed] = useState(() =>
     readStoredBoolean(workspaceContextCollapsedStorageKey, false)
+  );
+  const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
+    readStoredWorkspaceRecentFiles()
   );
 
   useEffect(() => {
@@ -379,6 +433,10 @@ export function App() {
   useEffect(() => {
     writeStoredBoolean(workspaceContextCollapsedStorageKey, workspaceContextCollapsed);
   }, [workspaceContextCollapsed]);
+
+  useEffect(() => {
+    writeStoredWorkspaceRecentFiles(recentWorkspaceFiles);
+  }, [recentWorkspaceFiles]);
 
   const activeSession = snapshot?.sessions[0];
   const teamAgents = useMemo(() => {
@@ -512,6 +570,14 @@ export function App() {
 
     setDraft("");
     await sendWorkbenchMessage(content);
+  }
+
+  function handleOpenWorkspaceFile(entry: WorkspaceTreeEntry) {
+    if (entry.kind !== "file") {
+      return;
+    }
+    setSelectedWorkspaceFile(entry);
+    setRecentWorkspaceFiles((current) => rememberWorkspaceFile(current, entry));
   }
 
   async function sendWorkbenchMessage(content: string) {
@@ -1178,8 +1244,10 @@ export function App() {
               error={workspaceError}
               fallbackFiles={snapshot.files}
               loading={workspaceLoading}
+              recentFiles={recentWorkspaceFiles}
               result={workspaceList}
-              onOpenFile={setSelectedWorkspaceFile}
+              onClearRecentFiles={() => setRecentWorkspaceFiles([])}
+              onOpenFile={handleOpenWorkspaceFile}
               onOpenPath={setWorkspacePath}
               onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
               onAskAgent={handleAskAgentToReadFile}
@@ -3432,7 +3500,9 @@ function WorkspaceFilePanel({
   error,
   fallbackFiles,
   loading,
+  recentFiles,
   result,
+  onClearRecentFiles,
   onOpenFile,
   onOpenPath,
   onRefresh,
@@ -3444,7 +3514,9 @@ function WorkspaceFilePanel({
   error: string | null;
   fallbackFiles: WorkspaceFile[];
   loading: boolean;
+  recentFiles: WorkspaceTreeEntry[];
   result: WorkspaceListResult | null;
+  onClearRecentFiles: () => void;
   onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
   onRefresh: () => void;
@@ -3559,30 +3631,77 @@ function WorkspaceFilePanel({
           )}
         </div>
       ) : (
-        <div className="file-list workspace-tree-list">
-          {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
-          {!loading && result?.exists && result.entries.length === 0 ? (
-            <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
-          ) : null}
-          {!loading && result?.exists
-            ? result.entries.map((entry) => (
-                <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
-              ))
-            : null}
-          {!loading && !result?.exists && error ? (
-            <EmptyState title="工作区不可用" detail={error} />
-          ) : null}
-          {!loading && !result && !error
-            ? fallbackFiles.map((file) => (
-                <div className="file-row" key={file.path}>
-                  <span>{file.path}</span>
-                  {file.changed ? <b>changed</b> : null}
-                </div>
-              ))
-            : null}
+        <div className="workspace-context-section">
+          <WorkspaceRecentFiles files={recentFiles} onClear={onClearRecentFiles} onOpenFile={onOpenFile} />
+          <div className="file-list workspace-tree-list">
+            {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
+            {!loading && result?.exists && result.entries.length === 0 ? (
+              <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
+            ) : null}
+            {!loading && result?.exists
+              ? result.entries.map((entry) => (
+                  <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
+                ))
+              : null}
+            {!loading && !result?.exists && error ? (
+              <EmptyState title="工作区不可用" detail={error} />
+            ) : null}
+            {!loading && !result && !error
+              ? fallbackFiles.map((file) => (
+                  <div className="file-row" key={file.path}>
+                    <span>{file.path}</span>
+                    {file.changed ? <b>changed</b> : null}
+                  </div>
+                ))
+              : null}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function WorkspaceRecentFiles({
+  files,
+  onClear,
+  onOpenFile
+}: {
+  files: WorkspaceTreeEntry[];
+  onClear: () => void;
+  onOpenFile: (entry: WorkspaceTreeEntry) => void;
+}) {
+  return (
+    <section className="workspace-recent-files" aria-label="最近文件">
+      <div className="workspace-context-subheading">
+        <strong>最近文件</strong>
+        {files.length > 0 ? (
+          <button className="mini-button" onClick={onClear} type="button">
+            清空
+          </button>
+        ) : null}
+      </div>
+      {files.length === 0 ? (
+        <p>最近预览过的文件会显示在这里。</p>
+      ) : (
+        <div className="workspace-recent-list">
+          {files.slice(0, 4).map((file) => (
+            <button
+              className="workspace-recent-file"
+              key={file.path}
+              onClick={() => onOpenFile(file)}
+              title={file.path}
+              type="button"
+            >
+              <span>
+                <FileText size={13} />
+                <strong>{file.name}</strong>
+              </span>
+              <small>{file.path}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

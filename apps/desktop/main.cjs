@@ -227,6 +227,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("文件树") || !workbenchText.includes("搜索")) {
     throw new Error("Renderer smoke test failed: workspace context tabs were not rendered.");
   }
+  if (!workbenchText.includes("最近文件")) {
+    throw new Error("Renderer smoke test failed: workspace recent files area was not rendered.");
+  }
 
   const settingsText = await renderAndReadText(apiPort, "settings");
   if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务")) {
