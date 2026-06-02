@@ -99,6 +99,9 @@ try {
     workspaceList.entries.some((entry) => entry.name === "workspace-panel-smoke.txt" && entry.kind === "file"),
     "workspace list did not include the smoke file"
   );
+  const workspaceFile = await requestJson("/api/workspace/file?path=workspace-panel-smoke.txt");
+  assert(workspaceFile.exists === true, "workspace file preview did not report an existing file");
+  assert(workspaceFile.content === "workspace panel smoke", "workspace file preview did not return the smoke file content");
 
   const secretsRaw = await readFile(secretsPath, "utf8");
   const secrets = JSON.parse(secretsRaw);

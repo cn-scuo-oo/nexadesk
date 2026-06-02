@@ -42,6 +42,7 @@ import {
   type ProviderTestResult,
   type SkillProfile,
   type ToolCall,
+  type WorkspaceFilePreviewResult,
   type WorkspaceFile,
   type WorkspaceListResult,
   type WorkspaceTreeEntry
@@ -51,6 +52,7 @@ import {
   fetchProviderModels,
   fetchSettings as fetchAppSettings,
   fetchSnapshot,
+  fetchWorkspaceFile,
   fetchWorkspaceList,
   recoverSettings as recoverAppSettings,
   resolveApproval,
@@ -251,6 +253,10 @@ export function App() {
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [workspaceRefreshTick, setWorkspaceRefreshTick] = useState(0);
+  const [selectedWorkspaceFile, setSelectedWorkspaceFile] = useState<WorkspaceTreeEntry | null>(null);
+  const [workspaceFilePreview, setWorkspaceFilePreview] = useState<WorkspaceFilePreviewResult | null>(null);
+  const [workspaceFileLoading, setWorkspaceFileLoading] = useState(false);
+  const [workspaceFileError, setWorkspaceFileError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,14 +403,63 @@ export function App() {
     };
   }, [mode, settings, workspacePath, workspaceRefreshTick, workspaceSignature]);
 
-  async function handleSend(event: FormEvent) {
-    event.preventDefault();
-    if (!snapshot || !activeSession || !draft.trim()) {
+  useEffect(() => {
+    if (!selectedWorkspaceFile) {
+      setWorkspaceFilePreview(null);
+      setWorkspaceFileError(null);
+      return;
+    }
+    if (mode === "demo") {
+      setWorkspaceFilePreview(null);
+      setWorkspaceFileError("演示模式不读取本地文件。");
       return;
     }
 
+    let cancelled = false;
+    setWorkspaceFileLoading(true);
+    setWorkspaceFileError(null);
+    fetchWorkspaceFile(selectedWorkspaceFile.path)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setWorkspaceFilePreview(result);
+        setWorkspaceFileError(result.error ?? null);
+      })
+      .catch((reason) => {
+        if (cancelled) {
+          return;
+        }
+        setWorkspaceFilePreview(null);
+        setWorkspaceFileError(reason instanceof Error ? reason.message : "文件预览失败。");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWorkspaceFileLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, selectedWorkspaceFile]);
+
+  async function handleSend(event: FormEvent) {
+    event.preventDefault();
     const content = draft.trim();
+    if (!content) {
+      return;
+    }
+
     setDraft("");
+    await sendWorkbenchMessage(content);
+  }
+
+  async function sendWorkbenchMessage(content: string) {
+    const trimmedContent = content.trim();
+    if (!snapshot || !activeSession || !trimmedContent) {
+      return;
+    }
 
     if (mode === "demo") {
       const now = new Date().toISOString();
@@ -414,7 +469,7 @@ export function App() {
           sessionId: activeSession.id,
           role: "user",
           author: "You",
-          content,
+          content: trimmedContent,
           createdAt: now
         },
         {
@@ -434,7 +489,7 @@ export function App() {
     setError(null);
     try {
       await streamMessage(activeSession.id, {
-        content,
+        content: trimmedContent,
         providerId: activeRuntimeProvider?.id,
         model: activeRuntimeModel,
         agentId: activeAgent?.id
@@ -449,6 +504,10 @@ export function App() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleAskAgentToReadFile(path: string) {
+    await sendWorkbenchMessage(`请使用 read_file 工具读取工作区文件 "${path}"，然后总结关键内容、可能的问题和下一步建议。`);
   }
 
   async function handleWorkbenchRuntimeChange(providerId: string, model?: string) {
@@ -1050,6 +1109,7 @@ export function App() {
             fallbackFiles={snapshot.files}
             loading={workspaceLoading}
             result={workspaceList}
+            onOpenFile={setSelectedWorkspaceFile}
             onOpenPath={setWorkspacePath}
             onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
           />
@@ -1070,6 +1130,17 @@ export function App() {
           </div>
         </section>
       </aside>
+      {selectedWorkspaceFile ? (
+        <WorkspaceFilePreviewDrawer
+          entry={selectedWorkspaceFile}
+          error={workspaceFileError}
+          loading={workspaceFileLoading}
+          preview={workspaceFilePreview}
+          sending={sending}
+          onAskAgent={handleAskAgentToReadFile}
+          onClose={() => setSelectedWorkspaceFile(null)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -3289,6 +3360,7 @@ function WorkspaceFilePanel({
   fallbackFiles,
   loading,
   result,
+  onOpenFile,
   onOpenPath,
   onRefresh
 }: {
@@ -3298,6 +3370,7 @@ function WorkspaceFilePanel({
   fallbackFiles: WorkspaceFile[];
   loading: boolean;
   result: WorkspaceListResult | null;
+  onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
   onRefresh: () => void;
 }) {
@@ -3326,7 +3399,7 @@ function WorkspaceFilePanel({
         ) : null}
         {!loading && result?.exists
           ? result.entries.map((entry) => (
-              <WorkspaceEntryRow entry={entry} key={entry.path} onOpenPath={onOpenPath} />
+              <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
             ))
           : null}
         {!loading && !result?.exists && error ? (
@@ -3345,7 +3418,15 @@ function WorkspaceFilePanel({
   );
 }
 
-function WorkspaceEntryRow({ entry, onOpenPath }: { entry: WorkspaceTreeEntry; onOpenPath: (path: string) => void }) {
+function WorkspaceEntryRow({
+  entry,
+  onOpenFile,
+  onOpenPath
+}: {
+  entry: WorkspaceTreeEntry;
+  onOpenFile: (entry: WorkspaceTreeEntry) => void;
+  onOpenPath: (path: string) => void;
+}) {
   const content = (
     <>
       <span className="workspace-entry-name">
@@ -3365,8 +3446,104 @@ function WorkspaceEntryRow({ entry, onOpenPath }: { entry: WorkspaceTreeEntry; o
   }
 
   return (
-    <div className="file-row workspace-entry-file" title={entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : entry.path}>
+    <button
+      className="file-row workspace-entry-button workspace-entry-file"
+      onClick={() => onOpenFile(entry)}
+      title={entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : entry.path}
+      type="button"
+    >
       {content}
+    </button>
+  );
+}
+
+function WorkspaceFilePreviewDrawer({
+  entry,
+  error,
+  loading,
+  preview,
+  sending,
+  onAskAgent,
+  onClose
+}: {
+  entry: WorkspaceTreeEntry;
+  error: string | null;
+  loading: boolean;
+  preview: WorkspaceFilePreviewResult | null;
+  sending: boolean;
+  onAskAgent: (path: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const titleId = `workspace-file-${entry.path.replace(/[^a-z0-9_-]/gi, "-")}`;
+  const canAskAgent = Boolean(preview?.exists && !preview.truncated && !loading);
+
+  async function copyPreviewContent() {
+    if (!preview?.content) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(preview.content);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("failed");
+      window.setTimeout(() => setCopyState("idle"), 2200);
+    }
+  }
+
+  return (
+    <div className="tool-result-drawer-backdrop" onClick={onClose} role="presentation">
+      <aside
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="tool-result-drawer file-preview-drawer"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="tool-result-drawer-heading">
+          <div>
+            <p className="eyebrow">Workspace file</p>
+            <h3 id={titleId}>{preview?.name ?? entry.name}</h3>
+          </div>
+          <button aria-label="关闭文件预览" className="icon-button" onClick={onClose} type="button">
+            <X size={16} />
+          </button>
+        </div>
+        <dl className="tool-result-meta">
+          <div>
+            <dt>路径</dt>
+            <dd>{preview?.path ?? entry.path}</dd>
+          </div>
+          <div>
+            <dt>大小</dt>
+            <dd>{formatFileSize(preview?.size ?? entry.size)}</dd>
+          </div>
+          <div>
+            <dt>修改时间</dt>
+            <dd>{preview?.modifiedAt ? new Date(preview.modifiedAt).toLocaleString() : "未知"}</dd>
+          </div>
+        </dl>
+        {loading ? <EmptyState title="正在读取文件" detail="正在从本地 API 读取文件预览。" /> : null}
+        {!loading && error ? <p className="file-preview-error">{error}</p> : null}
+        {!loading && preview?.content ? (
+          <pre className="tool-result-drawer-body file-preview-body">{preview.content}</pre>
+        ) : null}
+        {!loading && preview?.exists && !preview.content && !error ? (
+          <EmptyState title="文件为空" detail="这个文件没有可预览的文本内容。" />
+        ) : null}
+        <div className="tool-result-drawer-actions">
+          <button className="secondary-button" disabled={!preview?.content} onClick={() => void copyPreviewContent()} type="button">
+            {copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制内容"}
+          </button>
+          <button className="secondary-button" disabled={sending || !canAskAgent} onClick={() => void onAskAgent(entry.path)} type="button">
+            {sending ? "发送中..." : "让 Agent 读取"}
+          </button>
+          <button className="primary-button" onClick={onClose} type="button">
+            关闭
+          </button>
+        </div>
+      </aside>
     </div>
   );
 }

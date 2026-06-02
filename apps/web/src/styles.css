@@ -2062,6 +2062,24 @@ h4 {
   font-weight: 800;
 }
 
+.file-preview-drawer {
+  width: min(640px, 100%);
+}
+
+.file-preview-body {
+  min-height: 220px;
+}
+
+.file-preview-error {
+  border: 1px solid #ead0cf;
+  border-radius: 8px;
+  padding: 10px;
+  color: #8c2c2c;
+  background: #fff8f7;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .file-row b {
   color: #2b7459;
   font-size: 11px;

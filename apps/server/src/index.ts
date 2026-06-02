@@ -29,6 +29,7 @@ import {
   listWorkspaceDirectory,
   parseToolRequests,
   prepareToolRequest,
+  readWorkspaceFilePreview,
   summarizeToolRequest,
   type AgentToolContext,
   type AgentToolRequest
@@ -123,6 +124,16 @@ app.get("/api/workspace/list", async (req, res, next) => {
     const settings = await loadSettings(snapshot.providers);
     const path = typeof req.query.path === "string" ? req.query.path : ".";
     res.json(await listWorkspaceDirectory(settings.workspace, path));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/workspace/file", async (req, res, next) => {
+  try {
+    const settings = await loadSettings(snapshot.providers);
+    const path = typeof req.query.path === "string" ? req.query.path : "";
+    res.json(await readWorkspaceFilePreview(settings.workspace, path));
   } catch (error) {
     next(error);
   }

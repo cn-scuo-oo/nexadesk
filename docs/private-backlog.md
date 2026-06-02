@@ -31,6 +31,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add copy and full-detail viewing for tool result messages. Done in Phase 6 fourteenth pass.
 - Optimize the approval queue with risk explanations and safe batch actions. Done in Phase 6 fifteenth pass.
 - Add a real workspace file panel to the workbench. Done in Phase 6 sixteenth pass.
+- Add workspace file preview and send-to-Agent read action. Done in Phase 6 seventeenth pass.
 - Persist sessions and messages beyond in-memory demo state. Done in Phase 6 third pass.
 - Add per-agent model override tests.
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.

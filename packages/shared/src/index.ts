@@ -288,6 +288,18 @@ export interface WorkspaceListResult {
   error?: string;
 }
 
+export interface WorkspaceFilePreviewResult {
+  root: string;
+  path: string;
+  name: string;
+  content: string;
+  size?: number;
+  modifiedAt?: string;
+  exists: boolean;
+  truncated?: boolean;
+  error?: string;
+}
+
 export interface PermissionRequest {
   id: string;
   sessionId: string;

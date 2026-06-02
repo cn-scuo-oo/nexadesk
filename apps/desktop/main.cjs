@@ -203,6 +203,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区文件")) {
     throw new Error("Renderer smoke test failed: workspace file panel was not rendered.");
   }
+  if (!workbenchText.includes("刷新") || !workbenchText.includes("上级")) {
+    throw new Error("Renderer smoke test failed: workspace file controls were not rendered.");
+  }
 
   const settingsText = await renderAndReadText(apiPort, "settings");
   if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务")) {

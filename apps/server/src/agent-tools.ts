@@ -1,18 +1,20 @@
 ﻿import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type {
   AgentToolName,
   PermissionRisk,
   ToolCall,
+  WorkspaceFilePreviewResult,
   WorkspaceListResult,
   WorkspaceSettings,
   WorkspaceTreeEntry
 } from "@nexadesk/shared";
 
 const execFileAsync = promisify(execFile);
+const maxPreviewFileSize = 256_000;
 
 export type AgentToolRequest = {
   tool: AgentToolName;
@@ -212,6 +214,66 @@ export async function listWorkspaceDirectory(
   }
 }
 
+export async function readWorkspaceFilePreview(
+  workspace: WorkspaceSettings,
+  inputPath: string
+): Promise<WorkspaceFilePreviewResult> {
+  const root = getWorkspaceRoot(workspace);
+  let target = root;
+  let currentPath = inputPath || "";
+
+  try {
+    if (!inputPath) {
+      throw new Error("需要提供文件路径。");
+    }
+    target = resolveWorkspacePath(workspace, inputPath);
+    currentPath = toWorkspacePath(relative(root, target)) || basename(target);
+    const info = await stat(target);
+    if (!info.isFile()) {
+      return {
+        root,
+        path: currentPath,
+        name: basename(target),
+        content: "",
+        exists: false,
+        error: "当前路径不是文件。"
+      };
+    }
+    if (info.size > maxPreviewFileSize) {
+      return {
+        root,
+        path: currentPath,
+        name: basename(target),
+        content: "",
+        size: info.size,
+        modifiedAt: info.mtime.toISOString(),
+        exists: true,
+        truncated: true,
+        error: `文件超过 ${formatSize(maxPreviewFileSize)}，当前预览和 read_file 工具会拒绝读取，请先缩小文件范围。`
+      };
+    }
+
+    return {
+      root,
+      path: currentPath,
+      name: basename(target),
+      content: await readFile(target, "utf8"),
+      size: info.size,
+      modifiedAt: info.mtime.toISOString(),
+      exists: true
+    };
+  } catch (error) {
+    return {
+      root,
+      path: currentPath,
+      name: basename(currentPath || inputPath || "file"),
+      content: "",
+      exists: false,
+      error: error instanceof Error ? error.message : "文件读取失败。"
+    };
+  }
+}
+
 async function readWorkspaceFile(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.path) {
     throw new Error("read_file 需要 path。");
@@ -384,6 +446,16 @@ function isPathInside(root: string, target: string) {
 
 function toWorkspacePath(path: string) {
   return path.split(sep).join("/");
+}
+
+function formatSize(size: number) {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function extractPageText(url: string, html: string) {

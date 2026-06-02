@@ -13,6 +13,7 @@
   ProviderTestResult,
   SaveSettingsRequest,
   SendMessageRequest,
+  WorkspaceFilePreviewResult,
   WorkspaceListResult
 } from "@nexadesk/shared";
 
@@ -52,6 +53,14 @@ export async function fetchWorkspaceList(path = "."): Promise<WorkspaceListResul
     throw new Error(`Workspace list request failed with ${response.status}`);
   }
   return response.json() as Promise<WorkspaceListResult>;
+}
+
+export async function fetchWorkspaceFile(path: string): Promise<WorkspaceFilePreviewResult> {
+  const response = await fetch(`${apiBase}/api/workspace/file?path=${encodeURIComponent(path)}`);
+  if (!response.ok) {
+    throw new Error(`Workspace file request failed with ${response.status}`);
+  }
+  return response.json() as Promise<WorkspaceFilePreviewResult>;
 }
 
 export async function saveSettings(payload: SaveSettingsRequest): Promise<{
