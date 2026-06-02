@@ -424,6 +424,11 @@ h4 {
   opacity: 0.62;
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .secondary-button {
   color: #25483f;
   background: #e0ebe6;
@@ -986,6 +991,107 @@ h4 {
   font-size: 13px;
 }
 
+.approval-bulk-panel {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid #e2ebe6;
+  padding: 12px;
+  background: #f8fbf9;
+}
+
+.approval-bulk-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.approval-bulk-stats span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #dce8e2;
+  border-radius: 8px;
+  padding: 8px;
+  color: #5a7067;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.approval-bulk-stats b {
+  color: #1f3d34;
+  font-size: 17px;
+}
+
+.approval-bulk-note {
+  color: #5b7067;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.approval-bulk-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.approval-risk-note {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border: 1px solid #dfe9e4;
+  border-radius: 8px;
+  padding: 9px;
+  color: #334c43;
+  background: #f8fbf9;
+}
+
+.approval-risk-note.medium {
+  border-color: #ead9aa;
+  background: #fff9e8;
+}
+
+.approval-risk-note.high {
+  border-color: #ead0cf;
+  background: #fff8f7;
+}
+
+.approval-risk-note strong {
+  font-size: 13px;
+}
+
+.approval-risk-note span,
+.approval-risk-note small {
+  color: #5b7067;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.approval-meta-grid {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.approval-meta-grid div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.approval-meta-grid dt {
+  color: #71857c;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.approval-meta-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: #203b33;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .approval-card.history {
   background: #f8fbf9;
 }
@@ -1003,6 +1109,10 @@ h4 {
   display: grid;
   gap: 5px;
   margin-top: 9px;
+}
+
+.approval-reason.batch-reason {
+  margin-top: 0;
 }
 
 .approval-reason span {
@@ -2024,7 +2134,9 @@ h4 {
 
   .provider-overview-grid,
   .field-grid,
-  .provider-check-line {
+  .provider-check-line,
+  .approval-bulk-stats,
+  .approval-bulk-actions {
     grid-template-columns: 1fr;
   }
 }

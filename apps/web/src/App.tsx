@@ -240,6 +240,8 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [recoveringSettings, setRecoveringSettings] = useState(false);
+  const [batchRejectReason, setBatchRejectReason] = useState("");
+  const [resolvingBatchApprovals, setResolvingBatchApprovals] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,6 +334,8 @@ export function App() {
   const connectedProviders = snapshot?.providers.filter((provider) => provider.connected).length ?? 0;
   const configuredProviders = runtimeSettings.providers.filter((provider) => provider.connected).length;
   const activeApprovals = snapshot?.approvals.length ?? 0;
+  const batchApprovableApprovals = snapshot?.approvals.filter((approval) => approval.risk !== "high") ?? [];
+  const highRiskApprovals = snapshot?.approvals.filter((approval) => approval.risk === "high").length ?? 0;
   const activeRuntimeProvider =
     runtimeSettings.providers.find((provider) => provider.id === runtimeSettings.model.activeProviderId) ??
     runtimeSettings.providers.find((provider) => provider.connected) ??
@@ -422,21 +426,25 @@ export function App() {
 
     if (mode === "demo") {
       const history = createLocalApprovalHistory(approval, approved ? "approved" : "rejected", reason);
-      setSnapshot({
-        ...snapshot,
-        approvals: snapshot.approvals.filter((item) => item.id !== approval.id),
-        approvalHistory: [history, ...snapshot.approvalHistory].slice(0, 100),
-        activity: [
-          {
-            id: crypto.randomUUID(),
-            level: approved ? "info" : "warning",
-            title: approved ? "Approval granted" : "Approval rejected",
-            detail: approved || !reason ? approval.action : `${approval.action}；原因：${reason}`,
-            createdAt: new Date().toISOString()
-          },
-          ...snapshot.activity
-        ]
-      });
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              approvals: current.approvals.filter((item) => item.id !== approval.id),
+              approvalHistory: [history, ...current.approvalHistory].slice(0, 100),
+              activity: [
+                {
+                  id: crypto.randomUUID(),
+                  level: approved ? "info" : "warning",
+                  title: approved ? "Approval granted" : "Approval rejected",
+                  detail: approved || !reason ? approval.action : `${approval.action}；原因：${reason}`,
+                  createdAt: new Date().toISOString()
+                },
+                ...current.activity
+              ]
+            }
+          : current
+      );
       return;
     }
 
@@ -475,6 +483,35 @@ export function App() {
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Failed to resolve approval");
+    }
+  }
+
+  async function handleResolveApprovalBatch(approved: boolean) {
+    if (!snapshot || resolvingBatchApprovals) {
+      return;
+    }
+
+    const targets = approved ? batchApprovableApprovals : snapshot.approvals;
+    if (approved && targets.length === 0) {
+      setError("高风险审批必须逐条确认，不能批量批准。");
+      return;
+    }
+    if (targets.length === 0) {
+      return;
+    }
+
+    setResolvingBatchApprovals(true);
+    setError(null);
+    try {
+      const reason = approved ? undefined : batchRejectReason.trim() || "批量拒绝";
+      for (const approval of targets) {
+        await handleResolveApproval(approval, approved, reason);
+      }
+      if (!approved) {
+        setBatchRejectReason("");
+      }
+    } finally {
+      setResolvingBatchApprovals(false);
     }
   }
 
@@ -844,6 +881,48 @@ export function App() {
             </div>
             <ShieldCheck size={18} />
           </div>
+          {snapshot.approvals.length > 0 ? (
+            <div className="approval-bulk-panel">
+              <div className="approval-bulk-stats">
+                <span>
+                  待处理 <b>{snapshot.approvals.length}</b>
+                </span>
+                <span>
+                  可批量批准 <b>{batchApprovableApprovals.length}</b>
+                </span>
+                <span>
+                  高风险 <b>{highRiskApprovals}</b>
+                </span>
+              </div>
+              <p className="approval-bulk-note">高风险动作必须逐条确认；批量批准只处理低/中风险审批。</p>
+              <label className="approval-reason batch-reason">
+                <span>批量拒绝原因</span>
+                <input
+                  value={batchRejectReason}
+                  onChange={(event) => setBatchRejectReason(event.target.value)}
+                  placeholder="例如：目标目录不明确，先暂停执行"
+                />
+              </label>
+              <div className="approval-bulk-actions">
+                <button
+                  className="secondary-button"
+                  disabled={resolvingBatchApprovals || batchApprovableApprovals.length === 0}
+                  onClick={() => void handleResolveApprovalBatch(true)}
+                  type="button"
+                >
+                  批量批准低/中风险
+                </button>
+                <button
+                  className="secondary-button danger-button"
+                  disabled={resolvingBatchApprovals}
+                  onClick={() => void handleResolveApprovalBatch(false)}
+                  type="button"
+                >
+                  批量拒绝全部
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="stack-list">
             {snapshot.approvals.length === 0 ? (
               <EmptyState title="No pending approvals" detail="High-risk actions will appear here." />
@@ -3177,14 +3256,30 @@ function ApprovalCard({
   onResolve: (approval: PermissionRequest, approved: boolean, reason?: string) => void;
 }) {
   const [reason, setReason] = useState("");
+  const risk = approvalRiskInfo(approval.risk);
 
   return (
     <article className="approval-card">
-      <span className={`risk ${approval.risk}`}>{approval.risk}</span>
+      <span className={`risk ${approval.risk}`}>{risk.label}</span>
       <h4>{approval.action}</h4>
       <p>
         {agent?.name ?? "Unknown agent"} · {approval.toolName ?? "tool"}
       </p>
+      <div className={`approval-risk-note ${approval.risk}`}>
+        <strong>{risk.title}</strong>
+        <span>{risk.description}</span>
+        <small>{risk.recommendation}</small>
+      </div>
+      <dl className="approval-meta-grid">
+        <div>
+          <dt>工具</dt>
+          <dd>{approval.toolName ?? "未知工具"}</dd>
+        </div>
+        <div>
+          <dt>请求时间</dt>
+          <dd>{new Date(approval.requestedAt).toLocaleString()}</dd>
+        </div>
+      </dl>
       <label className="approval-reason">
         <span>拒绝原因</span>
         <input
@@ -3207,6 +3302,30 @@ function ApprovalCard({
       </div>
     </article>
   );
+}
+
+function approvalRiskInfo(risk: PermissionRequest["risk"]) {
+  const labels: Record<PermissionRequest["risk"], { label: string; title: string; description: string; recommendation: string }> = {
+    low: {
+      label: "低风险",
+      title: "只读或可回滚动作",
+      description: "通常只读取目录、文件或搜索结果，不会改动本地文件和系统状态。",
+      recommendation: "确认目标路径正确后可以放行，也可以等待 Agent 说明用途。"
+    },
+    medium: {
+      label: "中风险",
+      title: "可能影响任务上下文",
+      description: "可能访问较大范围数据、调用网络，或产生后续操作依赖。",
+      recommendation: "建议检查工具名、目标和请求来源，再决定是否批准。"
+    },
+    high: {
+      label: "高风险",
+      title: "会写入、执行或外部访问",
+      description: "可能写文件、执行命令、打开浏览器、生成图片或影响工作区状态。",
+      recommendation: "必须逐条确认，不支持批量批准；不确定时先拒绝并要求 Agent 解释。"
+    }
+  };
+  return labels[risk];
 }
 
 function ApprovalHistoryCard({ history, agent }: { history: ApprovalHistoryEntry; agent?: AgentProfile }) {
