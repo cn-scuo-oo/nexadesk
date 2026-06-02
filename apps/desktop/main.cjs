@@ -215,14 +215,14 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("批量批准低/中风险") || !workbenchText.includes("高风险动作必须逐条确认")) {
     throw new Error("Renderer smoke test failed: approval bulk controls were not rendered.");
   }
-  if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区文件")) {
-    throw new Error("Renderer smoke test failed: workspace file panel was not rendered.");
+  if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区上下文")) {
+    throw new Error("Renderer smoke test failed: workspace context panel was not rendered.");
   }
   if (!workbenchText.includes("刷新") || !workbenchText.includes("上级")) {
     throw new Error("Renderer smoke test failed: workspace file controls were not rendered.");
   }
-  if (!workbenchText.includes("搜索工作区") || !workbenchText.includes("让 Agent 分析文件")) {
-    throw new Error("Renderer smoke test failed: workspace search controls were not rendered.");
+  if (!workbenchText.includes("文件树") || !workbenchText.includes("搜索")) {
+    throw new Error("Renderer smoke test failed: workspace context tabs were not rendered.");
   }
 
   const settingsText = await renderAndReadText(apiPort, "settings");

@@ -66,6 +66,7 @@
 - Packaged desktop startup ignores stray smoke-test environment flags, and desktop smoke tests run against isolated user data.
 - The workbench can search workspace files by name or content and open matching files from the results.
 - Workspace search results can send matching files directly to the active Agent for analysis.
+- The workbench workspace file tree and search are grouped into a compact context panel with switchable views.
 
 ## Later Phases
 

@@ -1103,7 +1103,7 @@ export function App() {
           <div className="panel-heading compact">
             <div>
               <p className="eyebrow">上下文</p>
-              <h3>工作区文件</h3>
+              <h3>工作区上下文</h3>
             </div>
             <FileText size={18} />
           </div>
@@ -3387,6 +3387,7 @@ function WorkspaceFilePanel({
 }) {
   const visiblePath = result?.path ?? currentPath;
   const canGoUp = visiblePath !== ".";
+  const [activeView, setActiveView] = useState<"files" | "search">("files");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<WorkspaceSearchMode>("name");
   const [searchResult, setSearchResult] = useState<WorkspaceSearchResult | null>(null);
@@ -3395,6 +3396,7 @@ function WorkspaceFilePanel({
 
   async function runWorkspaceSearch(event?: FormEvent) {
     event?.preventDefault();
+    setActiveView("search");
     const query = searchQuery.trim();
     if (!query) {
       setSearchResult(null);
@@ -3431,60 +3433,85 @@ function WorkspaceFilePanel({
           上级
         </button>
       </div>
-      <form className="workspace-search-form" onSubmit={(event) => void runWorkspaceSearch(event)}>
-        <label>
-          <span>搜索工作区</span>
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="文件名或内容关键词"
-          />
-        </label>
-        <div className="workspace-search-actions">
-          <select value={searchMode} onChange={(event) => setSearchMode(event.target.value as WorkspaceSearchMode)}>
-            <option value="name">文件名</option>
-            <option value="content">内容</option>
-          </select>
-          <button className="mini-button" disabled={searchLoading || !searchQuery.trim()} type="submit">
-            <Search size={13} />
-            {searchLoading ? "搜索中" : "搜索"}
-          </button>
-        </div>
-        <p>搜索结果可预览，也可让 Agent 分析文件。</p>
-      </form>
-      {searchResult || searchError ? (
-        <WorkspaceSearchResults
-          error={searchError}
-          loading={searchLoading}
-          result={searchResult}
-          onOpenFile={onOpenFile}
-          onOpenPath={onOpenPath}
-          onAskAgent={onAskAgent}
-          sending={sending}
-        />
-      ) : null}
-      <div className="file-list workspace-tree-list">
-        {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
-        {!loading && result?.exists && result.entries.length === 0 ? (
-          <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
-        ) : null}
-        {!loading && result?.exists
-          ? result.entries.map((entry) => (
-              <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
-            ))
-          : null}
-        {!loading && !result?.exists && error ? (
-          <EmptyState title="工作区不可用" detail={error} />
-        ) : null}
-        {!loading && !result && !error
-          ? fallbackFiles.map((file) => (
-              <div className="file-row" key={file.path}>
-                <span>{file.path}</span>
-                {file.changed ? <b>changed</b> : null}
-              </div>
-            ))
-          : null}
+      <div className="workspace-context-tabs" role="tablist" aria-label="工作区上下文">
+        <button
+          aria-pressed={activeView === "files"}
+          className={`workspace-context-tab${activeView === "files" ? " active" : ""}`}
+          onClick={() => setActiveView("files")}
+          type="button"
+        >
+          文件树
+        </button>
+        <button
+          aria-pressed={activeView === "search"}
+          className={`workspace-context-tab${activeView === "search" ? " active" : ""}`}
+          onClick={() => setActiveView("search")}
+          type="button"
+        >
+          搜索
+        </button>
       </div>
+      {activeView === "search" ? (
+        <div className="workspace-context-section">
+          <form className="workspace-search-form" onSubmit={(event) => void runWorkspaceSearch(event)}>
+            <label>
+              <span>搜索工作区</span>
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="文件名或内容关键词"
+              />
+            </label>
+            <div className="workspace-search-actions">
+              <select value={searchMode} onChange={(event) => setSearchMode(event.target.value as WorkspaceSearchMode)}>
+                <option value="name">文件名</option>
+                <option value="content">内容</option>
+              </select>
+              <button className="mini-button" disabled={searchLoading || !searchQuery.trim()} type="submit">
+                <Search size={13} />
+                {searchLoading ? "搜索中" : "搜索"}
+              </button>
+            </div>
+            <p>搜索结果可预览，也可让 Agent 分析文件。</p>
+          </form>
+          {searchResult || searchError || searchLoading ? (
+            <WorkspaceSearchResults
+              error={searchError}
+              loading={searchLoading}
+              result={searchResult}
+              onOpenFile={onOpenFile}
+              onOpenPath={onOpenPath}
+              onAskAgent={onAskAgent}
+              sending={sending}
+            />
+          ) : (
+            <EmptyState title="输入关键词搜索" detail="可按文件名或文件内容查找，再预览或交给 Agent 分析。" />
+          )}
+        </div>
+      ) : (
+        <div className="file-list workspace-tree-list">
+          {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
+          {!loading && result?.exists && result.entries.length === 0 ? (
+            <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
+          ) : null}
+          {!loading && result?.exists
+            ? result.entries.map((entry) => (
+                <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
+              ))
+            : null}
+          {!loading && !result?.exists && error ? (
+            <EmptyState title="工作区不可用" detail={error} />
+          ) : null}
+          {!loading && !result && !error
+            ? fallbackFiles.map((file) => (
+                <div className="file-row" key={file.path}>
+                  <span>{file.path}</span>
+                  {file.changed ? <b>changed</b> : null}
+                </div>
+              ))
+            : null}
+        </div>
+      )}
     </div>
   );
 }
