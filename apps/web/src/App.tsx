@@ -1915,6 +1915,10 @@ function ProviderConfigPanel({
   });
   const alignedMatrixCount = matrixRows.filter((row) => row.summary.status === "ok").length;
   const testedMatrixCount = matrixRows.filter((row) => Boolean(row.result)).length;
+  const enabledProviderCount = providers.filter((provider) => provider.connected).length;
+  const savedKeyCount = providers.filter((provider) => provider.apiKeyConfigured).length;
+  const totalModelCount = providers.reduce((count, provider) => count + provider.models.length, 0);
+  const matrixIssueCount = matrixRows.filter((row) => row.summary.status !== "ok").length;
 
   function updateSelected(patch: Partial<ProviderDraft>) {
     if (!selectedDraft) {
@@ -2289,72 +2293,112 @@ function ProviderConfigPanel({
           </div>
         </div>
 
-        <details className="config-disclosure provider-matrix-disclosure" open>
-          <summary>
-            <span className="summary-main">
-              <strong>国内 Provider 实测矩阵</strong>
-              <small>
-                {alignedMatrixCount}/{domesticProviderMatrix.length} 个默认配置已对齐 · {testedMatrixCount} 个有本次连接测试结果
-              </small>
-            </span>
-          </summary>
-          <div className="disclosure-body">
-            <div className="provider-matrix-list">
-              {matrixRows.map((row) => (
-                <button
-                  className={row.item.id === selectedDraft.id ? "provider-matrix-row active" : "provider-matrix-row"}
-                  key={row.item.id}
-                  onClick={() => {
-                    if (row.provider) {
-                      setSelectedProviderId(row.item.id);
-                      setProviderNotice(null);
-                    } else {
-                      setProviderNotice(`${row.item.label} 预设不存在，请先恢复默认 Provider。`);
-                    }
-                  }}
-                  title={`官方文档：${row.item.officialUrl}`}
-                  type="button"
-                >
-                  <span className={`matrix-status-dot ${row.summary.status}`} />
-                  <span className="matrix-main">
-                    <strong>{row.item.label}</strong>
-                    <small>{row.item.baseUrl}</small>
-                  </span>
-                  <span className="matrix-badges">
-                    <span className={`matrix-badge ${row.summary.status}`}>{row.summary.label}</span>
-                    <span className={`matrix-badge ${providerTestTone(row.result)}`}>{providerTestLabel(row.result)}</span>
-                  </span>
-                  <span className="matrix-meta">
-                    {row.summary.issues.length ? row.summary.issues.slice(0, 2).join("；") : `Key env: ${row.item.envKey}`}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="secret-note">
-              矩阵检查默认 Base URL、模型名和能力开关；真实可用性仍以“测试连接”为准。CI 会运行静态矩阵校验，live 测试需要你自己的 API Key。
-            </p>
-          </div>
-        </details>
-
-        <div className="provider-picker" aria-label="Provider list">
-          {providers.map((provider) => {
-            const draft = drafts[provider.id] ?? createProviderDraft(provider);
-            return (
-              <button
-                className={provider.id === selectedDraft.id ? "provider-picker-card active" : "provider-picker-card"}
-                key={provider.id}
-                onClick={() => setSelectedProviderId(provider.id)}
-                type="button"
-              >
-                <span className={draft.connected ? "agent-status running" : "agent-status"} />
-                <strong>{draft.name}</strong>
-                <small>{draft.apiMode}</small>
-              </button>
-            );
-          })}
+        <div className="provider-overview-grid">
+          <article>
+            <span>启用服务</span>
+            <strong>{enabledProviderCount}</strong>
+            <small>共 {providers.length} 个 Provider</small>
+          </article>
+          <article>
+            <span>已保存 Key</span>
+            <strong>{savedKeyCount}</strong>
+            <small>Key 仍在安全存储中</small>
+          </article>
+          <article>
+            <span>模型条目</span>
+            <strong>{totalModelCount}</strong>
+            <small>可刷新 /models 更新</small>
+          </article>
+          <article>
+            <span>国内矩阵</span>
+            <strong>{alignedMatrixCount}/{domesticProviderMatrix.length}</strong>
+            <small>{matrixIssueCount ? `${matrixIssueCount} 项需检查` : "默认配置已对齐"}</small>
+          </article>
         </div>
 
-        <details className="config-disclosure" open>
+        <div className="provider-workbench">
+          <aside className="provider-workbench-side">
+            <section className="provider-side-section">
+              <div className="provider-side-heading">
+                <strong>Provider 列表</strong>
+                <small>点击切换当前编辑对象</small>
+              </div>
+              <div className="provider-picker" aria-label="Provider list">
+                {providers.map((provider) => {
+                  const draft = drafts[provider.id] ?? createProviderDraft(provider);
+                  return (
+                    <button
+                      className={provider.id === selectedDraft.id ? "provider-picker-card active" : "provider-picker-card"}
+                      key={provider.id}
+                      onClick={() => setSelectedProviderId(provider.id)}
+                      type="button"
+                    >
+                      <span className={draft.connected ? "agent-status running" : "agent-status"} />
+                      <strong>{draft.name}</strong>
+                      <small>{draft.apiMode}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="provider-side-section">
+              <div className="provider-side-heading">
+                <strong>国内 Provider 实测矩阵</strong>
+                <small>
+                  {alignedMatrixCount}/{domesticProviderMatrix.length} 个已对齐 · {testedMatrixCount} 个有测试记录
+                </small>
+              </div>
+              <div className="provider-matrix-list">
+                {matrixRows.map((row) => (
+                  <button
+                    className={row.item.id === selectedDraft.id ? "provider-matrix-row active" : "provider-matrix-row"}
+                    key={row.item.id}
+                    onClick={() => {
+                      if (row.provider) {
+                        setSelectedProviderId(row.item.id);
+                        setProviderNotice(null);
+                      } else {
+                        setProviderNotice(`${row.item.label} 预设不存在，请先恢复默认 Provider。`);
+                      }
+                    }}
+                    title={`官方文档：${row.item.officialUrl}`}
+                    type="button"
+                  >
+                    <span className={`matrix-status-dot ${row.summary.status}`} />
+                    <span className="matrix-main">
+                      <strong>{row.item.label}</strong>
+                      <small>{row.item.baseUrl}</small>
+                    </span>
+                    <span className="matrix-badges">
+                      <span className={`matrix-badge ${row.summary.status}`}>{row.summary.label}</span>
+                      <span className={`matrix-badge ${providerTestTone(row.result)}`}>{providerTestLabel(row.result)}</span>
+                    </span>
+                    <span className="matrix-meta">
+                      {row.summary.issues.length ? row.summary.issues.slice(0, 2).join("；") : `Key env: ${row.item.envKey}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="secret-note compact">
+                矩阵检查默认配置；真实可用性仍以测试连接和刷新模型结果为准。
+              </p>
+            </section>
+          </aside>
+
+          <div className="provider-editor">
+            <div className="provider-editor-header">
+              <div>
+                <p className="eyebrow">当前 Provider</p>
+                <h4>{selectedDraft.name}</h4>
+                <small>{selectedDraft.baseUrl || "Base URL 未设置"}</small>
+              </div>
+              <span className={selectedDraft.connected ? "status ready" : "status muted-status"}>
+                {selectedDraft.connected ? "启用" : "停用"}
+              </span>
+            </div>
+
+            <details className="config-disclosure" open>
           <summary>
             <span className="summary-main">
               <strong>连接与模型</strong>
@@ -2429,7 +2473,7 @@ function ProviderConfigPanel({
           </div>
         </details>
 
-        <details className="config-disclosure" open>
+            <details className="config-disclosure" open>
           <summary>
             <span className="summary-main">
               <strong>API Key 与操作</strong>
@@ -2501,7 +2545,7 @@ function ProviderConfigPanel({
           </div>
         </details>
 
-        <details className="config-disclosure">
+            <details className="config-disclosure">
           <summary>
             <span className="summary-main">
               <strong>能力开关</strong>
@@ -2527,7 +2571,7 @@ function ProviderConfigPanel({
           </div>
         </details>
 
-        <details className="config-disclosure">
+            <details className="config-disclosure">
           <summary>
             <span className="summary-main">
               <strong>预览与状态</strong>
@@ -2548,6 +2592,8 @@ function ProviderConfigPanel({
             </div>
           </div>
         </details>
+          </div>
+        </div>
       </div>
     </section>
   );

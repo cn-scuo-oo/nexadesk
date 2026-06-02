@@ -56,6 +56,7 @@
 - The Model Center surfaces the domestic Provider matrix with default-alignment and latest connection-test status.
 - The Model Center can refresh model names from a Provider's `/models` endpoint and stage them for review before saving.
 - Provider connection-test and model-refresh results are persisted in local settings and restored after restart.
+- The Model Center layout is tightened into a two-pane desktop workbench with Provider overview cards, side selection, and focused editing.
 
 ## Later Phases
 

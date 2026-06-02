@@ -22,6 +22,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Show domestic Provider matrix status inside the Model Center. Done in Phase 6 eighth pass.
 - Add one-click Provider model-list refresh from `/models`. Done in Phase 6 ninth pass.
 - Persist Provider test and model-refresh status across restart. Done in Phase 6 tenth pass.
+- Tighten the Model Center into a two-pane desktop layout. Done in Phase 6 eleventh pass.
 
 ## Agent Runtime
 
