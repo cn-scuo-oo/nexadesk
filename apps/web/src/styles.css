@@ -1035,6 +1035,35 @@ h4 {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: 10px;
+  background: #fff9e9;
+}
+
+.thread-topbar-left,
+.thread-topbar-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.thread-topbar-left > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.thread-topbar-left strong {
+  color: #241f18;
+  font-size: 16px;
+}
+
+.thread-topbar-left small {
+  max-width: 360px;
+  overflow: hidden;
+  color: #777064;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thread-tabs {
@@ -1062,7 +1091,8 @@ h4 {
 
 .thread-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 310px);
+  grid-template-columns: minmax(0, min(920px, 100%));
+  justify-content: center;
   min-height: 0;
   flex: 1;
   gap: 12px;
@@ -1080,12 +1110,59 @@ h4 {
   background: #fffdf8;
 }
 
+.task-thread-panel {
+  width: 100%;
+  min-height: 0;
+}
+
+.thread-session-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #eadfca;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, #fffdf8 0%, #fff9ec 100%);
+}
+
+.thread-session-summary div {
+  min-width: 0;
+}
+
+.thread-session-summary h2 {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.thread-session-summary span {
+  display: block;
+  max-width: 620px;
+  margin-top: 6px;
+  color: #62594b;
+  line-height: 1.45;
+}
+
+.thread-context-trigger {
+  white-space: nowrap;
+}
+
+.thread-context-trigger b {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  color: #1f5f49;
+  background: #dbeee4;
+  font-size: 11px;
+}
+
 .clean-message-list {
-  padding: 20px;
+  padding: 22px 26px;
 }
 
 .floating-composer {
-  margin: 0 18px 16px;
+  margin: 0 24px 20px;
   border: 1px solid #ded7ca;
   border-radius: 14px;
   background: #fffdf8;
@@ -1640,6 +1717,41 @@ h4 {
   background: #fffaf2;
 }
 
+.context-drawer-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(25, 32, 29, 0.26);
+}
+
+.context-drawer {
+  position: fixed;
+  z-index: 31;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  width: min(420px, calc(100vw - 92px));
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  border: 1px solid #d8d0c1;
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255, 252, 246, 0.96);
+  box-shadow: -18px 0 46px rgba(49, 42, 32, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.context-drawer-heading {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+}
+
 .right-dock-heading-actions {
   display: inline-flex;
   align-items: center;
@@ -1678,6 +1790,10 @@ h4 {
 .right-dock-rail span {
   writing-mode: vertical-rl;
   letter-spacing: 0.08em;
+}
+
+.compact-task-list {
+  max-height: 280px;
 }
 
 .engine-status-row,

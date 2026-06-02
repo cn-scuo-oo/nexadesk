@@ -393,7 +393,7 @@ export function App() {
   const [workspaceContextCollapsed, setWorkspaceContextCollapsed] = useState(() =>
     readStoredBoolean(workspaceContextCollapsedStorageKey, false)
   );
-  const [rightDockCollapsed, setRightDockCollapsed] = useState(false);
+  const [threadContextOpen, setThreadContextOpen] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
     readStoredWorkspaceRecentFiles()
   );
@@ -468,6 +468,12 @@ export function App() {
   useEffect(() => {
     writeStoredWorkspaceRecentFiles(recentWorkspaceFiles);
   }, [recentWorkspaceFiles]);
+
+  useEffect(() => {
+    if (activeView !== "thread" && threadContextOpen) {
+      setThreadContextOpen(false);
+    }
+  }, [activeView, threadContextOpen]);
 
   const activeSession = snapshot?.sessions[0];
   const teamAgents = useMemo(() => {
@@ -885,9 +891,9 @@ export function App() {
 
   return (
     <main
-      className={`app-shell${rightDockCollapsed ? " context-collapsed" : ""}${
+      className={`app-shell${
         activeView === "settings" ? " settings-mode" : ""
-      }${activeView !== "thread" && activeView !== "settings" ? " no-context" : ""
+      }${activeView !== "settings" ? " no-context" : ""
       }`}
     >
       <aside className="rail">
@@ -1078,15 +1084,17 @@ export function App() {
         ) : activeView === "thread" ? (
           <TaskThreadView
             activeAgent={activeAgent}
+            activeApprovals={activeApprovals}
             activeMessages={activeMessages}
             activeRuntimeModel={activeRuntimeModel}
             activeRuntimeProvider={activeRuntimeProvider}
-            agents={snapshot.agents}
             draft={draft}
             providers={settings.providers}
             sending={sending}
             taskBoard={taskBoard}
+            workspaceLabel={runtimeSettings.workspace.defaultWorkspace || workspaceList?.root || "未设置工作区"}
             onDraftChange={setDraft}
+            onOpenContext={() => setThreadContextOpen(true)}
             onRuntimeChange={handleWorkbenchRuntimeChange}
             onSend={handleSend}
           />
@@ -1125,21 +1133,16 @@ export function App() {
         )}
       </section>
 
-      {activeView === "thread" ? (
-      <aside className={`right-dock${rightDockCollapsed ? " collapsed" : ""}`}>
-        {rightDockCollapsed ? (
-          <button
-            aria-label="展开实时工作区"
-            className="right-dock-rail"
-            onClick={() => setRightDockCollapsed(false)}
-            type="button"
-          >
-            <FileText size={18} />
-            <span>上下文</span>
-          </button>
-        ) : (
+      {activeView === "thread" && threadContextOpen ? (
         <>
-        <div className="right-dock-heading">
+          <button
+            aria-label="关闭实时工作区"
+            className="context-drawer-backdrop"
+            onClick={() => setThreadContextOpen(false)}
+            type="button"
+          />
+          <aside className="context-drawer" role="dialog" aria-modal="true" aria-label="实时工作区上下文">
+        <div className="right-dock-heading context-drawer-heading">
           <div>
             <p className="eyebrow">Live Context</p>
             <h3>实时工作区</h3>
@@ -1149,7 +1152,7 @@ export function App() {
             <button
               aria-label="收起实时工作区"
               className="icon-button"
-              onClick={() => setRightDockCollapsed(true)}
+              onClick={() => setThreadContextOpen(false)}
               type="button"
             >
               <X size={15} />
@@ -1161,6 +1164,21 @@ export function App() {
           providers={settings.providers}
           onOpenSettings={() => handleOpenSettings("providers")}
         />
+
+        <section className="panel-block">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">运行概览</p>
+              <h3>任务执行状态</h3>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          <div className="task-list compact-task-list">
+            {taskBoard.map((task) => (
+              <TaskCard key={task.id} task={task} agents={snapshot.agents} />
+            ))}
+          </div>
+        </section>
 
         <section className="panel-block" id="approvals">
           <div className="panel-heading compact">
@@ -1324,9 +1342,8 @@ export function App() {
             ))}
           </div>
         </section>
+          </aside>
         </>
-        )}
-      </aside>
       ) : null}
       {selectedWorkspaceFile ? (
         <WorkspaceFilePreviewDrawer
@@ -1493,49 +1510,77 @@ function NewTaskView({
 
 function TaskThreadView({
   activeAgent,
+  activeApprovals,
   activeMessages,
   activeRuntimeModel,
   activeRuntimeProvider,
-  agents,
   draft,
   providers,
   sending,
   taskBoard,
+  workspaceLabel,
   onDraftChange,
+  onOpenContext,
   onRuntimeChange,
   onSend
 }: {
   activeAgent: AgentProfile | null;
+  activeApprovals: number;
   activeMessages: ChatMessage[];
   activeRuntimeModel: string;
   activeRuntimeProvider?: ProviderSettings;
-  agents: AgentProfile[];
   draft: string;
   providers: ProviderSettings[];
   sending: boolean;
   taskBoard: TaskBoardItem[];
+  workspaceLabel: string;
   onDraftChange: (value: string) => void;
+  onOpenContext: () => void;
   onRuntimeChange: (providerId: string, model?: string) => Promise<void>;
   onSend: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const currentTask = taskBoard.find((task) => task.status === "Running") ?? taskBoard[0];
+
   return (
     <section className="workspace thread-workspace">
       <header className="thread-topbar">
-        <div className="thread-tabs" aria-label="任务视图">
-          <span className="active">对话</span>
-          <span>工作室</span>
+        <div className="thread-topbar-left">
+          <div className="thread-tabs" aria-label="任务视图">
+            <span className="active">对话</span>
+            <span>工作室</span>
+          </div>
+          <div>
+            <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
+            <small>{workspaceLabel}</small>
+          </div>
         </div>
-        <strong>{activeAgent?.name ?? "Cowork"}</strong>
-        <RuntimePicker
-          activeRuntimeModel={activeRuntimeModel}
-          activeRuntimeProvider={activeRuntimeProvider}
-          providers={providers}
-          onRuntimeChange={onRuntimeChange}
-        />
+        <div className="thread-topbar-actions">
+          <RuntimePicker
+            activeRuntimeModel={activeRuntimeModel}
+            activeRuntimeProvider={activeRuntimeProvider}
+            providers={providers}
+            onRuntimeChange={onRuntimeChange}
+          />
+          <button className="secondary-button thread-context-trigger" onClick={onOpenContext} type="button">
+            <FileText size={15} />
+            上下文
+            {activeApprovals > 0 ? <b>{activeApprovals}</b> : null}
+          </button>
+        </div>
       </header>
 
       <div className="thread-grid">
         <section className="task-thread-panel">
+          <div className="thread-session-summary">
+            <div>
+              <p className="eyebrow">当前任务</p>
+              <h2>{currentTask?.title ?? "开始协作"}</h2>
+              <span>{currentTask?.detail ?? "把问题交给 Cowork，工具、审批和上下文会进入右侧抽屉。"}</span>
+            </div>
+            <button className="mini-button" onClick={onOpenContext} type="button">
+              查看运行面板
+            </button>
+          </div>
           <div className="message-list clean-message-list">
             {activeMessages.length === 0 ? (
               <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
@@ -1556,21 +1601,6 @@ function TaskThreadView({
             </button>
           </form>
         </section>
-
-        <aside className="task-side-panel">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">运行概览</p>
-              <h3>任务执行状态</h3>
-            </div>
-            <ListChecks size={18} />
-          </div>
-          <div className="task-list">
-            {taskBoard.map((task) => (
-              <TaskCard key={task.id} task={task} agents={agents} />
-            ))}
-          </div>
-        </aside>
       </div>
     </section>
   );

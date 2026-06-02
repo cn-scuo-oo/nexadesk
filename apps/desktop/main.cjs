@@ -234,8 +234,41 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const threadText = await renderAndReadText(apiPort, "thread");
-  if (!threadText.includes("任务执行状态") || !threadText.includes("审批队列") || !threadText.includes("工作区上下文")) {
-    throw new Error("Renderer smoke test failed: task execution view did not render its right-side context.");
+  if (!threadText.includes("当前任务") || !threadText.includes("继续对话") || !threadText.includes("上下文")) {
+    throw new Error("Renderer smoke test failed: task thread did not render the WeSight-style session view.");
+  }
+  const threadLayout = await renderAndEvaluate(
+    apiPort,
+    "thread",
+    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasRightDock: Boolean(document.querySelector('.right-dock')), hasContextDrawer: Boolean(document.querySelector('.context-drawer')), hasTaskSidePanel: Boolean(document.querySelector('.task-side-panel')), hasContextTrigger: Boolean(document.querySelector('.thread-context-trigger')) }))()"
+  );
+  if (threadLayout.hasRightDock || threadLayout.hasContextDrawer || threadLayout.hasTaskSidePanel) {
+    throw new Error("Renderer smoke test failed: task thread should not render stacked side panels by default.");
+  }
+  if (!threadLayout.hasContextTrigger) {
+    throw new Error("Renderer smoke test failed: task thread did not expose the on-demand context trigger.");
+  }
+  if (threadLayout.documentWidth > threadLayout.viewportWidth + 2) {
+    throw new Error(
+      "Renderer smoke test failed: task thread overflowed horizontally at desktop width " +
+        threadLayout.viewportWidth +
+        " (document width " +
+        threadLayout.documentWidth +
+        ")."
+    );
+  }
+  const threadDrawerLayout = await renderAndEvaluate(
+    apiPort,
+    "thread",
+    "(() => new Promise((resolve) => { document.querySelector('.thread-context-trigger')?.click(); setTimeout(() => resolve({ hasContextDrawer: Boolean(document.querySelector('.context-drawer')), text: document.body.innerText }), 100); }))()"
+  );
+  if (
+    !threadDrawerLayout.hasContextDrawer ||
+    !threadDrawerLayout.text.includes("任务执行状态") ||
+    !threadDrawerLayout.text.includes("审批队列") ||
+    !threadDrawerLayout.text.includes("工作区上下文")
+  ) {
+    throw new Error("Renderer smoke test failed: context drawer did not render runtime, approval, and workspace panels.");
   }
 
   const runtimeText = await renderAndReadText(apiPort, "runtime");
@@ -412,7 +445,16 @@ async function renderAndEvaluate(apiPort, hash, script) {
   });
 
   await loadRenderer(smokeWindow, apiPort, hash);
-  await new Promise((resolve) => setTimeout(resolve, 800));
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    const ready = await smokeWindow.webContents.executeJavaScript(
+      "Boolean(document.querySelector('.main-stage')) && !document.querySelector('.loading-screen')"
+    );
+    if (ready) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   const result = await smokeWindow.webContents.executeJavaScript(script);
   smokeWindow.close();
   return result;
