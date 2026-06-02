@@ -13,8 +13,16 @@
 
 body {
   margin: 0;
+  overflow: hidden;
   min-width: 320px;
   min-height: 100vh;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
 }
 
 button,
@@ -54,12 +62,23 @@ h4 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 64px 304px minmax(620px, 1fr) 372px;
-  min-height: 100vh;
+  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr) minmax(288px, 320px);
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background:
     radial-gradient(circle at 18% 0%, rgba(46, 111, 92, 0.12), transparent 32%),
     radial-gradient(circle at 86% 12%, rgba(208, 171, 98, 0.14), transparent 28%),
     linear-gradient(180deg, #faf7ef 0%, #f1ede4 100%);
+}
+
+.app-shell.context-collapsed {
+  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr) 52px;
+}
+
+.app-shell.settings-mode {
+  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr);
 }
 
 .rail {
@@ -67,8 +86,9 @@ h4 {
   align-items: center;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
   border-right: 1px solid #ded6c7;
-  padding: 18px 12px;
+  padding: 18px 8px;
   background: rgba(255, 251, 243, 0.92);
 }
 
@@ -118,6 +138,7 @@ h4 {
 .right-dock {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
   border-right: 1px solid #ded6c7;
   background: rgba(255, 252, 246, 0.86);
@@ -126,15 +147,28 @@ h4 {
 
 .sidebar {
   gap: 18px;
-  padding: 22px 16px;
+  overflow: hidden;
+  padding: 20px 12px;
 }
 
 .right-dock {
   gap: 14px;
   overflow: auto;
-  padding: 18px;
+  padding: 8px;
   border-right: 0;
   border-left: 1px solid #ded6c7;
+}
+
+.right-dock.collapsed {
+  overflow: hidden;
+  padding: 8px;
+}
+
+.main-stage {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
 }
 
 .product-title {
@@ -457,25 +491,39 @@ h4 {
 }
 
 .workspace {
+  height: 100%;
   min-width: 0;
-  padding: 22px;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid rgba(222, 215, 202, 0.86);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(250, 247, 239, 0.76);
 }
 
 .topbar {
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 20px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .topbar-actions {
+  flex: 0 1 420px;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
 }
 
+.topbar > div:first-child {
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
 .runtime-select {
   display: grid;
   gap: 5px;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .runtime-select span {
@@ -583,16 +631,16 @@ h4 {
 
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.2fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .workspace-overview {
   display: grid;
-  grid-template-columns: minmax(360px, 1.45fr) minmax(260px, 0.75fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .leader-card,
@@ -608,15 +656,15 @@ h4 {
 }
 
 .leader-card {
-  padding: 16px;
+  padding: 14px;
 }
 
 .cowork-start-card {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 46px minmax(0, 1fr);
   align-items: start;
-  gap: 14px;
-  padding: 18px;
+  gap: 12px;
+  padding: 14px;
   background:
     linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(245, 238, 225, 0.96)),
     #fffaf2;
@@ -624,8 +672,8 @@ h4 {
 
 .cowork-start-icon {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border-radius: 10px;
   color: #fffaf2;
@@ -633,8 +681,8 @@ h4 {
 }
 
 .cowork-start-card h3 {
-  margin-top: 6px;
-  font-size: 24px;
+  margin-top: 5px;
+  font-size: 20px;
 }
 
 .cowork-start-card p {
@@ -663,8 +711,8 @@ h4 {
 }
 
 .leader-card h3 {
-  margin-top: 18px;
-  font-size: 22px;
+  margin-top: 14px;
+  font-size: 20px;
 }
 
 .leader-card p {
@@ -676,7 +724,7 @@ h4 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .metric {
@@ -724,20 +772,20 @@ h4 {
 
 .team-node-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
-  padding: 14px;
+  padding: 12px;
 }
 
 .workspace-team-map {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .workspace-summary-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .team-node {
@@ -796,15 +844,15 @@ h4 {
 
 .work-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 12px;
   align-items: stretch;
 }
 
 .cowork-panel,
 .task-panel {
   display: flex;
-  min-height: 520px;
+  min-height: 460px;
   flex-direction: column;
 }
 
@@ -1169,7 +1217,14 @@ h4 {
   background: #fffaf2;
 }
 
-.right-dock-heading span {
+.right-dock-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.right-dock-heading-actions > span {
   max-width: 150px;
   overflow: hidden;
   border-radius: 999px;
@@ -1180,6 +1235,26 @@ h4 {
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.right-dock-rail {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  border: 1px solid #ded7ca;
+  border-radius: 10px;
+  color: #355347;
+  background: #fffaf2;
+  font-weight: 900;
+}
+
+.right-dock-rail span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.08em;
 }
 
 .engine-status-row,
@@ -2637,33 +2712,65 @@ h4 {
 
 @media (max-width: 1320px) {
   .app-shell {
-    grid-template-columns: 64px 246px minmax(0, 1fr);
+    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr) minmax(260px, 292px);
   }
 
-  .right-dock {
-    grid-column: 3;
-    display: grid;
+  .app-shell.context-collapsed {
+    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr) 48px;
+  }
+
+  .app-shell.settings-mode {
+    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr);
+  }
+
+  .rail {
+    padding-inline: 6px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .rail-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .sidebar {
+    gap: 14px;
+    padding: 18px 10px;
+  }
+
+  .workspace {
+    padding: 14px;
+  }
+
+  .workspace-summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-left: 0;
-    border-top: 1px solid #dbe5df;
   }
 }
 
 @media (max-width: 980px) {
   .app-shell {
-    display: block;
+    grid-template-columns: 52px minmax(0, 1fr);
   }
 
   .rail {
-    flex-direction: row;
-    justify-content: center;
-    border-right: 0;
-    border-bottom: 1px solid #dbe5df;
+    border-right: 1px solid #dbe5df;
+    border-bottom: 0;
   }
 
   .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #dbe5df;
+    display: none;
+  }
+
+  .main-stage {
+    grid-column: 2;
+  }
+
+  .right-dock {
+    display: none;
   }
 
   .hero-grid,

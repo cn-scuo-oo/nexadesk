@@ -376,6 +376,7 @@ export function App() {
   const [workspaceContextCollapsed, setWorkspaceContextCollapsed] = useState(() =>
     readStoredBoolean(workspaceContextCollapsedStorageKey, false)
   );
+  const [rightDockCollapsed, setRightDockCollapsed] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
     readStoredWorkspaceRecentFiles()
   );
@@ -859,7 +860,11 @@ export function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      className={`app-shell${rightDockCollapsed ? " context-collapsed" : ""}${
+        activeView === "settings" ? " settings-mode" : ""
+      }`}
+    >
       <aside className="rail">
         <div className="brand-mark">
           <Workflow size={22} />
@@ -1038,15 +1043,16 @@ export function App() {
         </div>
       </aside>
 
-      {activeView === "settings" ? (
-        <SettingsCenter
-          initialTab={settingsInitialTab}
-          settings={settings}
-          status={settingsStatus}
-          onSave={handleSaveSettings}
-        />
-      ) : (
-      <section className="workspace" id="team">
+      <section className="main-stage">
+        {activeView === "settings" ? (
+          <SettingsCenter
+            initialTab={settingsInitialTab}
+            settings={settings}
+            status={settingsStatus}
+            onSave={handleSaveSettings}
+          />
+        ) : (
+      <section className="workspace cowork-workspace" id="team">
         <header className="topbar">
           <div>
             <p className="eyebrow">NexaDesk Cowork</p>
@@ -1214,14 +1220,38 @@ export function App() {
         </div>
       </section>
       )}
+      </section>
 
-      <aside className="right-dock">
+      {activeView === "cowork" ? (
+      <aside className={`right-dock${rightDockCollapsed ? " collapsed" : ""}`}>
+        {rightDockCollapsed ? (
+          <button
+            aria-label="展开实时工作区"
+            className="right-dock-rail"
+            onClick={() => setRightDockCollapsed(false)}
+            type="button"
+          >
+            <FileText size={18} />
+            <span>上下文</span>
+          </button>
+        ) : (
+        <>
         <div className="right-dock-heading">
           <div>
             <p className="eyebrow">Live Context</p>
             <h3>实时工作区</h3>
           </div>
-          <span>{activeRuntimeModel || "未选择模型"}</span>
+          <div className="right-dock-heading-actions">
+            <span>{activeRuntimeModel || "未选择模型"}</span>
+            <button
+              aria-label="收起实时工作区"
+              className="icon-button"
+              onClick={() => setRightDockCollapsed(true)}
+              type="button"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         <ProviderStatusPanel
@@ -1391,7 +1421,10 @@ export function App() {
             ))}
           </div>
         </section>
+        </>
+        )}
       </aside>
+      ) : null}
       {selectedWorkspaceFile ? (
         <WorkspaceFilePreviewDrawer
           entry={selectedWorkspaceFile}

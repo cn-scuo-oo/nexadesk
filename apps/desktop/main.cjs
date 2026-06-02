@@ -209,6 +209,23 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
   }
+  const workbenchLayout = await renderAndEvaluate(
+    apiPort,
+    undefined,
+    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasRightDock: Boolean(document.querySelector('.right-dock')) }))()"
+  );
+  if (!workbenchLayout.hasMainStage || !workbenchLayout.hasRightDock) {
+    throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
+  }
+  if (workbenchLayout.documentWidth > workbenchLayout.viewportWidth + 2) {
+    throw new Error(
+      "Renderer smoke test failed: workbench layout overflowed horizontally at desktop width " +
+        workbenchLayout.viewportWidth +
+        " (document width " +
+        workbenchLayout.documentWidth +
+        ")."
+    );
+  }
   if (!workbenchText.includes("复制结果") || !workbenchText.includes("调用详情")) {
     throw new Error("Renderer smoke test failed: tool result controls were not rendered.");
   }
