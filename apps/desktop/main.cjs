@@ -212,6 +212,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配一个任务")) {
     throw new Error("Renderer smoke test failed: new task home was not rendered.");
   }
+  if (!workbenchText.includes("运行目标") || !workbenchText.includes("任务记录")) {
+    throw new Error("Renderer smoke test failed: WeSight-style sidebar run target and task history were not rendered.");
+  }
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
@@ -276,9 +279,24 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
   }
 
+  const searchText = await renderAndReadText(apiPort, "search");
+  if (!searchText.includes("搜索任务") || !searchText.includes("最近上下文")) {
+    throw new Error("Renderer smoke test failed: search workspace was not rendered as a separate view.");
+  }
+
+  const scheduledText = await renderAndReadText(apiPort, "scheduled");
+  if (!scheduledText.includes("新建定时任务") || !scheduledText.includes("自动化队列")) {
+    throw new Error("Renderer smoke test failed: scheduled task workspace was not rendered as a separate view.");
+  }
+
   const skillsText = await renderAndReadText(apiPort, "skills");
   if (!skillsText.includes("技能市场") && !skillsText.includes("技能")) {
     throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
+  }
+
+  const mcpText = await renderAndReadText(apiPort, "mcp");
+  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器")) {
+    throw new Error("Renderer smoke test failed: MCP workspace was not rendered as a separate view.");
   }
 
   const agentsText = await renderAndReadText(apiPort, "agents");

@@ -215,6 +215,7 @@ h4 {
 .sidebar-section,
 .nav-list,
 .project-list,
+.session-history-list,
 .agent-list,
 .stack-list,
 .provider-list,
@@ -233,6 +234,10 @@ h4 {
 .sidebar-section.grow {
   min-height: 0;
   flex: 1;
+}
+
+.history-section {
+  overflow: hidden;
 }
 
 .section-heading,
@@ -393,6 +398,145 @@ h4 {
   border-radius: 8px;
   padding: 12px;
   background: rgba(255, 250, 242, 0.62);
+}
+
+.run-target-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid #d8d0c1;
+  border-radius: 10px;
+  padding: 10px;
+  color: #2d281f;
+  background: #fffaf2;
+  text-align: left;
+}
+
+.run-target-card:hover {
+  border-color: #bfd2c5;
+  background: #f5f0e6;
+}
+
+.run-target-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  color: #fffaf2;
+  background: #213b33;
+  font-weight: 900;
+}
+
+.run-target-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.run-target-main strong,
+.run-target-main small,
+.session-history-card strong,
+.session-history-card small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-target-main small {
+  color: #736c5f;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.run-target-chips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.target-chip {
+  min-height: 26px;
+  border: 1px solid #ded7ca;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: #51483b;
+  background: #fffdf8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.target-chip.active {
+  color: #1e5b45;
+  border-color: #bfd9cb;
+  background: #e2f0e8;
+}
+
+.session-history-list {
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.session-history-card {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+  color: #2f2a23;
+  background: transparent;
+  text-align: left;
+}
+
+.session-history-card:hover,
+.session-history-card.active {
+  border-color: #ded7ca;
+  background: #efe7d7;
+}
+
+.session-history-card span:not(.history-status-dot) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.session-history-card small {
+  color: #746f65;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.session-history-card b {
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #31584a;
+  background: #dce8df;
+  font-size: 10px;
+}
+
+.history-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2c7a5e;
+}
+
+.history-status-dot.muted {
+  background: #b58a3d;
+}
+
+.muted-history-card {
+  border: 1px dashed #d8cfbf;
+  background: rgba(255, 250, 242, 0.52);
 }
 
 .sidebar-metrics {
@@ -1228,9 +1372,69 @@ h4 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.module-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.module-toolbar span {
+  border: 1px solid #ded7ca;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #5a5145;
+  background: #fffdf8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.module-toolbar .active {
+  color: #bc6400;
+  border-color: #f0d59a;
+  background: #fff2c7;
+}
+
+.search-workspace-grid,
+.automation-layout,
+.skill-market-layout,
+.mcp-layout {
+  display: grid;
+  min-height: 0;
+  gap: 12px;
+}
+
+.search-workspace-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.automation-layout,
+.mcp-layout {
+  grid-template-columns: minmax(270px, 0.42fr) minmax(0, 1fr);
+}
+
+.skill-market-layout {
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+}
+
+.search-result-panel,
+.automation-create-panel,
+.automation-queue-panel,
+.skill-installed-panel,
+.mcp-gateway-panel {
+  min-height: 0;
+}
+
+.automation-queue-panel,
+.search-result-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .module-row {
   display: grid;
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  align-items: center;
   width: 100%;
   border: 1px solid #e4dccd;
   border-radius: 8px;
@@ -1241,11 +1445,45 @@ h4 {
 }
 
 .module-row span {
+  grid-column: 1;
   overflow: hidden;
   color: #756d60;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.module-row b {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #31584a;
+  background: #dce8df;
+  font-size: 11px;
+}
+
+.skill-market-grid,
+.mcp-server-grid {
+  align-content: start;
+}
+
+.mcp-gateway-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+
+.mcp-gateway-panel p {
+  padding: 0 12px;
+  color: #62594d;
+  line-height: 1.5;
+}
+
+.mcp-gateway-panel .secondary-button {
+  margin: 0 12px;
+  justify-self: start;
 }
 
 .dashboard-filter-row,
@@ -2071,6 +2309,50 @@ h4 {
   min-height: 0;
 }
 
+.settings-modal-backdrop {
+  position: fixed;
+  z-index: 45;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(40, 34, 26, 0.36);
+  backdrop-filter: blur(7px);
+}
+
+.settings-modal {
+  position: relative;
+  width: min(980px, 100%);
+  height: min(760px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #d8d0c1;
+  border-radius: 14px;
+  background: #fffaf0;
+  box-shadow: 0 28px 80px rgba(43, 34, 23, 0.24);
+}
+
+.settings-modal-close {
+  position: absolute;
+  z-index: 5;
+  top: 16px;
+  right: 16px;
+  background: #fff5df;
+}
+
+.settings-modal .settings-workspace {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 20px;
+  background: transparent;
+}
+
+.settings-modal .settings-workspace .topbar {
+  padding-right: 42px;
+}
+
 .settings-workspace {
   display: flex;
   flex-direction: column;
@@ -2156,6 +2438,33 @@ h4 {
   display: grid;
   gap: 12px;
   padding: 12px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  color: #43554e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.settings-form input,
+.settings-form select,
+.settings-form textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d8d0c1;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #17221e;
+  background: #fffdf8;
+  outline: 0;
+}
+
+.settings-form textarea {
+  min-height: 92px;
+  resize: vertical;
+  padding-block: 10px;
 }
 
 .collapse-list {

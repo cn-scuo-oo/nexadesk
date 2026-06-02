@@ -18,7 +18,7 @@
   X,
   Zap
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDefaultProviders,
   createDefaultSettings,
@@ -232,6 +232,9 @@ const appViews = new Set<AppView>([
 
 function readInitialAppView(): AppView {
   const hash = window.location.hash.replace(/^#/, "") as AppView;
+  if (hash === "settings") {
+    return "new";
+  }
   return appViews.has(hash) ? hash : "new";
 }
 
@@ -372,6 +375,7 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeView, setActiveView] = useState<AppView>(() => readInitialAppView());
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("providers");
+  const [settingsOpen, setSettingsOpen] = useState(() => window.location.hash.replace(/^#/, "") === "settings");
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -820,8 +824,11 @@ export function App() {
 
   function handleOpenSettings(tab: SettingsTab = "providers") {
     setSettingsInitialTab(tab);
-    window.location.hash = "settings";
-    setActiveView("settings");
+    setSettingsOpen(true);
+  }
+
+  function handleCloseSettings() {
+    setSettingsOpen(false);
   }
 
   async function handleSaveSettings(nextSettings: AppSettings, providerSecrets: ProviderSecretUpdate[] = []) {
@@ -891,10 +898,7 @@ export function App() {
 
   return (
     <main
-      className={`app-shell${
-        activeView === "settings" ? " settings-mode" : ""
-      }${activeView !== "settings" ? " no-context" : ""
-      }`}
+      className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}`}
     >
       <aside className="rail">
         <div className="brand-mark">
@@ -918,7 +922,7 @@ export function App() {
           <Folder size={19} />
         </button>
         <button
-          className={activeView === "settings" ? "rail-button active" : "rail-button"}
+          className={settingsOpen ? "rail-button active" : "rail-button"}
           aria-label="Settings"
           onClick={() => handleOpenSettings("providers")}
           type="button"
@@ -1011,7 +1015,7 @@ export function App() {
               <b>{configuredProviders}</b>
             </button>
             <button
-              className={activeView === "settings" ? "nav-item nav-button active" : "nav-item nav-button"}
+              className={settingsOpen ? "nav-item nav-button active" : "nav-item nav-button"}
               onClick={() => handleOpenSettings("appearance")}
               type="button"
             >
@@ -1026,26 +1030,63 @@ export function App() {
 
         <section className="sidebar-section">
           <div className="section-heading">
-            <span>项目</span>
-            <button className="mini-button">新建</button>
+            <span>运行目标</span>
+            <button className="mini-button" onClick={() => handleOpenSettings("assistants")} type="button">
+              管理
+            </button>
           </div>
-          <div className="project-list">
+          <button className="run-target-card" onClick={() => handleOpenSettings("assistants")} type="button">
+            <span className="run-target-avatar">{activeAgent?.name.slice(0, 1) ?? "C"}</span>
+            <span className="run-target-main">
+              <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
+              <small>{teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}</small>
+            </span>
+            <span className={`agent-status ${activeAgent?.status ?? "running"}`} />
+          </button>
+          <div className="run-target-chips" aria-label="运行目标助手">
+            {teamAgents.slice(0, 4).map((agent) => (
+              <button
+                className={activeAgent?.id === agent.id ? "target-chip active" : "target-chip"}
+                key={agent.id}
+                onClick={() => handleActivateAgent(agent.id)}
+                type="button"
+              >
+                {agent.name}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="sidebar-section history-section grow">
+          <div className="section-heading">
+            <span>任务记录</span>
+            <button className="mini-button" onClick={() => handleOpenView("search")} type="button">
+              搜索
+            </button>
+          </div>
+          <div className="session-history-list">
             {snapshot.sessions.map((session) => (
               <button
-                className={activeView === "thread" ? "session-card project-card active" : "session-card project-card"}
+                className={session.id === activeSession?.id && activeView === "thread" ? "session-history-card active" : "session-history-card"}
                 key={session.id}
                 onClick={() => handleOpenView("thread")}
                 type="button"
               >
-                <span className="project-dot" />
-                <strong>{session.title}</strong>
-                <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                <span className="history-status-dot" />
+                <span>
+                  <strong>{session.title}</strong>
+                  <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                </span>
+                <b>{session.id === activeSession?.id ? "当前" : "完成"}</b>
               </button>
             ))}
-            <article className="project-card quiet-project">
-              <span className="project-dot muted-dot" />
-              <strong>桌面发布 QA</strong>
-              <small>安装包、保留数据、私有分发</small>
+            <article className="session-history-card muted-history-card">
+              <span className="history-status-dot muted" />
+              <span>
+                <strong>桌面发布 QA</strong>
+                <small>安装包、保留数据、私有分发</small>
+              </span>
+              <b>计划</b>
             </article>
           </div>
         </section>
@@ -1060,14 +1101,7 @@ export function App() {
       </aside>
 
       <section className="main-stage">
-        {activeView === "settings" ? (
-          <SettingsCenter
-            initialTab={settingsInitialTab}
-            settings={settings}
-            status={settingsStatus}
-            onSave={handleSaveSettings}
-          />
-        ) : activeView === "new" ? (
+        {activeView === "new" ? (
           <NewTaskView
             activeRuntimeModel={activeRuntimeModel}
             activeRuntimeProvider={activeRuntimeProvider}
@@ -1103,6 +1137,7 @@ export function App() {
             files={snapshot.files}
             recentFiles={recentWorkspaceFiles}
             sessions={snapshot.sessions}
+            onNewTask={() => handleOpenView("new")}
             onOpenSession={() => handleOpenView("thread")}
             onOpenWorkspace={() => handleOpenView("thread")}
           />
@@ -1356,7 +1391,36 @@ export function App() {
           onClose={() => setSelectedWorkspaceFile(null)}
         />
       ) : null}
+      {settingsOpen ? (
+        <SettingsModal onClose={handleCloseSettings}>
+          <SettingsCenter
+            initialTab={settingsInitialTab}
+            settings={settings}
+            status={settingsStatus}
+            onSave={handleSaveSettings}
+          />
+        </SettingsModal>
+      ) : null}
     </main>
+  );
+}
+
+function SettingsModal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="settings-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="应用设置"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button className="settings-modal-close icon-button" onClick={onClose} type="button" aria-label="关闭设置">
+          <X size={17} />
+        </button>
+        {children}
+      </section>
+    </div>
   );
 }
 
@@ -1610,45 +1674,63 @@ function TaskSearchView({
   files,
   recentFiles,
   sessions,
+  onNewTask,
   onOpenSession,
   onOpenWorkspace
 }: {
   files: WorkspaceFile[];
   recentFiles: WorkspaceTreeEntry[];
   sessions: AppSnapshot["sessions"];
+  onNewTask: () => void;
   onOpenSession: () => void;
   onOpenWorkspace: () => void;
 }) {
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Search" title="搜索任务" detail="像 WeSight 一样，把任务记录和上下文搜索放在独立页面。" />
+      <ModuleHeader eyebrow="Search" title="搜索任务" detail="任务记录、工作区文件和上下文检索独立成页。" actionLabel="新建任务" onAction={onNewTask} />
       <div className="module-search-bar">
         <Search size={18} />
         <input placeholder="搜索任务、文件或上下文" />
       </div>
-      <div className="module-grid two-column">
-        <section className="panel-block">
+      <div className="module-toolbar">
+        <span className="active">全部任务</span>
+        <span>已完成</span>
+        <span>有审批</span>
+        <span>文件上下文</span>
+      </div>
+      <div className="search-workspace-grid">
+        <section className="panel-block search-result-panel">
           <div className="panel-heading compact">
-            <h3>任务记录</h3>
+            <div>
+              <p className="eyebrow">History</p>
+              <h3>任务记录</h3>
+            </div>
+            <CircleDot size={18} />
           </div>
           <div className="stack-list">
             {sessions.map((session) => (
               <button className="module-row" key={session.id} onClick={onOpenSession} type="button">
                 <strong>{session.title}</strong>
                 <span>{session.workspace}</span>
+                <b>打开</b>
               </button>
             ))}
           </div>
         </section>
-        <section className="panel-block">
+        <section className="panel-block search-result-panel">
           <div className="panel-heading compact">
-            <h3>最近上下文</h3>
+            <div>
+              <p className="eyebrow">Context</p>
+              <h3>最近上下文</h3>
+            </div>
+            <FileText size={18} />
           </div>
           <div className="stack-list">
             {[...recentFiles, ...files.slice(0, 4)].slice(0, 8).map((file) => (
               <button className="module-row" key={file.path} onClick={onOpenWorkspace} type="button">
                 <strong>{file.path}</strong>
                 <span>{file.kind}</span>
+                <b>预览</b>
               </button>
             ))}
           </div>
@@ -1661,11 +1743,54 @@ function TaskSearchView({
 function ScheduledTasksView({ taskBoard, agents }: { taskBoard: TaskBoardItem[]; agents: AgentProfile[] }) {
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Automation" title="定时任务" detail="后续用于创建每日、每周、后台自动运行的 Agent 任务。" />
-      <div className="module-grid three-column">
-        {taskBoard.map((task) => (
-          <TaskCard key={task.id} task={task} agents={agents} />
-        ))}
+      <ModuleHeader eyebrow="Automation" title="定时任务" detail="周期任务、后台计划和自动化执行放在独立控制台。" />
+      <div className="automation-layout">
+        <section className="panel-block automation-create-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Create</p>
+              <h3>新建定时任务</h3>
+            </div>
+            <CircleDot size={18} />
+          </div>
+          <div className="settings-form">
+            <label>
+              <span>任务名称</span>
+              <input placeholder="例如：每天整理工作区文件" />
+            </label>
+            <label>
+              <span>执行助手</span>
+              <select>
+                {agents.map((agent) => (
+                  <option key={agent.id}>{agent.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>计划</span>
+              <select>
+                <option>每天</option>
+                <option>每周</option>
+                <option>仅一次</option>
+              </select>
+            </label>
+            <button className="primary-button" type="button">创建任务</button>
+          </div>
+        </section>
+        <section className="panel-block automation-queue-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Queue</p>
+              <h3>自动化队列</h3>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          <div className="task-list">
+            {taskBoard.map((task) => (
+              <TaskCard key={task.id} task={task} agents={agents} />
+            ))}
+          </div>
+        </section>
       </div>
     </section>
   );
@@ -1726,7 +1851,25 @@ function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onO
           <span className={index === 1 ? "active" : ""} key={category}>{category}</span>
         ))}
       </div>
-      <div className="module-grid two-column">
+      <div className="skill-market-layout">
+        <section className="panel-block skill-installed-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Installed</p>
+              <h3>已启用技能</h3>
+            </div>
+            <b className="status ready">{skills.filter((skill) => skill.enabled).length}</b>
+          </div>
+          <div className="stack-list">
+            {skills.filter((skill) => skill.enabled).slice(0, 5).map((skill) => (
+              <article className="module-row" key={skill.id}>
+                <strong>{skill.name}</strong>
+                <span>{skill.source}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="module-grid two-column skill-market-grid">
         {skills.map((skill) => (
           <article className="market-card" key={skill.id}>
             <div>
@@ -1737,26 +1880,46 @@ function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onO
             <span>{skill.enabled ? "已启用" : "未启用"} · {skill.source}</span>
           </article>
         ))}
+        </section>
       </div>
     </section>
   );
 }
 
 function McpHubView({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const servers = [
+    { name: "文件系统 MCP", status: "已接入", detail: "读文件、列目录和受控写入。" },
+    { name: "浏览器 MCP", status: "待接入", detail: "打开网页、截图、点击和浏览器自动化。" },
+    { name: "图片生成 MCP", status: "待接入", detail: "生成图片、编辑图片和素材输出。" },
+    { name: "Office MCP", status: "规划中", detail: "Word、Excel、PPT 的文档级工具。" }
+  ];
   return (
     <section className="workspace module-workspace">
       <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="后续在这里管理本地和远程 MCP，避免混进聊天首页。" actionLabel="权限设置" onAction={onOpenSettings} />
-      <div className="module-grid two-column">
-        {["文件系统 MCP", "浏览器 MCP", "图片生成 MCP", "Office MCP"].map((name) => (
-          <article className="market-card" key={name}>
+      <div className="mcp-layout">
+        <section className="panel-block mcp-gateway-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Gateway</p>
+              <h3>工具网关</h3>
+            </div>
+            <ShieldCheck size={18} />
+          </div>
+          <p>所有写文件、执行命令、浏览器和外部访问动作都会先进入审批队列。</p>
+          <button className="secondary-button" onClick={onOpenSettings} type="button">打开权限策略</button>
+        </section>
+        <section className="module-grid two-column mcp-server-grid">
+        {servers.map((server) => (
+          <article className="market-card" key={server.name}>
             <div>
               <Terminal size={17} />
-              <strong>{name}</strong>
+              <strong>{server.name}</strong>
             </div>
-            <p>计划接入，所有高风险工具仍然进入审批队列。</p>
-            <span>未启用</span>
+            <p>{server.detail}</p>
+            <span>{server.status}</span>
           </article>
         ))}
+        </section>
       </div>
     </section>
   );
