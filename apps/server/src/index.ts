@@ -32,6 +32,7 @@ import {
   type ProviderTestRequest,
   type ProviderTestResult,
   type RecoverSettingsRequest,
+  type RuntimeTelemetryEntry,
   type ResolveApprovalRequest,
   type SaveSettingsRequest,
   type SendMessageRequest
@@ -56,6 +57,7 @@ import {
   type RuntimeStreamEvent
 } from "./provider-runtime.js";
 import {
+  loadRuntimeTelemetry,
   loadRuntimeState,
   runtimeStatePath,
   saveRuntimeState,
@@ -66,6 +68,7 @@ import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "
 const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
 const port = Number(getEnv("NEXADESK_PORT", "AION_LITE_PORT") ?? 3939);
 const snapshot = createDemoSnapshot();
+let runtimeTelemetry: RuntimeTelemetryEntry[] = [];
 const app = express();
 const pendingToolApprovals = new Map<
   string,
@@ -123,6 +126,25 @@ app.get("/api/sessions", (_req, res) => {
 const sessionPatchSchema = z.object({
   title: z.string().trim().min(1).max(140).optional(),
   pinned: z.boolean().optional()
+});
+
+const runtimeTelemetryEntrySchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  sessionId: z.string().trim().min(1).max(120),
+  providerName: z.string().trim().min(1).max(160),
+  model: z.string().trim().min(1).max(160),
+  startedAt: z.string().trim().min(1).max(80),
+  completedAt: z.string().trim().min(1).max(80).optional(),
+  firstTokenMs: z.number().finite().nonnegative().optional(),
+  durationMs: z.number().finite().nonnegative().optional(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  status: z.enum(["running", "completed", "failed"])
+});
+
+const runtimeTelemetrySchema = z.object({
+  entries: z.array(runtimeTelemetryEntrySchema).max(100)
 });
 
 app.patch("/api/sessions/:sessionId", async (req, res, next) => {
@@ -197,6 +219,25 @@ app.get("/api/events", (req, res) => {
     "Content-Type": "text/event-stream"
   });
   addEventClient(res);
+});
+
+app.get("/api/runtime/telemetry", (_req, res) => {
+  res.json({ entries: runtimeTelemetry });
+});
+
+app.put("/api/runtime/telemetry", async (req, res, next) => {
+  try {
+    const parsed = runtimeTelemetrySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    runtimeTelemetry = parsed.data.entries.slice(0, 100);
+    await persistRuntimeState();
+    res.json({ entries: runtimeTelemetry });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/settings", async (_req, res, next) => {
@@ -942,7 +983,7 @@ function getEnv(name: string, legacyName: string) {
 
 async function persistRuntimeState() {
   try {
-    await saveRuntimeState(snapshot, pendingToolApprovalRecords());
+    await saveRuntimeState(snapshot, pendingToolApprovalRecords(), runtimeTelemetry);
   } catch (error) {
     console.error("Failed to persist runtime state", error);
   }
@@ -1101,6 +1142,7 @@ void startServer().catch((error) => {
 
 async function startServer() {
   const pendingApprovals = await loadRuntimeState(snapshot);
+  runtimeTelemetry = await loadRuntimeTelemetry();
   pendingToolApprovals.clear();
   for (const pending of pendingApprovals) {
     pendingToolApprovals.set(pending.approvalId, {

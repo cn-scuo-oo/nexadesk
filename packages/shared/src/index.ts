@@ -378,6 +378,21 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
 }
 
+export interface RuntimeTelemetryEntry {
+  id: string;
+  sessionId: string;
+  providerName: string;
+  model: string;
+  startedAt: string;
+  completedAt?: string;
+  firstTokenMs?: number;
+  durationMs?: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  status: "running" | "completed" | "failed";
+}
+
 export interface AgentSession {
   id: string;
   title: string;

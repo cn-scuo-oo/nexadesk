@@ -49,6 +49,7 @@ import {
   type ProviderSettings,
   type ProviderStatusSettings,
   type ProviderTestResult,
+  type RuntimeTelemetryEntry,
   type SkillProfile,
   type ToolCall,
   type WorkspaceFilePreviewResult,
@@ -73,6 +74,8 @@ import {
   recoverSettings as recoverAppSettings,
   resolveApproval,
   saveSettings as persistAppSettings,
+  fetchRuntimeTelemetry,
+  saveRuntimeTelemetry,
   streamMessage,
   subscribeActivity,
   testProvider,
@@ -127,21 +130,6 @@ type ProviderMatrixItem = {
 };
 
 type WorkspaceContextView = "files" | "search";
-
-type RuntimeTelemetryEntry = {
-  id: string;
-  sessionId: string;
-  providerName: string;
-  model: string;
-  startedAt: string;
-  completedAt?: string;
-  firstTokenMs?: number;
-  durationMs?: number;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  status: "running" | "completed" | "failed";
-};
 
 type RuntimeDashboardStats = {
   totalCalls: number;
@@ -497,6 +485,7 @@ export function App() {
     readStoredWorkspaceRecentFiles()
   );
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetryEntry[]>(() => readStoredRuntimeTelemetry());
+  const [runtimeTelemetryLoaded, setRuntimeTelemetryLoaded] = useState(false);
   const runtimeTelemetryRuntimeRef = useRef(new Map<string, { startedMs: number; outputTokens: number }>());
 
   useEffect(() => {
@@ -573,6 +562,42 @@ export function App() {
   useEffect(() => {
     writeStoredRuntimeTelemetry(runtimeTelemetry);
   }, [runtimeTelemetry]);
+
+  useEffect(() => {
+    if (mode !== "live") {
+      setRuntimeTelemetryLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    fetchRuntimeTelemetry()
+      .then((entries) => {
+        if (cancelled) {
+          return;
+        }
+        setRuntimeTelemetry(entries.length ? entries : readStoredRuntimeTelemetry());
+        setRuntimeTelemetryLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeTelemetryLoaded(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (!runtimeTelemetryLoaded || mode !== "live") {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void saveRuntimeTelemetry(runtimeTelemetry).catch(() => {
+        // Keep the local telemetry cache when the backend is temporarily unavailable.
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [mode, runtimeTelemetry, runtimeTelemetryLoaded]);
 
   useEffect(() => {
     if (activeView !== "thread" && threadContextOpen) {
@@ -1695,7 +1720,7 @@ export function App() {
             onOpenWorkspace={() => handleOpenView("thread")}
           />
         ) : activeView === "scheduled" ? (
-          <ScheduledTasksView taskBoard={taskBoard} agents={snapshot.agents} />
+          <ScheduledTasksView automations={snapshot.automations} taskBoard={taskBoard} agents={snapshot.agents} />
         ) : activeView === "runtime" ? (
           <RuntimeDashboardView
             activeRuntimeModel={activeRuntimeModel}
@@ -3062,55 +3087,147 @@ function TaskSearchView({
   );
 }
 
-function ScheduledTasksView({ taskBoard, agents }: { taskBoard: TaskBoardItem[]; agents: AgentProfile[] }) {
+function ScheduledTasksView({
+  agents,
+  automations,
+  taskBoard
+}: {
+  agents: AgentProfile[];
+  automations: AppSnapshot["automations"];
+  taskBoard: TaskBoardItem[];
+}) {
+  const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(automations[0]?.id ?? null);
+  useEffect(() => {
+    if (!selectedAutomationId || !automations.some((job) => job.id === selectedAutomationId)) {
+      setSelectedAutomationId(automations[0]?.id ?? null);
+    }
+  }, [automations, selectedAutomationId]);
+
+  const selectedAutomation = automations.find((job) => job.id === selectedAutomationId) ?? automations[0];
+  const enabledAutomations = automations.filter((job) => job.enabled).length;
+  const runningTasks = taskBoard.filter((task) => task.status === "Running").length;
+  const nextRunLabel = selectedAutomation?.nextRun || "未计划";
+
   return (
-    <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Automation" title="定时任务" detail="周期任务、后台计划和自动化执行放在独立控制台。" />
-      <div className="automation-layout">
-        <section className="panel-block automation-create-panel">
+    <section className="workspace module-workspace automation-workspace">
+      <ModuleHeader eyebrow="Automation" title="定时任务" detail="计划任务、运行记录和执行助手分开管理，后续可接真实后台调度。" />
+      <div className="automation-dashboard">
+        <section className="automation-summary-card">
+          <span>
+            <b>{automations.length}</b>
+            计划任务
+          </span>
+          <span>
+            <b>{enabledAutomations}</b>
+            已启用
+          </span>
+          <span>
+            <b>{runningTasks}</b>
+            运行中
+          </span>
+          <span>
+            <b>{agents.filter((agent) => agent.enabled).length}</b>
+            可用助手
+          </span>
+        </section>
+
+        <section className="panel-block automation-plan-panel">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">Create</p>
-              <h3>新建定时任务</h3>
+              <p className="eyebrow">Schedule</p>
+              <h3>任务计划</h3>
             </div>
             <CircleDot size={18} />
           </div>
-          <div className="settings-form">
-            <label>
-              <span>任务名称</span>
+          <div className="automation-plan-list">
+            {automations.length === 0 ? (
+              <EmptyState title="暂无定时任务" detail="创建计划后会显示在这里。" />
+            ) : (
+              automations.map((job) => (
+                <button
+                  className={selectedAutomation?.id === job.id ? "automation-plan-row active" : "automation-plan-row"}
+                  key={job.id}
+                  onClick={() => setSelectedAutomationId(job.id)}
+                  type="button"
+                >
+                  <span className={job.enabled ? "history-status-dot pinned" : "history-status-dot muted"} />
+                  <span>
+                    <strong>{job.name}</strong>
+                    <small>{job.schedule}</small>
+                  </span>
+                  <b>{job.enabled ? "启用" : "停用"}</b>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="panel-block automation-detail-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Task Detail</p>
+              <h3>{selectedAutomation?.name ?? "选择一个计划"}</h3>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          <div className="automation-detail-grid">
+            <article>
+              <p className="eyebrow">计划</p>
+              <strong>{selectedAutomation?.schedule ?? "未设置"}</strong>
+              <span>周期规则会在后续接入后台调度器后真正执行。</span>
+            </article>
+            <article>
+              <p className="eyebrow">下次运行</p>
+              <strong>{nextRunLabel}</strong>
+              <span>{selectedAutomation?.enabled ? "等待调度触发。" : "当前任务未启用。"}</span>
+            </article>
+            <article>
+              <p className="eyebrow">执行助手</p>
+              <strong>{agents.find((agent) => agent.id === "cowork")?.name ?? agents[0]?.name ?? "未配置"}</strong>
+              <span>默认由 Cowork 负责拆解任务，再分配到合适助手。</span>
+            </article>
+          </div>
+          <div className="automation-composer-card">
+            <strong>新建计划任务</strong>
+            <div className="automation-create-inline">
               <input placeholder="例如：每天整理工作区文件" />
-            </label>
-            <label>
-              <span>执行助手</span>
               <select>
                 {agents.map((agent) => (
                   <option key={agent.id}>{agent.name}</option>
                 ))}
               </select>
-            </label>
-            <label>
-              <span>计划</span>
               <select>
                 <option>每天</option>
                 <option>每周</option>
                 <option>仅一次</option>
               </select>
-            </label>
-            <button className="primary-button" type="button">创建任务</button>
+              <button className="primary-button" type="button">创建</button>
+            </div>
           </div>
         </section>
-        <section className="panel-block automation-queue-panel">
+
+        <section className="panel-block automation-runs-panel">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">Queue</p>
-              <h3>自动化队列</h3>
+              <p className="eyebrow">Runs</p>
+              <h3>运行记录</h3>
             </div>
-            <ListChecks size={18} />
+            <Terminal size={18} />
           </div>
-          <div className="task-list">
-            {taskBoard.map((task) => (
-              <TaskCard key={task.id} task={task} agents={agents} />
-            ))}
+          <div className="automation-run-list">
+            {taskBoard.map((task) => {
+              const owner = agents.find((agent) => agent.id === task.ownerId);
+              return (
+                <article key={task.id}>
+                  <span className="tool-call-dot completed" />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <small>{owner?.name ?? "Unassigned"} · {task.detail}</small>
+                  </div>
+                  <b>{task.status}</b>
+                </article>
+              );
+            })}
           </div>
         </section>
       </div>
@@ -3493,17 +3610,35 @@ function McpHubView({
   onTest: (server: McpServerSettings) => void;
   onToggle: (serverId: string, enabled: boolean) => void;
 }) {
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(servers[0]?.id ?? null);
+  useEffect(() => {
+    if (!selectedServerId || !servers.some((server) => server.id === selectedServerId)) {
+      setSelectedServerId(servers[0]?.id ?? null);
+    }
+  }, [selectedServerId, servers]);
+
   const enabledCount = servers.filter((server) => server.enabled).length;
-  const discoveredToolCount = Object.values(toolResults).reduce((count, result) => count + result.tools.length, 0);
+  const discoveredTools = Object.values(toolResults).flatMap((result) => result.tools);
+  const discoveredToolCount = discoveredTools.length;
+  const selectedServer = servers.find((server) => server.id === selectedServerId) ?? servers[0];
+  const selectedTools = selectedServer ? toolResults[selectedServer.id]?.tools ?? [] : [];
+  const selectedResult = selectedServer ? testResults[selectedServer.id] : undefined;
+  const selectedToolsResult = selectedServer ? toolResults[selectedServer.id] : undefined;
+  const selectedTarget = selectedServer
+    ? selectedServer.transport === "http"
+      ? selectedServer.url || "未配置 URL"
+      : [selectedServer.command, ...(selectedServer.args ?? [])].filter(Boolean).join(" ") || "未配置命令"
+    : "未选择服务器";
+
   return (
-    <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="管理本地 stdio 和远程 HTTP MCP，所有高风险动作继续进入审批。" actionLabel="新增 MCP" onAction={onCreate} />
-      <div className="mcp-layout">
-        <section className="panel-block mcp-gateway-panel">
+    <section className="workspace module-workspace mcp-workspace">
+      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="服务器详情和工具市场分开展示，刷新后可查看真实工具清单。" actionLabel="新增 MCP" onAction={onCreate} />
+      <div className="mcp-console-layout">
+        <section className="panel-block mcp-server-list-panel">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">Gateway</p>
-              <h3>工具网关</h3>
+              <p className="eyebrow">Servers</p>
+              <h3>服务器</h3>
             </div>
             <ShieldCheck size={18} />
           </div>
@@ -3518,70 +3653,118 @@ function McpHubView({
               工具 <b>{discoveredToolCount}</b>
             </span>
           </div>
-          <p>所有写文件、执行命令、浏览器和外部访问动作都会先进入审批队列。这里负责 MCP 连接和可用性测试。</p>
-          <button className="secondary-button" onClick={onOpenSettings} type="button">打开权限策略</button>
+          <div className="mcp-server-list">
+            {servers.map((server) => (
+              <button
+                className={selectedServer?.id === server.id ? "mcp-server-row active" : "mcp-server-row"}
+                key={server.id}
+                onClick={() => setSelectedServerId(server.id)}
+                type="button"
+              >
+                <Terminal size={16} />
+                <span>
+                  <strong>{server.name}</strong>
+                  <small>{server.transport} · {server.enabled ? "启用" : "停用"}</small>
+                </span>
+                <b>{toolResults[server.id]?.tools.length ?? 0}</b>
+              </button>
+            ))}
+          </div>
         </section>
-        <section className="mcp-server-grid">
-        {servers.map((server) => {
-          const result = testResults[server.id];
-          const toolsResult = toolResults[server.id];
-          const target =
-            server.transport === "http"
-              ? server.url || "未配置 URL"
-              : [server.command, ...(server.args ?? [])].filter(Boolean).join(" ") || "未配置命令";
-          return (
-            <article className={server.enabled ? "mcp-server-card enabled" : "mcp-server-card"} key={server.id}>
-              <div className="mcp-server-topline">
-                <Terminal size={17} />
-                <strong>{server.name}</strong>
-                <span className="transport-badge">{server.transport}</span>
-                <span className={server.enabled ? "status ready" : "status muted-status"}>{server.enabled ? "启用" : "停用"}</span>
+
+        <section className="panel-block mcp-server-detail-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Server Detail</p>
+              <h3>{selectedServer?.name ?? "未选择服务器"}</h3>
+            </div>
+            <span className={selectedServer?.enabled ? "status ready" : "status muted-status"}>
+              {selectedServer?.enabled ? "启用" : "停用"}
+            </span>
+          </div>
+          {selectedServer ? (
+            <div className="mcp-detail-body">
+              <p>{selectedServer.description}</p>
+              <code className="mcp-server-target">{selectedTarget}</code>
+              <div className="mcp-detail-meta">
+                <span>
+                  Transport <b>{selectedServer.transport}</b>
+                </span>
+                <span>
+                  Tools <b>{selectedTools.length}</b>
+                </span>
+                <span>
+                  Test <b>{selectedResult ? (selectedResult.ok ? "通过" : "失败") : "未测试"}</b>
+                </span>
               </div>
-              <p>{server.description}</p>
-              <code className="mcp-server-target">{target}</code>
-              {result ? (
-                <div className={result.ok ? "mcp-test-result ok" : "mcp-test-result failed"}>
-                  <strong>{result.ok ? "连接可用" : "连接失败"}</strong>
+              {selectedResult ? (
+                <div className={selectedResult.ok ? "mcp-test-result ok" : "mcp-test-result failed"}>
+                  <strong>{selectedResult.ok ? "连接可用" : "连接失败"}</strong>
                   <span>
-                    {result.message}
-                    {typeof result.status === "number" ? ` · HTTP ${result.status}` : ""}
+                    {selectedResult.message}
+                    {typeof selectedResult.status === "number" ? ` · HTTP ${selectedResult.status}` : ""}
                   </span>
                 </div>
               ) : null}
-              {toolsResult ? (
-                <div className={toolsResult.ok ? "mcp-tools-result ok" : "mcp-tools-result failed"}>
-                  <strong>{toolsResult.ok ? `已发现 ${toolsResult.tools.length} 个工具` : "工具发现失败"}</strong>
-                  <span>{toolsResult.message}</span>
-                  {toolsResult.tools.length ? (
-                    <div className="mcp-tool-chip-row">
-                      {toolsResult.tools.slice(0, 6).map((tool) => (
-                        <span key={tool.id}>{tool.title || tool.name}</span>
-                      ))}
-                      {toolsResult.tools.length > 6 ? <span>+{toolsResult.tools.length - 6}</span> : null}
-                    </div>
-                  ) : null}
+              {selectedToolsResult ? (
+                <div className={selectedToolsResult.ok ? "mcp-tools-result ok" : "mcp-tools-result failed"}>
+                  <strong>{selectedToolsResult.ok ? `已发现 ${selectedToolsResult.tools.length} 个工具` : "工具发现失败"}</strong>
+                  <span>{selectedToolsResult.message}</span>
                 </div>
               ) : null}
               <div className="mcp-card-actions">
-                <button className="secondary-button" onClick={() => onToggle(server.id, !server.enabled)} type="button">
-                  {server.enabled ? "停用" : "启用"}
+                <button className="secondary-button" onClick={() => onToggle(selectedServer.id, !selectedServer.enabled)} type="button">
+                  {selectedServer.enabled ? "停用" : "启用"}
                 </button>
-                <button className="secondary-button" disabled={testingServerId === server.id} onClick={() => onTest(server)} type="button">
-                  {testingServerId === server.id ? "测试中..." : "测试连接"}
+                <button className="secondary-button" disabled={testingServerId === selectedServer.id} onClick={() => onTest(selectedServer)} type="button">
+                  {testingServerId === selectedServer.id ? "测试中..." : "测试连接"}
                 </button>
-                <button className="secondary-button" disabled={refreshingToolsServerId === server.id} onClick={() => onRefreshTools(server)} type="button">
-                  {refreshingToolsServerId === server.id ? "刷新中..." : "刷新工具"}
+                <button className="secondary-button" disabled={refreshingToolsServerId === selectedServer.id} onClick={() => onRefreshTools(selectedServer)} type="button">
+                  {refreshingToolsServerId === selectedServer.id ? "刷新中..." : "刷新工具"}
                 </button>
-                <button className="secondary-button" onClick={() => onEdit(server.id)} type="button">
+                <button className="secondary-button" onClick={() => onEdit(selectedServer.id)} type="button">
                   编辑
                 </button>
-                <button className="secondary-button danger-soft-button" onClick={() => onDelete(server.id)} type="button">
+                <button className="secondary-button danger-soft-button" onClick={() => onDelete(selectedServer.id)} type="button">
                   删除
                 </button>
               </div>
-            </article>
-          );
-        })}
+              <button className="secondary-button" onClick={onOpenSettings} type="button">
+                打开权限策略
+              </button>
+            </div>
+          ) : (
+            <EmptyState title="未选择服务器" detail="新增或选择一个 MCP 服务器后查看详情。" />
+          )}
+        </section>
+
+        <section className="panel-block mcp-tool-market-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Tool Market</p>
+              <h3>工具市场</h3>
+            </div>
+            <b className="status ready">{selectedTools.length}</b>
+          </div>
+          <div className="mcp-tool-market-grid">
+            {selectedTools.length === 0 ? (
+              <EmptyState title="暂无工具" detail="点击“刷新工具”后会显示该服务器真实暴露的工具。" />
+            ) : (
+              selectedTools.map((tool) => (
+                <article className="mcp-tool-market-card" key={tool.id}>
+                  <div>
+                    <Workflow size={16} />
+                    <strong>{tool.title || tool.name}</strong>
+                    <span>{tool.serverName}</span>
+                  </div>
+                  <p>{tool.description || "该工具没有描述。"}</p>
+                  <button className="secondary-button" type="button">
+                    查看 Schema
+                  </button>
+                </article>
+              ))
+            )}
+          </div>
         </section>
       </div>
     </section>
@@ -3605,41 +3788,239 @@ function AgentsHubView({
   onEdit: (agentId: string) => void;
   onOpenSettings: () => void;
 }) {
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(activeAgent?.id ?? agents[0]?.id ?? null);
+
+  useEffect(() => {
+    if (!selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(activeAgent?.id ?? agents[0]?.id ?? null);
+    }
+  }, [activeAgent, agents, selectedAgentId]);
+
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? activeAgent ?? agents[0];
+  const selectedEngine = selectedAgent ? engines.find((engine) => engine.id === selectedAgent.engineId) : undefined;
+  const enabledAgents = agents.filter((agent) => agent.enabled);
+  const runningAgents = agents.filter((agent) => agent.status === "running");
+
   return (
-    <section className="workspace module-workspace">
+    <section className="workspace module-workspace agent-workspace">
       <ModuleHeader eyebrow="Agents" title="我的 Agent" detail="助手、团队和运行引擎集中到独立页面。" actionLabel="新建 Agent" onAction={onCreate} />
-      <div className="agent-hub-grid">
-        {agents.map((agent) => {
-          const engine = engines.find((item) => item.id === agent.engineId);
-          return (
-            <article
-              className={activeAgent?.id === agent.id ? "agent-hub-card active" : "agent-hub-card"}
-              key={agent.id}
-            >
-              <div className="avatar">{agent.name.slice(0, 1)}</div>
-              <div>
-                <strong>{agent.name}</strong>
-                <span>{agent.description}</span>
-                <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
+      <div className="agent-team-layout">
+        <section className="panel-block agent-team-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Team</p>
+              <h3>团队管理</h3>
+            </div>
+            <Users size={18} />
+          </div>
+          <div className="agent-team-stats">
+            <span>
+              <b>{agents.length}</b>
+              总 Agent
+            </span>
+            <span>
+              <b>{enabledAgents.length}</b>
+              已启用
+            </span>
+            <span>
+              <b>{runningAgents.length}</b>
+              运行中
+            </span>
+          </div>
+          <div className="agent-team-list">
+            {agents.length === 0 ? (
+              <EmptyState title="暂无 Agent" detail="新建 Agent 后会显示在团队列表中。" />
+            ) : (
+              agents.map((agent) => {
+                const engine = engines.find((item) => item.id === agent.engineId);
+                return (
+                  <button
+                    className={selectedAgent?.id === agent.id ? "agent-team-row active" : "agent-team-row"}
+                    key={agent.id}
+                    onClick={() => setSelectedAgentId(agent.id)}
+                    type="button"
+                  >
+                    <span className="agent-mini-avatar">{agent.name.slice(0, 1)}</span>
+                    <span>
+                      <strong>{agent.name}</strong>
+                      <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
+                    </span>
+                    {activeAgent?.id === agent.id ? <b>当前</b> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        <section className="panel-block agent-detail-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Agent Detail</p>
+              <h3>{selectedAgent?.name ?? "选择一个 Agent"}</h3>
+            </div>
+            <span className={selectedAgent?.enabled ? "status ready" : "status muted-status"}>
+              {selectedAgent?.enabled ? "启用" : "停用"}
+            </span>
+          </div>
+
+          {selectedAgent ? (
+            <div className="agent-detail-body">
+              <div className="agent-detail-hero">
+                <span className="agent-large-avatar">{selectedAgent.name.slice(0, 1)}</span>
+                <div>
+                  <p className="eyebrow">{agentCategoryLabel(selectedAgent.category)}</p>
+                  <h3>{selectedAgent.name}</h3>
+                  <p>{selectedAgent.description}</p>
+                </div>
               </div>
-              <div className="agent-card-actions">
-                <button className="secondary-button" onClick={() => onEdit(agent.id)} type="button">
-                  编辑
+
+              <div className="agent-detail-grid">
+                <article>
+                  <p className="eyebrow">状态</p>
+                  <strong>{selectedAgent.status}</strong>
+                  <span>{activeAgent?.id === selectedAgent.id ? "当前工作台 Agent" : "可切换到当前工作台"}</span>
+                </article>
+                <article>
+                  <p className="eyebrow">Provider</p>
+                  <strong>{selectedAgent.providerId}</strong>
+                  <span>模型中心配置会决定真实调用来源。</span>
+                </article>
+                <article>
+                  <p className="eyebrow">技能</p>
+                  <strong>{selectedAgent.skills.length}</strong>
+                  <span>{selectedAgent.skills.slice(0, 3).join(" / ") || "未绑定技能"}</span>
+                </article>
+                <article>
+                  <p className="eyebrow">MCP 工具</p>
+                  <strong>{selectedAgent.mcpToolIds.length}</strong>
+                  <span>{selectedAgent.mcpToolIds.length ? "已绑定工具权限" : "未绑定工具"}</span>
+                </article>
+              </div>
+
+              <section className="agent-instruction-card">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">System Prompt</p>
+                    <h3>系统提示词</h3>
+                  </div>
+                  <FileText size={17} />
+                </div>
+                <p>{selectedAgent.instructions}</p>
+              </section>
+
+              <section className="agent-engine-card">
+                <div>
+                  <p className="eyebrow">Runtime Engine</p>
+                  <h3>{selectedEngine?.name ?? "NexaDesk Built-in"}</h3>
+                  <span>{selectedEngine?.description ?? "使用内置模型中心和审批策略运行。"}</span>
+                </div>
+                <div className="agent-engine-meta">
+                  <span>
+                    Kind <b>{selectedEngine?.kind ?? "builtin"}</b>
+                  </span>
+                  <span>
+                    权限 <b>{enginePermissionLabel(selectedEngine?.permissionMode)}</b>
+                  </span>
+                  <span>
+                    配置 <b>{engineSourceLabel(selectedEngine?.configSource)}</b>
+                  </span>
+                  <span>
+                    状态 <b>{engineSetupLabel(selectedEngine?.setupStatus)}</b>
+                  </span>
+                </div>
+              </section>
+
+              <div className="agent-detail-actions">
+                <button className="secondary-button" onClick={() => onEdit(selectedAgent.id)} type="button">
+                  编辑 Agent
                 </button>
-                <button className="primary-button" onClick={() => onActivate(agent.id)} type="button">
-                  {activeAgent?.id === agent.id ? "当前" : "切换"}
+                <button className="primary-button" onClick={() => onActivate(selectedAgent.id)} type="button">
+                  {activeAgent?.id === selectedAgent.id ? "当前 Agent" : "切换到工作台"}
+                </button>
+                <button className="secondary-button" onClick={onOpenSettings} type="button">
+                  打开完整助手设置
                 </button>
               </div>
-              {activeAgent?.id === agent.id ? <Check className="agent-active-check" size={18} /> : null}
-            </article>
-          );
-        })}
+            </div>
+          ) : (
+            <EmptyState title="未选择 Agent" detail="从左侧团队列表选择一个 Agent。" />
+          )}
+        </section>
+
+        <section className="panel-block agent-engine-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Engines</p>
+              <h3>运行引擎配置</h3>
+            </div>
+            <Terminal size={18} />
+          </div>
+          <div className="agent-engine-list">
+            {engines.map((engine) => {
+              const linkedAgents = agents.filter((agent) => agent.engineId === engine.id);
+              return (
+                <article className={selectedEngine?.id === engine.id ? "agent-engine-row active" : "agent-engine-row"} key={engine.id}>
+                  <div>
+                    <strong>{engine.name}</strong>
+                    <span>{engine.description}</span>
+                  </div>
+                  <div className="agent-engine-row-footer">
+                    <small>{engine.kind} · {engineSetupLabel(engine.setupStatus)}</small>
+                    <b>{linkedAgents.length} Agent</b>
+                  </div>
+                  <div className="agent-engine-capabilities">
+                    {engine.capabilities.slice(0, 5).map((capability) => (
+                      <span key={capability}>{capability}</span>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </div>
-      <button className="secondary-button wide-module-action" onClick={onOpenSettings} type="button">
-        打开完整助手设置
-      </button>
     </section>
   );
+}
+
+function agentCategoryLabel(category: AgentProfile["category"]) {
+  const labels: Record<AgentProfile["category"], string> = {
+    cowork: "Cowork",
+    code: "代码助手",
+    office: "Office 助手",
+    file: "文件助手",
+    report: "报告助手",
+    custom: "自定义助手"
+  };
+  return labels[category];
+}
+
+function enginePermissionLabel(mode?: AgentEngineSettings["permissionMode"]) {
+  const labels: Record<AgentEngineSettings["permissionMode"], string> = {
+    ask: "询问",
+    auto: "自动",
+    conservative: "保守",
+    bypass: "绕过"
+  };
+  return mode ? labels[mode] : "询问";
+}
+
+function engineSourceLabel(source?: AgentEngineSettings["configSource"]) {
+  const labels: Record<AgentEngineSettings["configSource"], string> = {
+    nexadesk_model: "模型中心",
+    local_cli: "本机 CLI"
+  };
+  return source ? labels[source] : "模型中心";
+}
+
+function engineSetupLabel(status?: AgentEngineSettings["setupStatus"]) {
+  const labels: Record<AgentEngineSettings["setupStatus"], string> = {
+    ready: "可用",
+    needs_setup: "待配置",
+    not_installed: "未安装"
+  };
+  return status ? labels[status] : "可用";
 }
 
 function ModuleHeader({

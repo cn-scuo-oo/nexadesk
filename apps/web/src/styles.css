@@ -2649,6 +2649,564 @@ h4 {
   line-height: 1.45;
 }
 
+.automation-workspace,
+.mcp-workspace,
+.agent-workspace {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.automation-dashboard {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr) minmax(280px, 0.38fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.automation-summary-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.automation-summary-card span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--muted-text);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.automation-summary-card b {
+  color: #211b13;
+  font-size: 24px;
+}
+
+.automation-plan-panel,
+.automation-detail-panel,
+.automation-runs-panel,
+.mcp-server-list-panel,
+.mcp-server-detail-panel,
+.mcp-tool-market-panel,
+.agent-team-panel,
+.agent-detail-panel,
+.agent-engine-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.automation-plan-list,
+.automation-run-list,
+.mcp-server-list,
+.mcp-tool-market-grid,
+.agent-team-list,
+.agent-engine-list {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.automation-plan-row,
+.mcp-server-row,
+.agent-team-row {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+
+.automation-plan-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.automation-plan-row:hover,
+.automation-plan-row.active,
+.mcp-server-row:hover,
+.mcp-server-row.active,
+.agent-team-row:hover,
+.agent-team-row.active {
+  border-color: #d8b96f;
+  background: #fff3d0;
+}
+
+.automation-plan-row strong,
+.automation-plan-row small,
+.mcp-server-row strong,
+.mcp-server-row small,
+.agent-team-row strong,
+.agent-team-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-plan-row small,
+.mcp-server-row small,
+.agent-team-row small {
+  margin-top: 3px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.automation-plan-row b,
+.mcp-server-row b,
+.agent-team-row b,
+.automation-run-list b,
+.agent-engine-row-footer b {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #31584a;
+  background: #dfeee6;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.automation-detail-panel {
+  background:
+    radial-gradient(circle at top left, rgba(217, 120, 0, 0.08), transparent 34%),
+    rgba(255, 253, 248, 0.96);
+}
+
+.automation-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.automation-detail-grid article,
+.automation-composer-card {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.automation-detail-grid strong {
+  overflow: hidden;
+  color: #211b13;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-detail-grid span,
+.automation-composer-card {
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.automation-composer-card {
+  margin: 0 14px 14px;
+}
+
+.automation-composer-card > strong {
+  color: #211b13;
+  font-size: 14px;
+}
+
+.automation-create-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.22fr) minmax(120px, 0.18fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.automation-create-inline input,
+.automation-create-inline select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.automation-run-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px;
+  background: var(--surface);
+}
+
+.automation-run-list strong,
+.automation-run-list small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-run-list small {
+  margin-top: 3px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mcp-console-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.32fr) minmax(0, 0.78fr) minmax(300px, 0.4fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mcp-server-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.mcp-detail-body {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.mcp-detail-body p {
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+
+.mcp-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mcp-detail-meta span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mcp-detail-meta b {
+  overflow: hidden;
+  color: #211b13;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-tool-market-grid {
+  grid-template-columns: 1fr;
+}
+
+.mcp-tool-market-card {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.mcp-tool-market-card > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.mcp-tool-market-card strong,
+.mcp-tool-market-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-tool-market-card span {
+  grid-column: 2;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.mcp-tool-market-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.mcp-tool-market-card .secondary-button {
+  justify-self: start;
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
+.agent-team-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr) minmax(280px, 0.36fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-team-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.agent-team-stats span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.agent-team-stats b {
+  color: #211b13;
+  font-size: 22px;
+}
+
+.agent-team-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.agent-mini-avatar,
+.agent-large-avatar {
+  display: grid;
+  place-items: center;
+  color: #fffaf2;
+  background: #1f332d;
+  font-weight: 900;
+}
+
+.agent-mini-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+
+.agent-large-avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  font-size: 24px;
+}
+
+.agent-detail-body {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.agent-detail-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(46, 111, 85, 0.12), transparent 34%),
+    var(--surface);
+}
+
+.agent-detail-hero h3 {
+  margin-top: 3px;
+  font-size: 24px;
+}
+
+.agent-detail-hero p:not(.eyebrow) {
+  margin-top: 8px;
+  color: var(--muted-text);
+  line-height: 1.55;
+}
+
+.agent-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agent-detail-grid article,
+.agent-instruction-card,
+.agent-engine-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.agent-detail-grid strong,
+.agent-detail-grid span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-detail-grid strong {
+  color: #211b13;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.agent-detail-grid span,
+.agent-instruction-card p,
+.agent-engine-card span,
+.agent-engine-row span {
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-instruction-card {
+  padding: 0;
+}
+
+.agent-instruction-card p {
+  padding: 0 14px 14px;
+}
+
+.agent-engine-card {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+  align-items: start;
+}
+
+.agent-engine-card h3 {
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.agent-engine-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-engine-meta span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.agent-engine-meta b {
+  color: #211b13;
+}
+
+.agent-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-engine-row {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.agent-engine-row.active {
+  border-color: #bdd8c9;
+  background: #eff6ef;
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.agent-engine-row strong,
+.agent-engine-row span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-engine-row strong,
+.agent-engine-row span {
+  white-space: nowrap;
+}
+
+.agent-engine-row-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-engine-row-footer small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-engine-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-engine-capabilities span {
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #73561d;
+  background: #fff0c6;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .dashboard-filter-row,
 .chip-tabs {
   display: flex;
@@ -5266,8 +5824,13 @@ h4 {
   .provider-workbench,
   .thread-grid,
   .task-record-layout,
+  .automation-dashboard,
+  .mcp-console-layout,
+  .agent-team-layout,
   .runtime-dashboard-shell,
   .skills-filter-row,
+  .automation-create-inline,
+  .agent-engine-card,
   .module-grid.two-column,
   .module-grid.three-column,
   .runtime-metric-grid {
@@ -5394,6 +5957,12 @@ h4 {
 
   .task-detail-summary,
   .task-detail-body,
+  .automation-summary-card,
+  .automation-detail-grid,
+  .mcp-detail-meta,
+  .agent-team-stats,
+  .agent-detail-grid,
+  .agent-engine-meta,
   .runtime-dashboard-metrics,
   .installed-skill-grid,
   .skill-market-grid {

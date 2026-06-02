@@ -252,6 +252,35 @@ async function runRendererSmokeTest(apiPort) {
   if (typeof mcpTools.ok !== "boolean" || !Array.isArray(mcpTools.tools) || !mcpTools.checkedAt) {
     throw new Error("Renderer smoke test failed: MCP tools API did not return a valid result.");
   }
+  const telemetryInitial = await requestJson(apiPort, "/api/runtime/telemetry");
+  if (!Array.isArray(telemetryInitial.entries)) {
+    throw new Error("Renderer smoke test failed: runtime telemetry API did not return entries.");
+  }
+  const telemetryEntry = {
+    id: "desktop-smoke-telemetry",
+    sessionId: firstSession.id,
+    providerName: "Smoke Provider",
+    model: "smoke-model",
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    firstTokenMs: 42,
+    durationMs: 210,
+    inputTokens: 12,
+    outputTokens: 24,
+    totalTokens: 36,
+    status: "completed"
+  };
+  const telemetrySaved = await requestJson(apiPort, "/api/runtime/telemetry", {
+    method: "PUT",
+    body: JSON.stringify({ entries: [telemetryEntry] })
+  });
+  if (!telemetrySaved.entries?.some((entry) => entry.id === telemetryEntry.id && entry.totalTokens === telemetryEntry.totalTokens)) {
+    throw new Error("Renderer smoke test failed: runtime telemetry API did not persist submitted entries.");
+  }
+  const telemetryReloaded = await requestJson(apiPort, "/api/runtime/telemetry");
+  if (!telemetryReloaded.entries?.some((entry) => entry.id === telemetryEntry.id)) {
+    throw new Error("Renderer smoke test failed: runtime telemetry API did not reload persisted entries.");
+  }
 
   const workbenchText = await renderAndReadText(apiPort);
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
@@ -355,8 +384,16 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const scheduledText = await renderAndReadText(apiPort, "scheduled");
-  if (!scheduledText.includes("新建定时任务") || !scheduledText.includes("自动化队列")) {
+  if (!scheduledText.includes("定时任务") || !scheduledText.includes("任务计划") || !scheduledText.includes("运行记录") || !scheduledText.includes("新建计划任务")) {
     throw new Error("Renderer smoke test failed: scheduled task workspace was not rendered as a separate view.");
+  }
+  const scheduledLayout = await renderAndEvaluate(
+    apiPort,
+    "scheduled",
+    "(() => ({ hasAutomationDashboard: Boolean(document.querySelector('.automation-dashboard')), hasPlanPanel: Boolean(document.querySelector('.automation-plan-panel')), hasDetailPanel: Boolean(document.querySelector('.automation-detail-panel')), hasRunsPanel: Boolean(document.querySelector('.automation-runs-panel')) }))()"
+  );
+  if (!scheduledLayout.hasAutomationDashboard || !scheduledLayout.hasPlanPanel || !scheduledLayout.hasDetailPanel || !scheduledLayout.hasRunsPanel) {
+    throw new Error("Renderer smoke test failed: scheduled task plan/run layout was not rendered.");
   }
 
   const skillsText = await renderAndReadText(apiPort, "skills");
@@ -373,13 +410,29 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const mcpText = await renderAndReadText(apiPort, "mcp");
-  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接") || !mcpText.includes("刷新工具")) {
+  if (!mcpText.includes("服务器") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接") || !mcpText.includes("刷新工具") || !mcpText.includes("工具市场")) {
     throw new Error("Renderer smoke test failed: MCP workspace was not rendered as a separate view.");
+  }
+  const mcpLayout = await renderAndEvaluate(
+    apiPort,
+    "mcp",
+    "(() => ({ hasConsoleLayout: Boolean(document.querySelector('.mcp-console-layout')), hasServerPanel: Boolean(document.querySelector('.mcp-server-list-panel')), hasDetailPanel: Boolean(document.querySelector('.mcp-server-detail-panel')), hasToolMarket: Boolean(document.querySelector('.mcp-tool-market-panel')) }))()"
+  );
+  if (!mcpLayout.hasConsoleLayout || !mcpLayout.hasServerPanel || !mcpLayout.hasDetailPanel || !mcpLayout.hasToolMarket) {
+    throw new Error("Renderer smoke test failed: MCP server and tool market layout was not rendered.");
   }
 
   const agentsText = await renderAndReadText(apiPort, "agents");
-  if (!agentsText.includes("我的 Agent") || !agentsText.includes("新建 Agent") || !agentsText.includes("编辑")) {
+  if (!agentsText.includes("我的 Agent") || !agentsText.includes("新建 Agent") || !agentsText.includes("团队管理") || !agentsText.includes("Agent Detail") || !agentsText.includes("运行引擎配置")) {
     throw new Error("Renderer smoke test failed: agents view was not rendered as a separate view.");
+  }
+  const agentsLayout = await renderAndEvaluate(
+    apiPort,
+    "agents",
+    "(() => ({ hasTeamLayout: Boolean(document.querySelector('.agent-team-layout')), hasTeamPanel: Boolean(document.querySelector('.agent-team-panel')), hasDetailPanel: Boolean(document.querySelector('.agent-detail-panel')), hasEnginePanel: Boolean(document.querySelector('.agent-engine-panel')) }))()"
+  );
+  if (!agentsLayout.hasTeamLayout || !agentsLayout.hasTeamPanel || !agentsLayout.hasDetailPanel || !agentsLayout.hasEnginePanel) {
+    throw new Error("Renderer smoke test failed: agents team and engine layout was not rendered.");
   }
 
   const settingsText = await renderAndReadText(apiPort, "settings");

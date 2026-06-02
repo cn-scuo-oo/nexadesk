@@ -7,7 +7,8 @@ import type {
   ChatMessage,
   ActivityEvent,
   AutomationJob,
-  PermissionRequest
+  PermissionRequest,
+  RuntimeTelemetryEntry
 } from "@nexadesk/shared";
 import type { AgentToolRequest } from "./agent-tools.js";
 
@@ -28,6 +29,7 @@ type RuntimeStateFile = {
   approvals?: PermissionRequest[];
   approvalHistory?: ApprovalHistoryEntry[];
   pendingToolApprovals?: PendingToolApprovalRecord[];
+  runtimeTelemetry?: RuntimeTelemetryEntry[];
   activity: ActivityEvent[];
   automations: AutomationJob[];
 };
@@ -59,7 +61,8 @@ export async function loadRuntimeState(snapshot: AppSnapshot): Promise<PendingTo
 
 export async function saveRuntimeState(
   snapshot: AppSnapshot,
-  pendingToolApprovals: PendingToolApprovalRecord[] = []
+  pendingToolApprovals: PendingToolApprovalRecord[] = [],
+  runtimeTelemetry: RuntimeTelemetryEntry[] = []
 ): Promise<void> {
   const state: RuntimeStateFile = {
     version: 1,
@@ -69,6 +72,7 @@ export async function saveRuntimeState(
     approvals: snapshot.approvals,
     approvalHistory: snapshot.approvalHistory.slice(0, 100),
     pendingToolApprovals,
+    runtimeTelemetry: runtimeTelemetry.slice(0, 100),
     activity: snapshot.activity.slice(0, 50),
     automations: snapshot.automations
   };
@@ -77,6 +81,11 @@ export async function saveRuntimeState(
   const tempPath = `${runtimeStatePath}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   await rename(tempPath, runtimeStatePath);
+}
+
+export async function loadRuntimeTelemetry(): Promise<RuntimeTelemetryEntry[]> {
+  const saved = await readRuntimeState();
+  return saved?.runtimeTelemetry?.slice(0, 100) ?? [];
 }
 
 async function readRuntimeState(): Promise<RuntimeStateFile | null> {

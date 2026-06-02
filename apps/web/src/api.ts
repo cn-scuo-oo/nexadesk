@@ -17,6 +17,7 @@
   RecoverSettingsResult,
   ProviderTestRequest,
   ProviderTestResult,
+  RuntimeTelemetryEntry,
   SaveSettingsRequest,
   SendMessageRequest,
   WorkspaceFilePreviewResult,
@@ -45,6 +46,30 @@ export async function fetchSettings(): Promise<AppSettings> {
     throw new Error(`Settings request failed with ${response.status}`);
   }
   return response.json() as Promise<AppSettings>;
+}
+
+export async function fetchRuntimeTelemetry(): Promise<RuntimeTelemetryEntry[]> {
+  const response = await fetch(`${apiBase}/api/runtime/telemetry`);
+  if (!response.ok) {
+    throw new Error(`Runtime telemetry request failed with ${response.status}`);
+  }
+  const result = (await response.json()) as { entries: RuntimeTelemetryEntry[] };
+  return result.entries;
+}
+
+export async function saveRuntimeTelemetry(entries: RuntimeTelemetryEntry[]): Promise<RuntimeTelemetryEntry[]> {
+  const response = await fetch(`${apiBase}/api/runtime/telemetry`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ entries })
+  });
+  if (!response.ok) {
+    throw new Error(`Save runtime telemetry failed with ${response.status}`);
+  }
+  const result = (await response.json()) as { entries: RuntimeTelemetryEntry[] };
+  return result.entries;
 }
 
 export async function fetchDesktopStatus(): Promise<DesktopStatus> {
