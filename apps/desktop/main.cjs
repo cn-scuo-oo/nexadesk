@@ -234,6 +234,24 @@ async function runRendererSmokeTest(apiPort) {
   if (typeof mcpTest.ok !== "boolean" || !mcpTest.checkedAt || mcpTest.transport !== "stdio") {
     throw new Error("Renderer smoke test failed: MCP test API did not return a valid result.");
   }
+  const mcpTools = await requestJson(apiPort, "/api/mcp/tools", {
+    method: "POST",
+    body: JSON.stringify({
+      server: {
+        id: "smoke-stdio",
+        name: "Smoke stdio",
+        description: "Desktop smoke stdio tools lookup.",
+        transport: "stdio",
+        enabled: true,
+        command: process.platform === "win32" ? "cmd" : "sh",
+        args: process.platform === "win32" ? ["/c", "echo not-json"] : ["-c", "echo not-json"]
+      },
+      timeoutMs: 3000
+    })
+  });
+  if (typeof mcpTools.ok !== "boolean" || !Array.isArray(mcpTools.tools) || !mcpTools.checkedAt) {
+    throw new Error("Renderer smoke test failed: MCP tools API did not return a valid result.");
+  }
 
   const workbenchText = await renderAndReadText(apiPort);
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
@@ -328,7 +346,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const mcpText = await renderAndReadText(apiPort, "mcp");
-  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接")) {
+  if (!mcpText.includes("工具网关") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接") || !mcpText.includes("刷新工具")) {
     throw new Error("Renderer smoke test failed: MCP workspace was not rendered as a separate view.");
   }
 

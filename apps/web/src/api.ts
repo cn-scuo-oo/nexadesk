@@ -8,6 +8,8 @@
   ChatStreamEvent,
   ChatMessage,
   DesktopStatus,
+  McpServerToolsRequest,
+  McpServerToolsResult,
   McpServerTestRequest,
   McpServerTestResult,
   ProviderModelsRequest,
@@ -157,6 +159,20 @@ export async function testMcpServer(payload: McpServerTestRequest): Promise<McpS
     throw new Error(`MCP test failed with ${response.status}`);
   }
   return response.json() as Promise<McpServerTestResult>;
+}
+
+export async function fetchMcpServerTools(payload: McpServerToolsRequest): Promise<McpServerToolsResult> {
+  const response = await fetch(`${apiBase}/api/mcp/tools`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`MCP tools request failed with ${response.status}`);
+  }
+  return response.json() as Promise<McpServerToolsResult>;
 }
 
 export async function updateSession(

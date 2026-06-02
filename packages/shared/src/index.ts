@@ -151,6 +151,16 @@ export interface McpServerSettings {
   url?: string;
 }
 
+export interface McpToolDefinition {
+  id: string;
+  serverId: string;
+  serverName: string;
+  name: string;
+  title?: string;
+  description: string;
+  inputSchema?: unknown;
+}
+
 export interface McpSettings {
   servers: McpServerSettings[];
 }
@@ -165,6 +175,22 @@ export interface McpServerTestResult {
   message: string;
   checkedAt: string;
   transport: McpServerTransport;
+  resolvedTarget?: string;
+  status?: number;
+}
+
+export interface McpServerToolsRequest {
+  server: McpServerSettings;
+  timeoutMs?: number;
+}
+
+export interface McpServerToolsResult {
+  ok: boolean;
+  message: string;
+  checkedAt: string;
+  serverId: string;
+  transport: McpServerTransport;
+  tools: McpToolDefinition[];
   resolvedTarget?: string;
   status?: number;
 }
@@ -319,6 +345,7 @@ export interface AgentProfile {
   providerId: string;
   status: AgentStatus;
   skills: string[];
+  mcpToolIds: string[];
   enabled: boolean;
   category: "cowork" | "code" | "office" | "file" | "report" | "custom";
   instructions: string;
@@ -614,6 +641,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "ollama",
       status: "running",
       skills: ["planning", "filesystem", "terminal", "web"],
+      mcpToolIds: ["filesystem-mcp:*", "browser-mcp:*"],
       enabled: true,
       category: "cowork",
       instructions:
@@ -628,6 +656,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "ollama",
       status: "idle",
       skills: ["code-review", "filesystem", "terminal", "search"],
+      mcpToolIds: ["filesystem-mcp:*"],
       enabled: true,
       category: "code",
       instructions:
@@ -642,6 +671,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "openai-compatible",
       status: "idle",
       skills: ["word", "report-writing", "filesystem"],
+      mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
       instructions:
@@ -656,6 +686,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "openai-compatible",
       status: "idle",
       skills: ["excel", "data-analysis", "filesystem"],
+      mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
       instructions:
@@ -670,6 +701,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "openai-compatible",
       status: "idle",
       skills: ["ppt", "presentation-design", "filesystem"],
+      mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
       instructions:
@@ -684,6 +716,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "ollama",
       status: "idle",
       skills: ["filesystem", "search", "file-organize"],
+      mcpToolIds: ["filesystem-mcp:*"],
       enabled: true,
       category: "file",
       instructions:
@@ -698,6 +731,7 @@ export function createDefaultAgents(): AgentProfile[] {
       providerId: "openai-compatible",
       status: "idle",
       skills: ["report-writing", "word", "data-analysis"],
+      mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "report",
       instructions:

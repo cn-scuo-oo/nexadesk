@@ -37,7 +37,9 @@ import {
   type ChatStreamEvent,
   type DesktopStatus,
   type McpServerSettings,
+  type McpServerToolsResult,
   type McpServerTestResult,
+  type McpToolDefinition,
   type ModelProvider,
   type PermissionRequest,
   type ProviderModelsResult,
@@ -61,6 +63,7 @@ import {
   detectAgentEngines,
   deleteSession,
   fetchDesktopStatus,
+  fetchMcpServerTools,
   fetchProviderModels,
   fetchSettings as fetchAppSettings,
   fetchSnapshot,
@@ -392,7 +395,9 @@ export function App() {
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editingMcpServerId, setEditingMcpServerId] = useState<string | null>(null);
   const [mcpTestResults, setMcpTestResults] = useState<Record<string, McpServerTestResult>>({});
+  const [mcpToolResults, setMcpToolResults] = useState<Record<string, McpServerToolsResult>>({});
   const [testingMcpServerId, setTestingMcpServerId] = useState<string | null>(null);
+  const [refreshingMcpToolsServerId, setRefreshingMcpToolsServerId] = useState<string | null>(null);
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -553,6 +558,10 @@ export function App() {
   const activeRuntimeModel =
     runtimeSettings.model.activeModel || activeRuntimeProvider?.defaultModel || activeRuntimeProvider?.models[0] || "";
   const enabledSkills = snapshot?.skills.filter((skill) => skill.enabled) ?? [];
+  const discoveredMcpTools = useMemo(
+    () => Object.values(mcpToolResults).flatMap((result) => result.tools),
+    [mcpToolResults]
+  );
   const runningAgents = snapshot?.agents.filter((agent) => agent.status === "running") ?? [];
   const workspaceSignature = [
     runtimeSettings.workspace.defaultWorkspace,
@@ -1059,6 +1068,38 @@ export function App() {
     }
   }
 
+  async function handleRefreshMcpTools(server: McpServerSettings) {
+    setRefreshingMcpToolsServerId(server.id);
+    try {
+      const result =
+        mode === "demo"
+          ? {
+              ok: false,
+              message: "演示模式不发现 MCP 工具。启动桌面后端后可刷新。",
+              checkedAt: new Date().toISOString(),
+              serverId: server.id,
+              transport: server.transport,
+              tools: []
+            }
+          : await fetchMcpServerTools({ server, timeoutMs: 9000 });
+      setMcpToolResults((current) => ({ ...current, [server.id]: result }));
+    } catch (reason) {
+      setMcpToolResults((current) => ({
+        ...current,
+        [server.id]: {
+          ok: false,
+          message: reason instanceof Error ? reason.message : "MCP 工具发现失败。",
+          checkedAt: new Date().toISOString(),
+          serverId: server.id,
+          transport: server.transport,
+          tools: []
+        }
+      }));
+    } finally {
+      setRefreshingMcpToolsServerId(null);
+    }
+  }
+
   function handleOpenView(view: AppView) {
     setActiveView(view);
     window.location.hash = view === "new" ? "" : view;
@@ -1480,11 +1521,14 @@ export function App() {
           <McpHubView
             servers={runtimeSettings.mcp.servers}
             testResults={mcpTestResults}
+            toolResults={mcpToolResults}
             testingServerId={testingMcpServerId}
+            refreshingToolsServerId={refreshingMcpToolsServerId}
             onCreate={() => setEditingMcpServerId("__new__")}
             onDelete={(serverId) => void handleDeleteMcpServer(serverId)}
             onEdit={(serverId) => setEditingMcpServerId(serverId)}
             onOpenSettings={() => handleOpenSettings("permissions")}
+            onRefreshTools={(server) => void handleRefreshMcpTools(server)}
             onTest={(server) => void handleTestMcpServer(server)}
             onToggle={(serverId, enabled) => void handleToggleMcpServer(serverId, enabled)}
           />
@@ -1740,6 +1784,8 @@ export function App() {
           engines={runtimeSettings.assistant.engines}
           providers={runtimeSettings.providers}
           skills={runtimeSettings.assistant.skills}
+          mcpServers={runtimeSettings.mcp.servers}
+          mcpTools={discoveredMcpTools}
           onClose={() => setEditingAgentId(null)}
           onSave={(agent) => void handleSaveAgentFromHub(agent)}
         />
@@ -1781,6 +1827,8 @@ function SettingsModal({ children, onClose }: { children: ReactNode; onClose: ()
 function AgentEditorModal({
   agent,
   engines,
+  mcpServers,
+  mcpTools,
   providers,
   skills,
   onClose,
@@ -1788,6 +1836,8 @@ function AgentEditorModal({
 }: {
   agent: AgentProfile | null;
   engines: AgentEngineSettings[];
+  mcpServers: McpServerSettings[];
+  mcpTools: McpToolDefinition[];
   providers: ProviderSettings[];
   skills: SkillProfile[];
   onClose: () => void;
@@ -1805,7 +1855,9 @@ function AgentEditorModal({
     agent?.instructions ?? "说明这个 Agent 应该如何处理任务、何时请求工具、输出什么结果。"
   );
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(() => new Set(agent?.skills ?? []));
+  const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(() => new Set(agent?.mcpToolIds ?? []));
   const selectedEngine = engines.find((engine) => engine.id === engineId) ?? fallbackEngine;
+  const mcpToolChoices = buildMcpToolChoices(mcpServers, mcpTools, selectedMcpToolIds);
 
   function toggleSkill(skillId: string) {
     setSelectedSkillIds((current) => {
@@ -1814,6 +1866,18 @@ function AgentEditorModal({
         next.delete(skillId);
       } else {
         next.add(skillId);
+      }
+      return next;
+    });
+  }
+
+  function toggleMcpTool(toolId: string) {
+    setSelectedMcpToolIds((current) => {
+      const next = new Set(current);
+      if (next.has(toolId)) {
+        next.delete(toolId);
+      } else {
+        next.add(toolId);
       }
       return next;
     });
@@ -1834,6 +1898,7 @@ function AgentEditorModal({
       providerId,
       status: agent?.status ?? "idle",
       skills: [...selectedSkillIds],
+      mcpToolIds: [...selectedMcpToolIds],
       enabled,
       category,
       instructions: instructions.trim() || "按用户目标完成任务，必要时请求工具和审批。"
@@ -1918,6 +1983,26 @@ function AgentEditorModal({
                 ))}
               </div>
             </div>
+            <div className="agent-skill-picker mcp-tool-picker">
+              <span>绑定 MCP 工具</span>
+              <div>
+                {mcpToolChoices.length === 0 ? (
+                  <small className="empty-picker-note">先到 MCP 页面新增服务器并刷新工具。</small>
+                ) : (
+                  mcpToolChoices.map((choice) => (
+                    <label key={choice.id}>
+                      <input
+                        checked={selectedMcpToolIds.has(choice.id)}
+                        onChange={() => toggleMcpTool(choice.id)}
+                        type="checkbox"
+                      />
+                      <strong>{choice.label}</strong>
+                      <small>{choice.detail}</small>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
           </section>
         </div>
         <div className="agent-editor-actions">
@@ -1931,6 +2016,43 @@ function AgentEditorModal({
       </form>
     </div>
   );
+}
+
+function buildMcpToolChoices(
+  servers: McpServerSettings[],
+  tools: McpToolDefinition[],
+  selectedIds: Set<string>
+) {
+  const choices = servers.map((server) => ({
+    id: `${server.id}:*`,
+    label: `${server.name} · 全部工具`,
+    detail: `${server.transport} · ${server.enabled ? "启用" : "停用"}`
+  }));
+  const knownIds = new Set(choices.map((choice) => choice.id));
+  for (const tool of tools) {
+    if (knownIds.has(tool.id)) {
+      continue;
+    }
+    knownIds.add(tool.id);
+    choices.push({
+      id: tool.id,
+      label: tool.title || tool.name,
+      detail: `${tool.serverName} · ${tool.description}`
+    });
+  }
+  for (const selectedId of selectedIds) {
+    if (knownIds.has(selectedId)) {
+      continue;
+    }
+    const [serverId, toolName] = selectedId.split(":");
+    const server = servers.find((item) => item.id === serverId);
+    choices.push({
+      id: selectedId,
+      label: toolName === "*" ? `${server?.name ?? serverId} · 全部工具` : toolName || selectedId,
+      detail: server ? `${server.name} · 已保存绑定` : "已保存绑定，当前 MCP 服务器不存在"
+    });
+  }
+  return choices;
 }
 
 function McpServerEditorModal({
@@ -2538,25 +2660,32 @@ function SkillsHubView({
 function McpHubView({
   servers,
   testResults,
+  toolResults,
   testingServerId,
+  refreshingToolsServerId,
   onCreate,
   onDelete,
   onEdit,
   onOpenSettings,
+  onRefreshTools,
   onTest,
   onToggle
 }: {
   servers: McpServerSettings[];
   testResults: Record<string, McpServerTestResult>;
+  toolResults: Record<string, McpServerToolsResult>;
   testingServerId: string | null;
+  refreshingToolsServerId: string | null;
   onCreate: () => void;
   onDelete: (serverId: string) => void;
   onEdit: (serverId: string) => void;
   onOpenSettings: () => void;
+  onRefreshTools: (server: McpServerSettings) => void;
   onTest: (server: McpServerSettings) => void;
   onToggle: (serverId: string, enabled: boolean) => void;
 }) {
   const enabledCount = servers.filter((server) => server.enabled).length;
+  const discoveredToolCount = Object.values(toolResults).reduce((count, result) => count + result.tools.length, 0);
   return (
     <section className="workspace module-workspace">
       <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="管理本地 stdio 和远程 HTTP MCP，所有高风险动作继续进入审批。" actionLabel="新增 MCP" onAction={onCreate} />
@@ -2576,6 +2705,9 @@ function McpHubView({
             <span>
               总数 <b>{servers.length}</b>
             </span>
+            <span>
+              工具 <b>{discoveredToolCount}</b>
+            </span>
           </div>
           <p>所有写文件、执行命令、浏览器和外部访问动作都会先进入审批队列。这里负责 MCP 连接和可用性测试。</p>
           <button className="secondary-button" onClick={onOpenSettings} type="button">打开权限策略</button>
@@ -2583,6 +2715,7 @@ function McpHubView({
         <section className="mcp-server-grid">
         {servers.map((server) => {
           const result = testResults[server.id];
+          const toolsResult = toolResults[server.id];
           const target =
             server.transport === "http"
               ? server.url || "未配置 URL"
@@ -2606,12 +2739,29 @@ function McpHubView({
                   </span>
                 </div>
               ) : null}
+              {toolsResult ? (
+                <div className={toolsResult.ok ? "mcp-tools-result ok" : "mcp-tools-result failed"}>
+                  <strong>{toolsResult.ok ? `已发现 ${toolsResult.tools.length} 个工具` : "工具发现失败"}</strong>
+                  <span>{toolsResult.message}</span>
+                  {toolsResult.tools.length ? (
+                    <div className="mcp-tool-chip-row">
+                      {toolsResult.tools.slice(0, 6).map((tool) => (
+                        <span key={tool.id}>{tool.title || tool.name}</span>
+                      ))}
+                      {toolsResult.tools.length > 6 ? <span>+{toolsResult.tools.length - 6}</span> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="mcp-card-actions">
                 <button className="secondary-button" onClick={() => onToggle(server.id, !server.enabled)} type="button">
                   {server.enabled ? "停用" : "启用"}
                 </button>
                 <button className="secondary-button" disabled={testingServerId === server.id} onClick={() => onTest(server)} type="button">
                   {testingServerId === server.id ? "测试中..." : "测试连接"}
+                </button>
+                <button className="secondary-button" disabled={refreshingToolsServerId === server.id} onClick={() => onRefreshTools(server)} type="button">
+                  {refreshingToolsServerId === server.id ? "刷新中..." : "刷新工具"}
                 </button>
                 <button className="secondary-button" onClick={() => onEdit(server.id)} type="button">
                   编辑
