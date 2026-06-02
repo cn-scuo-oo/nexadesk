@@ -356,7 +356,14 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const settingsText = await renderAndReadText(apiPort, "settings");
-  if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务") || !settingsText.includes("Agent 引擎")) {
+  if (
+    !settingsText.includes("NexaDesk") ||
+    !settingsText.includes("模型与运行") ||
+    !settingsText.includes("助手与工具") ||
+    !settingsText.includes("保存更改") ||
+    !settingsText.includes("模型服务") ||
+    !settingsText.includes("Agent 引擎")
+  ) {
     throw new Error("Renderer smoke test failed: settings UI text was not rendered.");
   }
 

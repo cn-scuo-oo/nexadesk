@@ -229,6 +229,12 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
   { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
 ];
 
+const settingsTabGroups: Array<{ title: string; tabs: SettingsTab[] }> = [
+  { title: "模型与运行", tabs: ["providers", "model", "engines"] },
+  { title: "助手与工具", tabs: ["assistants", "skills", "permissions"] },
+  { title: "应用", tabs: ["appearance", "workspace", "desktop"] }
+];
+
 const appViews = new Set<AppView>([
   "new",
   "thread",
@@ -3064,6 +3070,7 @@ function SettingsCenter({
     Boolean
   );
   const canPickDirectory = Boolean(window.nexadeskDesktop?.selectDirectory);
+  const activeSettingsTab = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
 
   function updateAgent(agentId: string, patch: Partial<AgentProfile>) {
     updateDraft({
@@ -3136,39 +3143,59 @@ function SettingsCenter({
 
   return (
     <section className="workspace settings-workspace" id="settings">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">设置中心</p>
-          <h2>应用设置</h2>
-          <p className="muted">
-            模型服务、Agent 引擎、助手技能、界面字体、权限审批和桌面诊断都集中在这里配置。
-          </p>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary-button" disabled={saving} onClick={() => void persist(draft).catch(() => undefined)} type="button">
-            {saving ? "保存中..." : "保存全部"}
-          </button>
-        </div>
-      </header>
-
-      {localStatus ? <div className="notice">{localStatus}</div> : null}
-
-      <div className="settings-layout">
-        <aside className="settings-nav" aria-label="Settings sections">
-          {settingsTabs.map((tab) => (
-            <button
-              className={activeTab === tab.id ? "settings-nav-button active" : "settings-nav-button"}
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-            >
-              <strong>{tab.label}</strong>
-              <span>{tab.detail}</span>
-            </button>
-          ))}
+      <div className="settings-shell">
+        <aside className="settings-rail">
+          <div className="settings-rail-head">
+            <p className="eyebrow">设置</p>
+            <h2>NexaDesk</h2>
+            <span>模型、助手、工具和桌面诊断</span>
+          </div>
+          <nav className="settings-nav" aria-label="Settings sections">
+            {settingsTabGroups.map((group) => (
+              <div className="settings-nav-group" key={group.title}>
+                <span>{group.title}</span>
+                {group.tabs.map((tabId) => {
+                  const tab = settingsTabs.find((item) => item.id === tabId);
+                  if (!tab) {
+                    return null;
+                  }
+                  return (
+                    <button
+                      className={activeTab === tab.id ? "settings-nav-button active" : "settings-nav-button"}
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      type="button"
+                    >
+                      <strong>{tab.label}</strong>
+                      <small>{tab.detail}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+          <div className="settings-rail-foot">
+            <span>{draft.providers.filter((provider) => provider.connected).length} 个模型服务</span>
+            <span>{draft.assistant.agents.filter((agent) => agent.enabled).length} 个启用助手</span>
+          </div>
         </aside>
 
-        <div className="settings-detail">
+        <section className="settings-main">
+          <header className="settings-main-header">
+            <div>
+              <p className="eyebrow">{activeSettingsTab?.label ?? "设置中心"}</p>
+              <h2>{activeSettingsTab?.label ?? "应用设置"}</h2>
+              <p>{activeSettingsTab?.detail ?? "管理 NexaDesk 配置。"}</p>
+            </div>
+            <div className="settings-main-actions">
+              {localStatus ? <span className="settings-status-pill">{localStatus}</span> : null}
+              <button className="primary-button" disabled={saving} onClick={() => void persist(draft).catch(() => undefined)} type="button">
+                {saving ? "保存中..." : "保存更改"}
+              </button>
+            </div>
+          </header>
+
+          <div className="settings-detail">
         {activeTab === "providers" ? (
         <ProviderConfigPanel
           settings={draft}
@@ -3893,7 +3920,8 @@ function SettingsCenter({
           </div>
         </section>
         ) : null}
-        </div>
+          </div>
+        </section>
       </div>
     </section>
   );
