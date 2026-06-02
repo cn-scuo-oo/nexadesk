@@ -329,13 +329,29 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const runtimeText = await renderAndReadText(apiPort, "runtime");
-  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势")) {
+  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字")) {
     throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
+  }
+  const runtimeLayout = await renderAndEvaluate(
+    apiPort,
+    "runtime",
+    "(() => ({ hasDashboardShell: Boolean(document.querySelector('.runtime-dashboard-shell')), hasMetricGrid: Boolean(document.querySelector('.runtime-dashboard-metrics')), hasChart: Boolean(document.querySelector('.runtime-chart-visual')), hasSideStack: Boolean(document.querySelector('.runtime-side-stack')) }))()"
+  );
+  if (!runtimeLayout.hasDashboardShell || !runtimeLayout.hasMetricGrid || !runtimeLayout.hasChart || !runtimeLayout.hasSideStack) {
+    throw new Error("Renderer smoke test failed: runtime dashboard layout controls were not rendered.");
   }
 
   const searchText = await renderAndReadText(apiPort, "search");
-  if (!searchText.includes("搜索任务") || !searchText.includes("最近上下文")) {
+  if (!searchText.includes("任务记录") || !searchText.includes("Task Detail") || !searchText.includes("进入任务") || !searchText.includes("最近上下文")) {
     throw new Error("Renderer smoke test failed: search workspace was not rendered as a separate view.");
+  }
+  const searchLayout = await renderAndEvaluate(
+    apiPort,
+    "search",
+    "(() => ({ hasRecordLayout: Boolean(document.querySelector('.task-record-layout')), hasRecordRow: Boolean(document.querySelector('.task-record-row')), hasDetailPanel: Boolean(document.querySelector('.task-detail-panel')) }))()"
+  );
+  if (!searchLayout.hasRecordLayout || !searchLayout.hasRecordRow || !searchLayout.hasDetailPanel) {
+    throw new Error("Renderer smoke test failed: task record detail layout was not rendered.");
   }
 
   const scheduledText = await renderAndReadText(apiPort, "scheduled");
@@ -344,8 +360,16 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const skillsText = await renderAndReadText(apiPort, "skills");
-  if ((!skillsText.includes("技能市场") && !skillsText.includes("技能")) || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
+  if (!skillsText.includes("已安装") || !skillsText.includes("技能市场") || !skillsText.includes("添加自定义技能") || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
     throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
+  }
+  const skillsLayout = await renderAndEvaluate(
+    apiPort,
+    "skills",
+    "(() => ({ hasSkillsShell: Boolean(document.querySelector('.skills-hub-shell')), hasSkillsTabs: Boolean(document.querySelector('.skills-tabs')), hasContentPanel: Boolean(document.querySelector('.skills-content-panel')) }))()"
+  );
+  if (!skillsLayout.hasSkillsShell || !skillsLayout.hasSkillsTabs || !skillsLayout.hasContentPanel) {
+    throw new Error("Renderer smoke test failed: skills hub tab layout was not rendered.");
   }
 
   const mcpText = await renderAndReadText(apiPort, "mcp");

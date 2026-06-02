@@ -21,7 +21,7 @@
   X,
   Zap
 } from "lucide-react";
-import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDefaultProviders,
   createDefaultSettings,
@@ -551,6 +551,13 @@ export function App() {
     }
     return snapshot.messages.filter((message) => message.sessionId === activeSession.id);
   }, [activeSession, snapshot]);
+  const sessionMessageCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const message of snapshot?.messages ?? []) {
+      counts.set(message.sessionId, (counts.get(message.sessionId) ?? 0) + 1);
+    }
+    return counts;
+  }, [snapshot]);
 
   const runtimeSettings = settings ?? createDefaultSettings(snapshot?.providers ?? []);
   const configuredProviders = runtimeSettings.providers.filter((provider) => provider.connected).length;
@@ -1365,7 +1372,10 @@ export function App() {
                 ) : (
                   <span>
                     <strong>{session.title}</strong>
-                    <small>{formatRelativeTime(session.updatedAt)} · {runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                    <small>
+                      {formatRelativeTime(session.updatedAt)} · {sessionMessageCounts.get(session.id) ?? 0} 条消息 ·{" "}
+                      {runtimeSettings.workspace.defaultWorkspace || session.workspace}
+                    </small>
                   </span>
                 )}
                 <span className="session-card-actions" onClick={(event) => event.stopPropagation()}>
@@ -1456,11 +1466,14 @@ export function App() {
           />
         ) : activeView === "search" ? (
           <TaskSearchView
+            activeSessionId={activeSession?.id ?? null}
             files={snapshot.files}
+            messages={snapshot.messages}
             recentFiles={recentWorkspaceFiles}
             sessions={snapshot.sessions}
             onNewTask={() => handleOpenView("new")}
-            onOpenSession={() => handleOpenView("thread")}
+            onOpenSession={handleOpenSession}
+            onSelectSession={setActiveSessionId}
             onOpenWorkspace={() => handleOpenView("thread")}
           />
         ) : activeView === "scheduled" ? (
@@ -2698,23 +2711,34 @@ function TaskRunPanel({
 }
 
 function TaskSearchView({
+  activeSessionId,
   files,
+  messages,
   recentFiles,
   sessions,
   onNewTask,
   onOpenSession,
+  onSelectSession,
   onOpenWorkspace
 }: {
+  activeSessionId: string | null;
   files: WorkspaceFile[];
+  messages: ChatMessage[];
   recentFiles: WorkspaceTreeEntry[];
   sessions: AppSnapshot["sessions"];
   onNewTask: () => void;
-  onOpenSession: () => void;
+  onOpenSession: (sessionId: string) => void;
+  onSelectSession: (sessionId: string) => void;
   onOpenWorkspace: () => void;
 }) {
+  const selectedSession = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
+  const selectedMessages = selectedSession ? messages.filter((message) => message.sessionId === selectedSession.id) : [];
+  const latestMessage = selectedMessages[selectedMessages.length - 1];
+  const contextFiles = [...recentFiles, ...files.slice(0, 4)].slice(0, 6);
+
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Search" title="搜索任务" detail="任务记录、工作区文件和上下文检索独立成页。" actionLabel="新建任务" onAction={onNewTask} />
+      <ModuleHeader eyebrow="Search" title="任务记录" detail="任务列表和任务详情联动，先查看上下文，再进入运行页继续协作。" actionLabel="新建任务" onAction={onNewTask} />
       <div className="module-search-bar">
         <Search size={18} />
         <input placeholder="搜索任务、文件或上下文" />
@@ -2725,8 +2749,8 @@ function TaskSearchView({
         <span>有审批</span>
         <span>文件上下文</span>
       </div>
-      <div className="search-workspace-grid">
-        <section className="panel-block search-result-panel">
+      <div className="task-record-layout">
+        <section className="panel-block task-record-list-panel">
           <div className="panel-heading compact">
             <div>
               <p className="eyebrow">History</p>
@@ -2734,32 +2758,82 @@ function TaskSearchView({
             </div>
             <CircleDot size={18} />
           </div>
-          <div className="stack-list">
+          <div className="task-record-list">
             {sessions.map((session) => (
-              <button className="module-row" key={session.id} onClick={onOpenSession} type="button">
-                <strong>{session.title}</strong>
-                <span>{session.workspace}</span>
-                <b>打开</b>
+              <button
+                className={selectedSession?.id === session.id ? "task-record-row active" : "task-record-row"}
+                key={session.id}
+                onClick={() => onSelectSession(session.id)}
+                type="button"
+              >
+                <span className={session.pinned ? "history-status-dot pinned" : "history-status-dot"} />
+                <span>
+                  <strong>{session.title}</strong>
+                  <small>{formatRelativeTime(session.updatedAt)} · {messages.filter((message) => message.sessionId === session.id).length} 条消息</small>
+                </span>
+                <b>{session.pinned ? "置顶" : "详情"}</b>
               </button>
             ))}
           </div>
         </section>
-        <section className="panel-block search-result-panel">
+
+        <section className="panel-block task-detail-panel">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">Context</p>
-              <h3>最近上下文</h3>
+              <p className="eyebrow">Task Detail</p>
+              <h3>{selectedSession?.title ?? "未选择任务"}</h3>
             </div>
-            <FileText size={18} />
+            <button className="primary-button" disabled={!selectedSession} onClick={() => selectedSession && onOpenSession(selectedSession.id)} type="button">
+              进入任务
+            </button>
           </div>
-          <div className="stack-list">
-            {[...recentFiles, ...files.slice(0, 4)].slice(0, 8).map((file) => (
-              <button className="module-row" key={file.path} onClick={onOpenWorkspace} type="button">
-                <strong>{file.path}</strong>
-                <span>{file.kind}</span>
-                <b>预览</b>
-              </button>
-            ))}
+
+          <div className="task-detail-summary">
+            <span>
+              <b>{selectedMessages.length}</b>
+              消息
+            </span>
+            <span>
+              <b>{selectedSession?.agentIds.length ?? 0}</b>
+              助手
+            </span>
+            <span>
+              <b>{selectedSession?.pinned ? "是" : "否"}</b>
+              置顶
+            </span>
+          </div>
+
+          <div className="task-detail-body">
+            <article className="task-detail-card">
+              <p className="eyebrow">Latest</p>
+              <strong>{latestMessage ? `${latestMessage.author} · ${formatRelativeTime(latestMessage.createdAt)}` : "暂无消息"}</strong>
+              <span>{latestMessage?.content || "从新建任务发起协作后，最近消息会显示在这里。"}</span>
+            </article>
+
+            <article className="task-detail-card">
+              <p className="eyebrow">Workspace</p>
+              <strong>{selectedSession?.workspace ?? "未设置工作区"}</strong>
+              <span>任务详情会保留工作区、助手和消息摘要；后续可继续接真实文件 diff 与运行日志。</span>
+            </article>
+          </div>
+
+          <div className="task-detail-context">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">Context</p>
+                <h3>最近上下文</h3>
+              </div>
+              <FileText size={18} />
+            </div>
+            <div className="stack-list">
+              {contextFiles.map((file) => (
+                <button className="module-row" key={file.path} onClick={onOpenWorkspace} type="button">
+                  <strong>{file.path}</strong>
+                  <span>{file.kind}</span>
+                  <b>预览</b>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       </div>
@@ -2840,26 +2914,95 @@ function RuntimeDashboardView({
   runningAgents: number;
   totalAgents: number;
 }) {
+  const totalRuntimeSurfaces = Math.max(1, configuredProviders + runningAgents + enabledSkills + activeApprovals);
+  const successRate = activeApprovals > 0 ? "待确认" : "100%";
+  const avgCompletion = runningAgents > 0 ? "运行中" : "空闲";
+  const trendBars = [28, 42, 36, 58, 52, 68, 61, 74, 66, 82, 76, 88];
+
   return (
-    <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、工具审批和执行趋势集中在这里。" />
-      <div className="dashboard-filter-row">
-        <span>近 24 小时</span>
-        <span>{activeRuntimeProvider?.name ?? "未选择 Provider"}</span>
-        <span>{activeRuntimeModel || "未选择模型"}</span>
-        <button className="mini-button" type="button">刷新</button>
+    <section className="workspace module-workspace runtime-dashboard-workspace">
+      <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。" />
+      <div className="runtime-dashboard-shell">
+        <section className="runtime-dashboard-main">
+          <div className="dashboard-filter-row runtime-filter-row">
+            <span>近 24 小时</span>
+            <span>{activeRuntimeProvider?.name ?? "未选择 Provider"}</span>
+            <span>{activeRuntimeModel || "未选择模型"}</span>
+            <span>全部状态</span>
+            <button className="mini-button" type="button">刷新</button>
+          </div>
+
+          <div className="runtime-metric-grid runtime-dashboard-metrics">
+            <Metric label="总调用" value={String(totalRuntimeSurfaces)} hint="本地运行面统计" />
+            <Metric label="成功率" value={successRate} hint={activeApprovals > 0 ? "审批未完成" : "无失败事件"} />
+            <Metric label="平均完成时间" value={avgCompletion} hint="待接真实遥测" />
+            <Metric label="平均首字" value={activeRuntimeModel ? "可用" : "-"} hint="TTFT 预留位" />
+            <Metric label="输出 TPS" value={runningAgents > 0 ? "实时" : "-"} hint="输出阶段 TPS" />
+            <Metric label="Model TPS" value={configuredProviders > 0 ? "可测" : "-"} hint="模型吞吐预留" />
+            <Metric label="Token 总量" value={enabledSkills > 0 ? `${enabledSkills} 技能` : "-"} hint="待接 Token 统计" />
+            <Metric label="上下文 Token" value={String(activeApprovals)} hint="审批/上下文压力" />
+          </div>
+
+          <section className="runtime-chart panel-block runtime-chart-card">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">Trend</p>
+                <h3>调用趋势</h3>
+              </div>
+              <span className="status ready">{activeRuntimeProvider?.connected ? "在线" : "未连接"}</span>
+            </div>
+            <div className="runtime-chart-visual" aria-label="调用趋势图">
+              {trendBars.map((height, index) => (
+                <span key={index} style={{ "--bar-height": `${height}%` } as CSSProperties} />
+              ))}
+            </div>
+          </section>
+        </section>
+
+        <aside className="runtime-side-stack">
+          <section className="panel-block runtime-health-card">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">Model</p>
+                <h3>当前模型服务</h3>
+              </div>
+              <Bot size={18} />
+            </div>
+            <div className="runtime-health-list">
+              <span>
+                Provider <b>{activeRuntimeProvider?.name ?? "未选择"}</b>
+              </span>
+              <span>
+                Model <b>{activeRuntimeModel || "未选择"}</b>
+              </span>
+              <span>
+                服务数 <b>{configuredProviders}</b>
+              </span>
+            </div>
+          </section>
+
+          <section className="panel-block runtime-health-card">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">Agents</p>
+                <h3>运行队列</h3>
+              </div>
+              <Users size={18} />
+            </div>
+            <div className="runtime-health-list">
+              <span>
+                运行助手 <b>{runningAgents}/{totalAgents}</b>
+              </span>
+              <span>
+                启用技能 <b>{enabledSkills}</b>
+              </span>
+              <span>
+                待审批 <b>{activeApprovals}</b>
+              </span>
+            </div>
+          </section>
+        </aside>
       </div>
-      <div className="runtime-metric-grid">
-        <Metric label="总调用" value={String(Math.max(1, runningAgents))} />
-        <Metric label="运行助手" value={`${runningAgents}/${totalAgents}`} />
-        <Metric label="启用技能" value={String(enabledSkills)} />
-        <Metric label="模型服务" value={String(configuredProviders)} />
-        <Metric label="待审批" value={String(activeApprovals)} />
-      </div>
-      <section className="runtime-chart panel-block">
-        <h3>调用趋势</h3>
-        <div />
-      </section>
     </section>
   );
 }
@@ -2873,62 +3016,135 @@ function SkillsHubView({
   onOpenSettings: () => void;
   onToggleSkill: (skillId: string, enabled: boolean) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"installed" | "market">("installed");
+  const [activeCategory, setActiveCategory] = useState("全部");
+  const [query, setQuery] = useState("");
   const categories = ["全部", "推荐", "编程开发", "办公文档", "数据分析", "自动化", "研究写作"];
+  const enabledSkills = skills.filter((skill) => skill.enabled);
+  const visibleSkills = skills.filter((skill) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery =
+      !normalizedQuery ||
+      skill.name.toLowerCase().includes(normalizedQuery) ||
+      skill.description.toLowerCase().includes(normalizedQuery);
+    const category = skillCategoryLabel(skill);
+    const matchesCategory = activeCategory === "全部" || activeCategory === "推荐" || category === activeCategory;
+    const matchesTab = activeTab === "market" || skill.enabled;
+    return matchesQuery && matchesCategory && matchesTab;
+  });
+
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Skills" title="技能" detail="技能市场和已安装技能独立管理，不挤在工作台首页。" actionLabel="管理技能" onAction={onOpenSettings} />
-      <div className="module-search-bar">
-        <Search size={18} />
-        <input placeholder="搜索技能" />
-      </div>
-      <div className="chip-tabs">
-        {categories.map((category, index) => (
-          <span className={index === 1 ? "active" : ""} key={category}>{category}</span>
-        ))}
-      </div>
-      <div className="skill-market-layout">
-        <section className="panel-block skill-installed-panel">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">Installed</p>
-              <h3>已启用技能</h3>
-            </div>
-            <b className="status ready">{skills.filter((skill) => skill.enabled).length}</b>
+      <ModuleHeader eyebrow="Skills" title="技能" detail="已安装技能和技能市场分开管理，用户自定义技能从设置入口维护。" actionLabel="管理技能" onAction={onOpenSettings} />
+      <div className="skills-hub-shell">
+        <section className="skills-hero-panel">
+          <div>
+            <p className="eyebrow">Skill System</p>
+            <h3>给智能体装上可复用能力</h3>
+            <span>{enabledSkills.length} 个技能已启用 · {skills.length} 个技能可配置</span>
           </div>
-          <div className="stack-list">
-            {skills.filter((skill) => skill.enabled).slice(0, 5).map((skill) => (
-              <article className="module-row" key={skill.id}>
-                <strong>{skill.name}</strong>
-                <span>{skill.source}</span>
-                <b>运行中</b>
-              </article>
+          <button className="primary-button" onClick={onOpenSettings} type="button">
+            添加自定义技能
+          </button>
+        </section>
+
+        <div className="skills-tabs" aria-label="技能视图">
+          <button className={activeTab === "installed" ? "active" : ""} onClick={() => setActiveTab("installed")} type="button">
+            已安装 <b>{enabledSkills.length}</b>
+          </button>
+          <button className={activeTab === "market" ? "active" : ""} onClick={() => setActiveTab("market")} type="button">
+            技能市场 <b>{skills.length}</b>
+          </button>
+        </div>
+
+        <div className="skills-filter-row">
+          <div className="module-search-bar">
+            <Search size={18} />
+            <input placeholder="搜索技能" value={query} onChange={(event) => setQuery(event.target.value)} />
+          </div>
+          <div className="chip-tabs">
+            {categories.map((category) => (
+              <button className={activeCategory === category ? "active" : ""} key={category} onClick={() => setActiveCategory(category)} type="button">
+                {category}
+              </button>
             ))}
           </div>
-        </section>
-        <section className="module-grid two-column skill-market-grid">
-        {skills.map((skill) => (
-          <article className="market-card" key={skill.id}>
+        </div>
+
+        <section className="skills-content-panel">
+          <div className="panel-heading compact">
             <div>
-              <Workflow size={17} />
-              <strong>{skill.name}</strong>
+              <p className="eyebrow">{activeTab === "installed" ? "Installed" : "Marketplace"}</p>
+              <h3>{activeTab === "installed" ? "已安装技能" : "技能市场"}</h3>
             </div>
-            <p>{skill.description}</p>
-            <div className="market-card-actions">
-              <span>{skill.enabled ? "已启用" : "未启用"} · {skill.source}</span>
-              <button
-                className={skill.enabled ? "secondary-button danger-soft-button" : "primary-button"}
-                onClick={() => onToggleSkill(skill.id, !skill.enabled)}
-                type="button"
-              >
-                {skill.enabled ? "停用" : "启用"}
-              </button>
-            </div>
-          </article>
-        ))}
+            <b className="status ready">{visibleSkills.length}</b>
+          </div>
+
+          <div className={activeTab === "installed" ? "installed-skill-grid" : "skill-market-grid"}>
+            {visibleSkills.length === 0 ? (
+              <EmptyState title="没有匹配的技能" detail="换一个分类或搜索词，或者到设置里添加自定义技能。" />
+            ) : (
+              visibleSkills.map((skill) => (
+                <article className={skill.enabled ? "market-card skill-card enabled" : "market-card skill-card"} key={skill.id}>
+                  <div>
+                    <Workflow size={17} />
+                    <strong>{skill.name}</strong>
+                    <span>{skillCategoryLabel(skill)}</span>
+                  </div>
+                  <p>{skill.description}</p>
+                  <div className="skill-card-meta">
+                    <span>{skillSourceLabel(skill.source)}</span>
+                    <span>{skill.enabled ? "已安装" : "可安装"}</span>
+                  </div>
+                  <div className="market-card-actions">
+                    <button
+                      className={skill.enabled ? "secondary-button danger-soft-button" : "primary-button"}
+                      onClick={() => onToggleSkill(skill.id, !skill.enabled)}
+                      type="button"
+                    >
+                      {skill.enabled ? "停用" : "启用"}
+                    </button>
+                    <button className="secondary-button" onClick={onOpenSettings} type="button">
+                      配置
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
         </section>
       </div>
     </section>
   );
+}
+
+function skillCategoryLabel(skill: SkillProfile) {
+  const text = `${skill.name} ${skill.description}`.toLowerCase();
+  if (text.includes("code") || text.includes("代码") || text.includes("开发")) {
+    return "编程开发";
+  }
+  if (text.includes("word") || text.includes("ppt") || text.includes("excel") || text.includes("文档") || text.includes("office")) {
+    return "办公文档";
+  }
+  if (text.includes("data") || text.includes("数据") || text.includes("分析")) {
+    return "数据分析";
+  }
+  if (text.includes("整理") || text.includes("自动") || text.includes("automation")) {
+    return "自动化";
+  }
+  if (text.includes("报告") || text.includes("研究") || text.includes("写作")) {
+    return "研究写作";
+  }
+  return "推荐";
+}
+
+function skillSourceLabel(source: SkillProfile["source"]) {
+  const labels: Record<SkillProfile["source"], string> = {
+    built_in: "内置技能",
+    custom: "自定义技能",
+    extension: "扩展技能"
+  };
+  return labels[source];
 }
 
 function McpHubView({
@@ -6213,11 +6429,12 @@ function formatRelativeTime(value: string) {
   return `${Math.floor(diffMs / day)}天前`;
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ hint, label, value }: { hint?: string; label: string; value: string }) {
   return (
     <div className="metric">
       <strong>{value}</strong>
       <span>{label}</span>
+      {hint ? <small>{hint}</small> : null}
     </div>
   );
 }

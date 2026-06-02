@@ -1,8 +1,20 @@
 :root {
   color: #231f18;
-  background: #fff3bf;
+  background: #fff4c8;
+  --app-bg: #fff4c8;
+  --surface: #fffdf8;
+  --surface-warm: #fff8e6;
+  --surface-soft: #fffaf0;
+  --border: #e3d8c4;
+  --border-strong: #d9c7a7;
+  --text: #231f18;
+  --muted-text: #6f675b;
+  --accent: #d97800;
+  --accent-soft: #fff0c6;
+  --green: #2e6f55;
+  --radius: 10px;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -67,7 +79,7 @@ h4 {
   height: 100vh;
   min-height: 0;
   overflow: hidden;
-  background: #fff3bf;
+  background: var(--app-bg);
 }
 
 .app-shell.context-collapsed {
@@ -169,7 +181,7 @@ h4 {
   min-height: 0;
   overflow: hidden;
   padding: 8px 8px 8px 0;
-  background: #fff3bf;
+  background: var(--app-bg);
 }
 
 .product-title {
@@ -914,9 +926,9 @@ h4 {
 .cowork-panel,
 .task-panel,
 .panel-block {
-  border: 1px solid #ded7ca;
-  border-radius: 8px;
-  background: rgba(255, 252, 246, 0.94);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 253, 248, 0.96);
   box-shadow: 0 12px 30px rgba(83, 70, 48, 0.06);
 }
 
@@ -995,19 +1007,28 @@ h4 {
 .metric {
   display: grid;
   gap: 4px;
-  border-radius: 8px;
-  padding: 10px;
-  background: #f4efe6;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--surface);
 }
 
 .metric strong {
-  font-size: 20px;
+  color: #211b13;
+  font-size: 24px;
+  line-height: 1.1;
 }
 
 .metric span {
-  color: #65796f;
+  color: var(--muted-text);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 900;
+}
+
+.metric small {
+  color: #8a7a60;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .panel-heading {
@@ -2255,6 +2276,150 @@ h4 {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
 }
 
+.task-record-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.38fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.task-record-list-panel,
+.task-detail-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.task-record-list-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-record-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.task-record-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+
+.task-record-row:hover,
+.task-record-row.active {
+  border-color: #d8b96f;
+  background: #fff3d0;
+}
+
+.task-record-row strong,
+.task-record-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-record-row small {
+  margin-top: 3px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.task-record-row b {
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #31584a;
+  background: #dfeee6;
+  font-size: 11px;
+}
+
+.task-detail-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.task-detail-summary span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.task-detail-summary b {
+  color: #211b13;
+  font-size: 22px;
+}
+
+.task-detail-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.task-detail-card {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: var(--surface);
+}
+
+.task-detail-card strong,
+.task-detail-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-detail-card span {
+  display: -webkit-box;
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.task-detail-context {
+  display: grid;
+  min-height: 0;
+  gap: 0;
+  padding-bottom: 14px;
+}
+
+.task-detail-context .stack-list {
+  max-height: 260px;
+  overflow: auto;
+  padding: 0 14px;
+}
+
 .automation-layout,
 .mcp-layout {
   grid-template-columns: minmax(270px, 0.42fr) minmax(0, 1fr);
@@ -2492,19 +2657,26 @@ h4 {
 }
 
 .dashboard-filter-row span,
-.chip-tabs span {
-  border: 1px solid #ded7ca;
-  border-radius: 8px;
+.chip-tabs span,
+.chip-tabs button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
   padding: 8px 12px;
   color: #50483b;
-  background: #fffdf8;
+  background: var(--surface);
   font-size: 13px;
   font-weight: 800;
 }
 
-.chip-tabs .active {
+.chip-tabs button {
+  cursor: pointer;
+}
+
+.chip-tabs .active,
+.chip-tabs button.active {
   color: #b76300;
-  background: #fff0c6;
+  border-color: #e8c16b;
+  background: var(--accent-soft);
 }
 
 .runtime-metric-grid {
@@ -2512,12 +2684,47 @@ h4 {
   gap: 12px;
 }
 
+.runtime-dashboard-workspace {
+  gap: 12px;
+}
+
+.runtime-dashboard-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.32fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.runtime-dashboard-main,
+.runtime-side-stack {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+}
+
+.runtime-filter-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--surface-warm);
+}
+
+.runtime-dashboard-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .runtime-chart {
   min-height: 260px;
   padding: 16px;
 }
 
-.runtime-chart div {
+.runtime-chart-card {
+  min-height: 320px;
+  padding: 0;
+}
+
+.runtime-chart .legacy-runtime-chart {
   height: 200px;
   margin-top: 14px;
   border: 1px solid #a9bfff;
@@ -2528,13 +2735,159 @@ h4 {
   background-size: auto, 33% 100%;
 }
 
+.runtime-chart-visual {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  height: 238px;
+  margin: 14px;
+  border: 1px solid #dfd5c2;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 230, 0.94), rgba(255, 253, 248, 0.98)),
+    repeating-linear-gradient(0deg, transparent 0, transparent 39px, rgba(131, 106, 62, 0.12) 40px);
+}
+
+.runtime-chart-visual span {
+  flex: 1;
+  min-width: 10px;
+  height: var(--bar-height);
+  border-radius: 999px 999px 6px 6px;
+  background: linear-gradient(180deg, #f2b354, #d97800);
+  box-shadow: 0 8px 16px rgba(217, 120, 0, 0.18);
+}
+
+.runtime-health-card {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+}
+
+.runtime-health-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.runtime-health-list span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runtime-health-list b {
+  overflow: hidden;
+  color: #211b13;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-hub-shell {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+
+.skills-hero-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(217, 120, 0, 0.1), transparent 34%),
+    var(--surface);
+}
+
+.skills-hero-panel h3 {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.skills-hero-panel span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.skills-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  background: #fff3d0;
+}
+
+.skills-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #665a46;
+  background: transparent;
+  font-weight: 900;
+}
+
+.skills-tabs button.active {
+  color: #211b13;
+  background: var(--surface);
+}
+
+.skills-tabs b {
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: #31584a;
+  background: #dfeee6;
+  font-size: 11px;
+}
+
+.skills-filter-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.44fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.skills-content-panel {
+  display: grid;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 12px 30px rgba(83, 70, 48, 0.06);
+}
+
+.installed-skill-grid,
+.skill-market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
 .market-card {
   display: grid;
   gap: 10px;
-  border: 1px solid #ded7ca;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 14px;
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .market-card > div {
@@ -2544,7 +2897,7 @@ h4 {
 }
 
 .market-card p {
-  color: #61594d;
+  color: var(--muted-text);
   line-height: 1.45;
 }
 
@@ -2556,6 +2909,21 @@ h4 {
   background: #fff0bd;
   font-size: 11px;
   font-weight: 900;
+}
+
+.skill-card.enabled {
+  border-color: #bdd8c9;
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.skill-card > div:first-child span {
+  margin-left: auto;
+}
+
+.skill-card-meta {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .market-card-actions {
@@ -4883,10 +5251,17 @@ h4 {
   .settings-grid,
   .provider-workbench,
   .thread-grid,
+  .task-record-layout,
+  .runtime-dashboard-shell,
+  .skills-filter-row,
   .module-grid.two-column,
   .module-grid.three-column,
   .runtime-metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .runtime-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .provider-workbench-side {
@@ -5001,6 +5376,28 @@ h4 {
 
   .settings-status-pill {
     max-width: 100%;
+  }
+
+  .task-detail-summary,
+  .task-detail-body,
+  .runtime-dashboard-metrics,
+  .installed-skill-grid,
+  .skill-market-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skills-hero-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skills-tabs {
+    width: 100%;
+  }
+
+  .skills-tabs button {
+    flex: 1;
+    justify-content: center;
   }
 
   .task-command-actions,
