@@ -8,6 +8,7 @@ import {
   createDefaultSettings,
   type AppSettings,
   type ModelProvider,
+  type ProviderStatusSettings,
   type ProviderSecretUpdate
 } from "@nexadesk/shared";
 
@@ -261,16 +262,18 @@ function mergeSettings(defaults: AppSettings, saved: AppSettings | null): AppSet
   if (!saved) {
     return defaults;
   }
+  const providers = mergeProviders(defaults.providers, saved.providers ?? []);
 
   return {
     ...defaults,
     ...saved,
-    providers: mergeProviders(defaults.providers, saved.providers ?? []),
+    providers,
     model: { ...defaults.model, ...saved.model },
     assistant: {
       agents: mergeAgents(defaults.assistant.agents, saved.assistant?.agents ?? []),
       skills: mergeSkills(defaults.assistant.skills, saved.assistant?.skills ?? [])
     },
+    providerStatus: mergeProviderStatus(defaults.providerStatus, saved.providerStatus, providers),
     appearance: { ...defaults.appearance, ...saved.appearance },
     workspace: { ...defaults.workspace, ...saved.workspace },
     permissions: { ...defaults.permissions, ...saved.permissions },
@@ -295,6 +298,25 @@ function mergeProviders(defaultProviders: AppSettings["providers"], savedProvide
         name: isCorruptedText(provider.name) ? "Custom model provider" : provider.name
       }))
   ];
+}
+
+function mergeProviderStatus(
+  defaults: ProviderStatusSettings,
+  saved: ProviderStatusSettings | undefined,
+  providers: AppSettings["providers"]
+) {
+  const providerIds = new Set(providers.map((provider) => provider.id));
+  return {
+    tests: pruneProviderStatusRecord({ ...defaults.tests, ...(saved?.tests ?? {}) }, providerIds),
+    modelRefreshes: pruneProviderStatusRecord(
+      { ...defaults.modelRefreshes, ...(saved?.modelRefreshes ?? {}) },
+      providerIds
+    )
+  };
+}
+
+function pruneProviderStatusRecord<T>(record: Record<string, T>, providerIds: Set<string>) {
+  return Object.fromEntries(Object.entries(record).filter(([providerId]) => providerIds.has(providerId)));
 }
 
 function isCorruptedText(value: string | undefined) {

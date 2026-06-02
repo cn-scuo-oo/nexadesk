@@ -38,6 +38,7 @@ import {
   type ProviderCapability,
   type ProviderSecretUpdate,
   type ProviderSettings,
+  type ProviderStatusSettings,
   type ProviderTestResult,
   type SkillProfile,
   type ToolCall
@@ -1888,12 +1889,19 @@ function ProviderConfigPanel({
     }
   }, [providers, selectedProviderId]);
 
+  useEffect(() => {
+    setTestResults(settings.providerStatus.tests);
+    setModelRefreshResults(settings.providerStatus.modelRefreshes);
+  }, [settings.providerStatus]);
+
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
   const selectedDraft =
     drafts[selectedProviderId] ??
     (selectedProvider ? createProviderDraft(selectedProvider) : providers[0] ? createProviderDraft(providers[0]) : null);
   const models = selectedDraft ? parseModels(selectedDraft.modelsText) : [];
   const canDeleteSelectedProvider = selectedDraft ? !defaultProviderIds.has(selectedDraft.id) : false;
+  const selectedTestResult = selectedDraft ? testResults[selectedDraft.id] : undefined;
+  const selectedRefreshResult = selectedDraft ? modelRefreshResults[selectedDraft.id] : undefined;
   const matrixRows = domesticProviderMatrix.map((item) => {
     const provider = providers.find((candidate) => candidate.id === item.id);
     const draft = drafts[item.id] ?? (provider ? createProviderDraft(provider) : null);
@@ -2051,6 +2059,7 @@ function ProviderConfigPanel({
     const nextSettings: AppSettings = {
       ...settings,
       providers: remainingProviders,
+      providerStatus: pruneProviderStatus(settings.providerStatus, remainingProviders.map((provider) => provider.id)),
       model:
         settings.model.activeProviderId === selectedDraft.id
           ? {
@@ -2141,14 +2150,26 @@ function ProviderConfigPanel({
         timeoutMs: 8000
       });
       setTestResults((current) => ({ ...current, [selectedDraft.id]: result }));
+      void persistProviderStatus(
+        buildProviderStatus(settings.providerStatus, testResults, modelRefreshResults, {
+          test: [selectedDraft.id, resultToProviderStatusRecord(result)]
+        })
+      );
     } catch (reason) {
+      const failedResult: ProviderTestResult = {
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        message: reason instanceof Error ? reason.message : "测试失败"
+      };
       setTestResults((current) => ({
         ...current,
-        [selectedDraft.id]: {
-          ok: false,
-          message: reason instanceof Error ? reason.message : "测试失败"
-        }
+        [selectedDraft.id]: failedResult
       }));
+      void persistProviderStatus(
+        buildProviderStatus(settings.providerStatus, testResults, modelRefreshResults, {
+          test: [selectedDraft.id, resultToProviderStatusRecord(failedResult)]
+        })
+      );
     } finally {
       setTestProviderId(null);
     }
@@ -2166,6 +2187,11 @@ function ProviderConfigPanel({
         timeoutMs: 10000
       });
       setModelRefreshResults((current) => ({ ...current, [selectedDraft.id]: result }));
+      void persistProviderStatus(
+        buildProviderStatus(settings.providerStatus, testResults, modelRefreshResults, {
+          modelRefresh: [selectedDraft.id, resultToProviderModelsStatusRecord(result)]
+        })
+      );
       if (!result.ok) {
         setProviderNotice(`刷新模型失败：${result.message}`);
         return;
@@ -2194,14 +2220,21 @@ function ProviderConfigPanel({
       setSavedProviderId(null);
       setProviderNotice(`已刷新 ${result.models.length} 个模型，请确认后点击“保存”。`);
     } catch (reason) {
+      const failedResult: ProviderModelsResult = {
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        models: [],
+        message: reason instanceof Error ? reason.message : "刷新模型失败"
+      };
       setModelRefreshResults((current) => ({
         ...current,
-        [selectedDraft.id]: {
-          ok: false,
-          models: [],
-          message: reason instanceof Error ? reason.message : "刷新模型失败"
-        }
+        [selectedDraft.id]: failedResult
       }));
+      void persistProviderStatus(
+        buildProviderStatus(settings.providerStatus, testResults, modelRefreshResults, {
+          modelRefresh: [selectedDraft.id, resultToProviderModelsStatusRecord(failedResult)]
+        })
+      );
       setProviderNotice(reason instanceof Error ? `刷新模型失败：${reason.message}` : "刷新模型失败。");
     } finally {
       setRefreshProviderId(null);
@@ -2210,6 +2243,17 @@ function ProviderConfigPanel({
 
   if (!selectedDraft) {
     return null;
+  }
+
+  async function persistProviderStatus(providerStatus: ProviderStatusSettings) {
+    if (!onSaveSettings) {
+      return;
+    }
+    try {
+      await onSaveSettings({ ...settings, providerStatus }, []);
+    } catch (reason) {
+      setProviderNotice(reason instanceof Error ? `状态保存失败：${reason.message}` : "状态保存失败。");
+    }
   }
 
   return (
@@ -2450,8 +2494,8 @@ function ProviderConfigPanel({
                 renderProviderNote(
                   selectedDraft,
                   savedProviderId,
-                  testResults[selectedDraft.id],
-                  modelRefreshResults[selectedDraft.id]
+                  selectedTestResult,
+                  selectedRefreshResult
                 )}
             </p>
           </div>
@@ -2491,6 +2535,10 @@ function ProviderConfigPanel({
             </span>
           </summary>
           <div className="disclosure-body">
+            <div className="provider-check-summary">
+              <ProviderCheckLine label="最近测试" result={selectedTestResult} emptyText="还没有测试连接记录" />
+              <ProviderCheckLine label="最近刷新" result={selectedRefreshResult} emptyText="还没有刷新模型记录" />
+            </div>
             <div className="model-chips">
               {models.map((model) => (
                 <span className="model-chip" key={model}>
@@ -2520,6 +2568,40 @@ function createProviderDraft(provider: ModelProvider | ProviderSettings): Provid
     apiKeyConfigured: providerSettings.apiKeyConfigured ?? false,
     capabilities: createCapabilityRecord(provider.capabilities)
   };
+}
+
+function ProviderCheckLine({
+  label,
+  result,
+  emptyText
+}: {
+  label: string;
+  result: ProviderTestResult | ProviderModelsResult | undefined;
+  emptyText: string;
+}) {
+  if (!result) {
+    return (
+      <div className="provider-check-line">
+        <span>{label}</span>
+        <strong>未记录</strong>
+        <small>{emptyText}</small>
+      </div>
+    );
+  }
+
+  const modelCount = "models" in result ? result.models.length : undefined;
+  return (
+    <div className={result.ok ? "provider-check-line ok" : "provider-check-line fail"}>
+      <span>{label}</span>
+      <strong>{result.ok ? "通过" : "失败"}</strong>
+      <small>
+        {formatProviderCheckTime(result.checkedAt)}
+        {typeof result.status === "number" ? ` · HTTP ${result.status}` : ""}
+        {typeof modelCount === "number" ? ` · ${modelCount} 个模型` : ""}
+        {result.checkedUrl ? ` · ${result.checkedUrl}` : ""}
+      </small>
+    </div>
+  );
 }
 
 function providerDraftToSettings(draft: ProviderDraft): ProviderSettings {
@@ -2625,12 +2707,12 @@ function renderProviderNote(
   refreshResult: ProviderModelsResult | undefined
 ) {
   if (testResult) {
-    return `${testResult.ok ? "Test passed" : "Test failed"}: ${testResult.message}${
+    return `${testResult.ok ? "Test passed" : "Test failed"}${formatProviderCheckSuffix(testResult)}: ${testResult.message}${
       testResult.checkedUrl ? ` (${testResult.checkedUrl})` : ""
     }`;
   }
   if (refreshResult) {
-    return `${refreshResult.ok ? "Models refreshed" : "Refresh failed"}: ${refreshResult.message}${
+    return `${refreshResult.ok ? "Models refreshed" : "Refresh failed"}${formatProviderCheckSuffix(refreshResult)}: ${refreshResult.message}${
       refreshResult.checkedUrl ? ` (${refreshResult.checkedUrl})` : ""
     }`;
   }
@@ -2698,6 +2780,74 @@ function providerTestTone(result: ProviderTestResult | undefined) {
 
 function normalizeProviderUrl(url: string) {
   return url.trim().replace(/\/+$/, "");
+}
+
+function resultToProviderStatusRecord(result: ProviderTestResult) {
+  return {
+    ok: result.ok,
+    status: result.status,
+    message: result.message,
+    checkedUrl: result.checkedUrl,
+    checkedAt: result.checkedAt ?? new Date().toISOString()
+  };
+}
+
+function resultToProviderModelsStatusRecord(result: ProviderModelsResult) {
+  return {
+    ...resultToProviderStatusRecord(result),
+    models: result.models
+  };
+}
+
+function buildProviderStatus(
+  base: ProviderStatusSettings,
+  testResults: Record<string, ProviderTestResult>,
+  refreshResults: Record<string, ProviderModelsResult>,
+  patch: {
+    test?: [string, ReturnType<typeof resultToProviderStatusRecord>];
+    modelRefresh?: [string, ReturnType<typeof resultToProviderModelsStatusRecord>];
+  } = {}
+): ProviderStatusSettings {
+  return {
+    tests: {
+      ...base.tests,
+      ...Object.fromEntries(
+        Object.entries(testResults).map(([providerId, result]) => [providerId, resultToProviderStatusRecord(result)])
+      ),
+      ...(patch.test ? { [patch.test[0]]: patch.test[1] } : {})
+    },
+    modelRefreshes: {
+      ...base.modelRefreshes,
+      ...Object.fromEntries(
+        Object.entries(refreshResults).map(([providerId, result]) => [
+          providerId,
+          resultToProviderModelsStatusRecord(result)
+        ])
+      ),
+      ...(patch.modelRefresh ? { [patch.modelRefresh[0]]: patch.modelRefresh[1] } : {})
+    }
+  };
+}
+
+function pruneProviderStatus(providerStatus: ProviderStatusSettings, providerIds: string[]) {
+  const allowed = new Set(providerIds);
+  return {
+    tests: Object.fromEntries(Object.entries(providerStatus.tests).filter(([providerId]) => allowed.has(providerId))),
+    modelRefreshes: Object.fromEntries(
+      Object.entries(providerStatus.modelRefreshes).filter(([providerId]) => allowed.has(providerId))
+    )
+  };
+}
+
+function formatProviderCheckSuffix(result: { checkedAt?: string }) {
+  return result.checkedAt ? ` (${formatProviderCheckTime(result.checkedAt)})` : "";
+}
+
+function formatProviderCheckTime(value: string | undefined) {
+  if (!value) {
+    return "时间未知";
+  }
+  return new Date(value).toLocaleString();
 }
 
 function createCapabilityRecord(capabilities: ProviderCapability[]): Record<ProviderCapability, boolean> {

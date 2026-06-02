@@ -1346,6 +1346,61 @@ h4 {
   gap: 6px;
 }
 
+.provider-check-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.provider-check-line {
+  display: grid;
+  grid-template-columns: 78px 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #e2ebe6;
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: #fbfdfc;
+}
+
+.provider-check-line span {
+  color: #60756d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.provider-check-line strong {
+  color: #5a6c65;
+  font-size: 12px;
+}
+
+.provider-check-line small {
+  min-width: 0;
+  overflow: hidden;
+  color: #6b7f76;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-check-line.ok {
+  border-color: #b7d9ca;
+  background: #f4fbf8;
+}
+
+.provider-check-line.ok strong {
+  color: #1f6b50;
+}
+
+.provider-check-line.fail {
+  border-color: #ead0cf;
+  background: #fff8f7;
+}
+
+.provider-check-line.fail strong {
+  color: #8c2c2c;
+}
+
 .model-chip {
   border-radius: 999px;
   padding: 5px 8px;

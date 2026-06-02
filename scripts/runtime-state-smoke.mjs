@@ -74,6 +74,24 @@ try {
     refreshedModels.models.includes("fake-runtime-model"),
     "provider models refresh did not return the fake model"
   );
+  assert(refreshedModels.checkedAt, "provider models refresh did not return a checkedAt timestamp");
+
+  const testedProvider = await requestJson(firstPort, "/api/providers/test", {
+    method: "POST",
+    body: JSON.stringify({ provider: configuredProvider, timeoutMs: 8000 })
+  });
+  assert(testedProvider.ok === true, "provider test did not succeed");
+  assert(testedProvider.checkedAt, "provider test did not return a checkedAt timestamp");
+
+  const settingsWithProviderStatus = await requestJson(firstPort, "/api/settings");
+  assert(
+    settingsWithProviderStatus.providerStatus?.tests?.[providerId]?.ok === true,
+    "provider test status was not persisted to settings"
+  );
+  assert(
+    settingsWithProviderStatus.providerStatus?.modelRefreshes?.[providerId]?.models?.includes("fake-runtime-model"),
+    "provider model refresh status was not persisted to settings"
+  );
 
   const before = await requestJson(firstPort, "/api/snapshot");
   const sessionId = before.sessions[0]?.id;
@@ -123,6 +141,15 @@ try {
   await waitForHealth(secondPort, secondApi);
 
   const restored = await requestJson(secondPort, "/api/snapshot");
+  const restoredSettings = await requestJson(secondPort, "/api/settings");
+  assert(
+    restoredSettings.providerStatus?.tests?.[providerId]?.ok === true,
+    "provider test status did not survive server restart"
+  );
+  assert(
+    restoredSettings.providerStatus?.modelRefreshes?.[providerId]?.models?.includes("fake-runtime-model"),
+    "provider model refresh status did not survive server restart"
+  );
   assert(
     restored.messages.some((message) => message.role === "user" && message.content === userPrompt),
     "user message did not survive server restart"

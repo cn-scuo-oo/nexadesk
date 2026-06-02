@@ -15,6 +15,8 @@ import {
   type ProviderModelsRequest,
   type ProviderModelsResult,
   type ProviderSettings,
+  type ProviderStatusRecord,
+  type ProviderModelsStatusRecord,
   type ProviderTestRequest,
   type ProviderTestResult,
   type RecoverSettingsRequest,
@@ -175,11 +177,12 @@ app.post("/api/providers/test", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = await testProviderConnection(
+    const result = withCheckedAt(await testProviderConnection(
       body.provider,
       body.apiKey?.trim() || storedKey,
       body.timeoutMs ?? 8000
-    );
+    ));
+    await persistProviderStatus(body.provider.id, { test: result });
     res.json(result);
   } catch (error) {
     next(error);
@@ -195,11 +198,12 @@ app.post("/api/providers/models", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = await fetchProviderModels(
+    const result = withCheckedAt(await fetchProviderModels(
       body.provider,
       body.apiKey?.trim() || storedKey,
       body.timeoutMs ?? 10000
-    );
+    ));
+    await persistProviderStatus(body.provider.id, { modelRefresh: result });
     res.json(result);
   } catch (error) {
     next(error);
@@ -888,6 +892,41 @@ function buildProviderTestUrl(provider: ProviderSettings, baseUrl: string) {
     return `${baseUrl || "https://api.anthropic.com"}/v1/models`;
   }
   return `${baseUrl}/models`;
+}
+
+async function persistProviderStatus(
+  providerId: string,
+  update: { test?: ProviderStatusRecord; modelRefresh?: ProviderModelsStatusRecord }
+) {
+  const settings = await loadSettings(snapshot.providers);
+  if (!settings.providers.some((provider) => provider.id === providerId)) {
+    return;
+  }
+
+  const saved = await saveSettings(
+    {
+      ...settings,
+      providerStatus: {
+        tests: {
+          ...settings.providerStatus.tests,
+          ...(update.test ? { [providerId]: update.test } : {})
+        },
+        modelRefreshes: {
+          ...settings.providerStatus.modelRefreshes,
+          ...(update.modelRefresh ? { [providerId]: update.modelRefresh } : {})
+        }
+      }
+    },
+    snapshot.providers
+  );
+  snapshot.providers = saved.providers;
+}
+
+function withCheckedAt<T extends { checkedAt?: string }>(result: T): T & { checkedAt: string } {
+  return {
+    ...result,
+    checkedAt: new Date().toISOString()
+  };
 }
 
 function buildProviderModelHeaders(provider: ProviderSettings, apiKey: string | undefined): Record<string, string> | { error: string } {

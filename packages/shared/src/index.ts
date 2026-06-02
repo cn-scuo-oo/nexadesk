@@ -99,6 +99,7 @@ export interface AppSettings {
   providers: ProviderSettings[];
   model: ModelRuntimeSettings;
   assistant: AssistantRuntimeSettings;
+  providerStatus: ProviderStatusSettings;
   appearance: AppearanceSettings;
   workspace: WorkspaceSettings;
   permissions: PermissionSettings;
@@ -140,6 +141,7 @@ export interface ProviderTestResult {
   status?: number;
   message: string;
   checkedUrl?: string;
+  checkedAt?: string;
 }
 
 export interface ProviderModelsRequest {
@@ -153,7 +155,25 @@ export interface ProviderModelsResult {
   status?: number;
   message: string;
   checkedUrl?: string;
+  checkedAt?: string;
   models: string[];
+}
+
+export interface ProviderStatusRecord {
+  ok: boolean;
+  status?: number;
+  message: string;
+  checkedUrl?: string;
+  checkedAt: string;
+}
+
+export interface ProviderModelsStatusRecord extends ProviderStatusRecord {
+  models: string[];
+}
+
+export interface ProviderStatusSettings {
+  tests: Record<string, ProviderStatusRecord>;
+  modelRefreshes: Record<string, ProviderModelsStatusRecord>;
 }
 
 export interface DesktopStatus {
@@ -660,6 +680,10 @@ export function createDefaultSettings(
     assistant: {
       agents: createDefaultAgents(),
       skills: createDefaultSkills()
+    },
+    providerStatus: {
+      tests: {},
+      modelRefreshes: {}
     },
     appearance: {
       theme: "system",

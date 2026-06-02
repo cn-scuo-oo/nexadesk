@@ -37,6 +37,7 @@ try {
 
   const initial = await requestJson("/api/settings");
   const providerId = "openai-compatible";
+  assert(initial.providerStatus?.tests, "provider status defaults were not present");
   const settings = {
     ...initial,
     model: {
@@ -116,7 +117,26 @@ try {
   };
   const withCustomProvider = {
     ...cleared,
-    providers: [...cleared.providers, customProvider]
+    providers: [...cleared.providers, customProvider],
+    providerStatus: {
+      tests: {
+        ...cleared.providerStatus.tests,
+        [customProviderId]: {
+          ok: true,
+          message: "custom provider test smoke",
+          checkedAt: new Date().toISOString()
+        }
+      },
+      modelRefreshes: {
+        ...cleared.providerStatus.modelRefreshes,
+        [customProviderId]: {
+          ok: true,
+          message: "custom provider refresh smoke",
+          checkedAt: new Date().toISOString(),
+          models: ["custom-model"]
+        }
+      }
+    }
   };
   await requestJson("/api/settings", {
     method: "PUT",
@@ -141,6 +161,11 @@ try {
   });
   const customDeleted = await requestJson("/api/settings");
   assert(!customDeleted.providers.some((item) => item.id === customProviderId), "custom provider was not deleted");
+  assert(
+    !customDeleted.providerStatus.tests[customProviderId] &&
+      !customDeleted.providerStatus.modelRefreshes[customProviderId],
+    "deleted provider status was not pruned"
+  );
 
   await requestJson("/api/settings", {
     method: "PUT",
