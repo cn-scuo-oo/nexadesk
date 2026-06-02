@@ -92,7 +92,30 @@ try {
   assert(reloaded.appearance.fontSize === 15, "font size did not persist");
   assert(reloaded.app.logLevel === "debug", "log level did not persist");
   assert(reloaded.workspace.defaultWorkspace === workspaceDir, "workspace path did not persist");
+  assert(
+    reloaded.assistant.engines.some((engine) => engine.id === "nexadesk_builtin"),
+    "default agent engines did not merge into settings"
+  );
   assert(provider?.apiKeyConfigured === true, "provider API key state did not persist");
+
+  const engineDetection = await requestJson("/api/agent-engines/detect", {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  assert(
+    engineDetection.detections.some((detection) => detection.engineId === "nexadesk_builtin" && detection.installed),
+    "built-in agent engine was not detected"
+  );
+  assert(
+    engineDetection.detections.some((detection) => detection.engineId === "codex_cli"),
+    "Codex CLI detection record was not returned"
+  );
+  const afterEngineDetection = await requestJson("/api/settings");
+  assert(
+    afterEngineDetection.assistant.engines.some((engine) => engine.id === "nexadesk_builtin" && engine.setupStatus === "ready"),
+    "agent engine detection did not persist engine status"
+  );
+
   const workspaceList = await requestJson("/api/workspace/list?path=.");
   assert(workspaceList.exists === true, "workspace list did not report an existing directory");
   assert(

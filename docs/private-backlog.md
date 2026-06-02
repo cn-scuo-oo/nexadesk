@@ -44,7 +44,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add per-agent model override tests. Done in Phase 6 final pass.
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.
 - Add workspace root selector in desktop mode. Done in Phase 6 fourth pass.
-- Detect local Codex CLI, Claude Code, Qwen Code, DeepSeek-TUI, OpenCode, and OpenClaw runtime configs from Agent Engine Center.
+- Detect local Codex CLI, Claude Code, Qwen Code, DeepSeek-TUI, OpenCode, OpenClaw, and Hermes runtime configs from Agent Engine Center. Started in Phase 7 fifth pass.
 
 ## Desktop Packaging
 

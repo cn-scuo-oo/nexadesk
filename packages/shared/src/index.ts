@@ -96,6 +96,24 @@ export interface AgentEngineSettings {
   capabilities: AgentEngineCapability[];
 }
 
+export interface AgentEngineDetectionRecord {
+  engineId: AgentEngineId;
+  installed: boolean;
+  command?: string;
+  resolvedPath?: string;
+  version?: string;
+  configPath?: string;
+  setupStatus: AgentEngineSetupStatus;
+  message: string;
+  checkedAt: string;
+}
+
+export interface AgentEngineDetectionResult {
+  engines: AgentEngineSettings[];
+  detections: AgentEngineDetectionRecord[];
+  checkedAt: string;
+}
+
 export interface AppearanceSettings {
   theme: ThemeMode;
   language: AppLanguage;

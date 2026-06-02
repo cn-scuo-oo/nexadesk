@@ -23,6 +23,7 @@ import {
   createDefaultProviders,
   createDefaultSettings,
   createDemoSnapshot,
+  type AgentEngineDetectionRecord,
   type AgentEngineSettings,
   type ActivityEvent,
   type ApprovalHistoryEntry,
@@ -52,6 +53,7 @@ import {
   type WorkspaceTreeEntry
 } from "@nexadesk/shared";
 import {
+  detectAgentEngines,
   fetchDesktopStatus,
   fetchProviderModels,
   fetchSettings as fetchAppSettings,
@@ -1500,6 +1502,8 @@ function SettingsCenter({
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [detectingEngines, setDetectingEngines] = useState(false);
+  const [engineDetections, setEngineDetections] = useState<AgentEngineDetectionRecord[]>([]);
 
   useEffect(() => {
     setDraft(settings);
@@ -1622,6 +1626,28 @@ function SettingsCenter({
         engines: draft.assistant.engines.map((engine) => (engine.id === engineId ? { ...engine, ...patch } : engine))
       }
     });
+  }
+
+  async function handleDetectAgentEngines() {
+    setDetectingEngines(true);
+    setLocalStatus(null);
+    try {
+      const result = await detectAgentEngines();
+      setEngineDetections(result.detections);
+      setDraft((current) => ({
+        ...current,
+        assistant: {
+          ...current.assistant,
+          engines: result.engines
+        }
+      }));
+      const installed = result.detections.filter((detection) => detection.installed).length;
+      setLocalStatus(`Agent 引擎检测完成：${installed}/${result.detections.length} 个可用。`);
+    } catch (reason) {
+      setLocalStatus(reason instanceof Error ? `Agent 引擎检测失败：${reason.message}` : "Agent 引擎检测失败。");
+    } finally {
+      setDetectingEngines(false);
+    }
   }
 
   function updateSkill(skillId: string, patch: Partial<SkillProfile>) {
@@ -1779,14 +1805,18 @@ function SettingsCenter({
               <p className="eyebrow">Agent Engine Center</p>
               <h3>外部 Agent 引擎</h3>
             </div>
-            <Terminal size={18} />
+            <button className="mini-button" disabled={detectingEngines} onClick={() => void handleDetectAgentEngines()} type="button">
+              {detectingEngines ? "检测中..." : "检测本机引擎"}
+            </button>
           </div>
           <div className="settings-form">
             <p className="secret-note">
               这里把模型 Provider 和 Agent 执行器拆开管理：Provider 负责 API/模型，Agent 引擎负责本机 CLI、运行时、权限模式和后续启动检测。
             </p>
             <div className="collapse-list">
-              {draft.assistant.engines.map((engine) => (
+              {draft.assistant.engines.map((engine) => {
+                const detection = engineDetections.find((item) => item.engineId === engine.id);
+                return (
                 <details className={engine.enabled ? "config-disclosure enabled" : "config-disclosure"} key={engine.id}>
                   <summary>
                     <span className="summary-main">
@@ -1815,7 +1845,16 @@ function SettingsCenter({
                         {engine.installed ? "已检测" : "未检测"}
                       </span>
                       <span className="runtime-pill">{engine.configSource === "local_cli" ? "读取本机 CLI 配置" : "使用 NexaDesk 模型中心"}</span>
+                      {detection?.version ? <span className="runtime-pill">{detection.version}</span> : null}
                     </div>
+                    {detection ? (
+                      <div className="engine-detection-card">
+                        <strong>{detection.message}</strong>
+                        {detection.resolvedPath ? <span>命令路径：{detection.resolvedPath}</span> : null}
+                        {detection.configPath ? <span>配置路径：{detection.configPath}</span> : null}
+                        <small>检测时间：{formatTime(detection.checkedAt)}</small>
+                      </div>
+                    ) : null}
                     <div className="field-grid">
                       <label className="field-label">
                         <span>配置来源</span>
@@ -1898,7 +1937,8 @@ function SettingsCenter({
                     </div>
                   </div>
                 </details>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -4361,6 +4401,10 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
       </div>
     </article>
   );
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleString();
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

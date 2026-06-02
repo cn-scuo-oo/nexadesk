@@ -1,5 +1,6 @@
 ﻿import type {
   ActivityEvent,
+  AgentEngineDetectionResult,
   ApprovalHistoryEntry,
   AppSettings,
   AppSnapshot,
@@ -139,6 +140,19 @@ export async function fetchProviderModels(payload: ProviderModelsRequest): Promi
     throw new Error(`Provider models request failed with ${response.status}`);
   }
   return response.json() as Promise<ProviderModelsResult>;
+}
+
+export async function detectAgentEngines(): Promise<AgentEngineDetectionResult> {
+  const response = await fetch(`${apiBase}/api/agent-engines/detect`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Agent engine detection failed with ${response.status}`);
+  }
+  return response.json() as Promise<AgentEngineDetectionResult>;
 }
 
 export async function sendMessage(sessionId: string, content: string): Promise<{

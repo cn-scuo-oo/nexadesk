@@ -1200,6 +1200,24 @@ h4 {
   font-weight: 900;
 }
 
+.engine-detection-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dcd2c0;
+  border-radius: 8px;
+  padding: 10px;
+  color: #33443c;
+  background: #fffaf2;
+  font-size: 12px;
+}
+
+.engine-detection-card span,
+.engine-detection-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #6f675b;
+}
+
 .approval-card {
   position: relative;
   border: 1px solid #e2ebe6;

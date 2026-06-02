@@ -1,9 +1,16 @@
 ﻿import cors from "cors";
 import express from "express";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import {
   createDemoSnapshot,
+  type AgentEngineDetectionRecord,
+  type AgentEngineId,
+  type AgentEngineSettings,
   type ActivityEvent,
   type ApprovalHistoryEntry,
   type AppSettings,
@@ -154,6 +161,52 @@ app.get("/api/workspace/search", async (req, res, next) => {
 
 app.get("/api/desktop/status", (_req, res) => {
   res.json(createDesktopStatus());
+});
+
+app.post("/api/agent-engines/detect", async (_req, res, next) => {
+  try {
+    const settings = await loadSettings(snapshot.providers);
+    const checkedAt = new Date().toISOString();
+    const detections = await Promise.all(settings.assistant.engines.map((engine) => detectAgentEngine(engine, checkedAt)));
+    const detectionsById = new Map(detections.map((detection) => [detection.engineId, detection]));
+    const nextEngines = settings.assistant.engines.map((engine) => {
+      const detection = detectionsById.get(engine.id);
+      if (!detection) {
+        return engine;
+      }
+      return {
+        ...engine,
+        installed: detection.installed,
+        command: detection.command ?? engine.command,
+        configPath: detection.configPath ?? engine.configPath,
+        setupStatus: detection.setupStatus
+      };
+    });
+    const saved = await saveSettings(
+      {
+        ...settings,
+        assistant: {
+          ...settings.assistant,
+          engines: nextEngines
+        }
+      },
+      snapshot.providers
+    );
+    snapshot.providers = saved.providers;
+    snapshot.agents = saved.assistant.agents;
+    snapshot.skills = saved.assistant.skills;
+    syncSessionAgents();
+    const activity = publishActivity({
+      level: "info",
+      title: "Agent engines detected",
+      detail: `${detections.filter((detection) => detection.installed).length}/${detections.length} Agent engine(s) detected locally.`
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    res.json({ engines: saved.assistant.engines, detections, checkedAt });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.put("/api/settings", async (req, res, next) => {
@@ -928,6 +981,216 @@ function buildProviderTestUrl(provider: ProviderSettings, baseUrl: string) {
     return `${baseUrl || "https://api.anthropic.com"}/v1/models`;
   }
   return `${baseUrl}/models`;
+}
+
+const agentEngineCommandAliases: Record<AgentEngineId, string[]> = {
+  nexadesk_builtin: [],
+  codex_cli: ["codex"],
+  claude_code: ["claude"],
+  openclaw: ["openclaw"],
+  hermes: ["hermes"],
+  opencode: ["opencode"],
+  qwen_code: ["qwen", "qwen-code"],
+  deepseek_tui: ["deepseek", "deepseek-tui"]
+};
+
+async function detectAgentEngine(
+  engine: AgentEngineSettings,
+  checkedAt: string
+): Promise<AgentEngineDetectionRecord> {
+  if (engine.kind === "builtin") {
+    return {
+      engineId: engine.id,
+      installed: true,
+      setupStatus: "ready",
+      message: "NexaDesk built-in runtime is always available.",
+      checkedAt
+    };
+  }
+
+  const commands = uniqueStrings([engine.command, ...(agentEngineCommandAliases[engine.id] ?? [])]);
+  for (const command of commands) {
+    const resolved = await resolveCommandCandidate(command);
+    if (!resolved) {
+      continue;
+    }
+    const version = await readCommandVersion(resolved.resolvedPath || command);
+    const configPath = await findAgentEngineConfigPath(engine);
+    return {
+      engineId: engine.id,
+      installed: true,
+      command,
+      resolvedPath: resolved.resolvedPath,
+      version,
+      configPath,
+      setupStatus: "ready",
+      message: `${engine.name} was detected${version ? ` (${version})` : ""}.`,
+      checkedAt
+    };
+  }
+
+  const configPath = await findAgentEngineConfigPath(engine);
+  return {
+    engineId: engine.id,
+    installed: false,
+    configPath,
+    setupStatus: configPath ? "needs_setup" : "not_installed",
+    message: configPath
+      ? `${engine.name} config was found, but no CLI command was found in PATH.`
+      : `${engine.name} was not found in PATH.`,
+    checkedAt
+  };
+}
+
+function uniqueStrings(values: Array<string | undefined>) {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+async function resolveCommandCandidate(command: string): Promise<{ resolvedPath?: string } | null> {
+  if (hasPathSegment(command)) {
+    try {
+      await access(command);
+      return { resolvedPath: command };
+    } catch {
+      return null;
+    }
+  }
+
+  const lookup = process.platform === "win32" ? "where.exe" : "which";
+  const result = await runProcess(lookup, [command], 2500);
+  if (result.code !== 0) {
+    return null;
+  }
+  const resolvedPath = firstOutputLine(result.stdout);
+  return { resolvedPath };
+}
+
+function hasPathSegment(command: string) {
+  return path.isAbsolute(command) || command.includes("/") || command.includes("\\");
+}
+
+async function readCommandVersion(command: string): Promise<string | undefined> {
+  const result = await runProcess(command, ["--version"], 2500);
+  const output = firstOutputLine(result.stdout) || firstOutputLine(result.stderr);
+  if (result.code !== 0 || !output) {
+    return undefined;
+  }
+  return output.slice(0, 160);
+}
+
+function firstOutputLine(output: string) {
+  return output
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
+function runProcess(
+  command: string,
+  args: string[],
+  timeoutMs: number
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+    } catch {
+      resolve({ code: null, stdout: "", stderr: "" });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const settle = (code: number | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ code, stdout, stderr });
+    };
+    const limitAppend = (current: string, chunk: Buffer) => `${current}${chunk.toString()}`.slice(0, 12000);
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout = limitAppend(stdout, chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr = limitAppend(stderr, chunk);
+    });
+    child.on("error", () => settle(null));
+    child.on("exit", (code) => settle(code));
+    const timeout = setTimeout(() => {
+      child.kill();
+      settle(null);
+    }, timeoutMs);
+    timeout.unref();
+  });
+}
+
+async function findAgentEngineConfigPath(engine: AgentEngineSettings): Promise<string | undefined> {
+  const candidates = uniqueStrings([engine.configPath, ...getAgentEngineConfigCandidates(engine.id)]);
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Keep scanning candidate paths.
+    }
+  }
+  return undefined;
+}
+
+function getAgentEngineConfigCandidates(engineId: AgentEngineId) {
+  const home = homedir();
+  const candidates: Record<AgentEngineId, string[]> = {
+    nexadesk_builtin: [],
+    codex_cli: [
+      path.join(home, ".codex", "config.toml"),
+      path.join(home, ".codex")
+    ],
+    claude_code: [
+      path.join(home, ".claude", "settings.json"),
+      path.join(home, ".claude.json"),
+      path.join(home, ".claude")
+    ],
+    openclaw: [
+      path.join(home, ".openclaw", "openclaw.json"),
+      path.join(home, ".openclaw")
+    ],
+    hermes: [
+      path.join(home, ".hermes", "config.yaml"),
+      path.join(home, ".hermes")
+    ],
+    opencode: [
+      path.join(home, ".opencode", "config.json"),
+      path.join(home, ".opencode")
+    ],
+    qwen_code: [
+      path.join(home, ".qwen", "settings.json"),
+      path.join(home, ".qwen-code"),
+      path.join(home, ".qwen")
+    ],
+    deepseek_tui: [
+      path.join(home, ".deepseek-tui", "config.json"),
+      path.join(home, ".deepseek", "config.json"),
+      path.join(home, ".deepseek-tui"),
+      path.join(home, ".deepseek")
+    ]
+  };
+  return candidates[engineId] ?? [];
 }
 
 async function persistProviderStatus(
