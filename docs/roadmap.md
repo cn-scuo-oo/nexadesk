@@ -59,6 +59,7 @@
 - The Model Center layout is tightened into a two-pane desktop workbench with Provider overview cards, side selection, and focused editing.
 - Desktop data retention is covered by a smoke test that simulates reinstall/upgrade by launching Electron twice against the same user data directory.
 - Workbench tool calls render as readable status cards, and completed low-risk tool results stream into chat as dedicated tool messages.
+- Tool result messages can be copied or opened in a full-height detail drawer, with desktop smoke coverage for the controls.
 
 ## Later Phases
 

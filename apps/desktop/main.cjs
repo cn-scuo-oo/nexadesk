@@ -194,6 +194,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
   }
+  if (!workbenchText.includes("复制结果") || !workbenchText.includes("调用详情")) {
+    throw new Error("Renderer smoke test failed: tool result controls were not rendered.");
+  }
 
   const settingsText = await renderAndReadText(apiPort, "settings");
   if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务")) {

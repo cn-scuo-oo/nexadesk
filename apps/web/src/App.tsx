@@ -2974,6 +2974,20 @@ function TeamNode({ agent, index }: { agent: AgentProfile; index: number }) {
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isToolMessage = message.role === "tool";
+  const [toolDetailOpen, setToolDetailOpen] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function copyToolResult() {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("failed");
+      window.setTimeout(() => setCopyState("idle"), 2200);
+    }
+  }
+
   return (
     <article className={`message ${message.role}`}>
       <div className="message-meta">
@@ -2982,7 +2996,25 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <time>{new Date(message.createdAt).toLocaleTimeString()}</time>
       </div>
       {isToolMessage ? (
-        <pre className="tool-result-body">{message.content}</pre>
+        <>
+          <div className="tool-result-actions">
+            <button className="mini-button" onClick={() => void copyToolResult()} type="button">
+              {copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制结果"}
+            </button>
+            <button className="mini-button" onClick={() => setToolDetailOpen(true)} type="button">
+              查看详情
+            </button>
+          </div>
+          <pre className="tool-result-body">{message.content || "工具没有返回内容。"}</pre>
+          {toolDetailOpen ? (
+            <ToolResultDrawer
+              copyLabel={copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制结果"}
+              message={message}
+              onClose={() => setToolDetailOpen(false)}
+              onCopy={() => void copyToolResult()}
+            />
+          ) : null}
+        </>
       ) : (
         <p>{message.content}</p>
       )}
@@ -3008,8 +3040,83 @@ function ToolCallTimeline({ tools }: { tools: ToolCall[] }) {
             <span className={`risk ${tool.risk}`}>{tool.risk}</span>
             <span>{tool.name}</span>
           </div>
+          <details className="tool-call-details">
+            <summary>调用详情</summary>
+            <dl>
+              <div>
+                <dt>工具</dt>
+                <dd>{tool.name}</dd>
+              </div>
+              <div>
+                <dt>状态</dt>
+                <dd>{toolStatusLabel(tool.status)}</dd>
+              </div>
+              <div>
+                <dt>风险</dt>
+                <dd>{tool.risk}</dd>
+              </div>
+              <div>
+                <dt>说明</dt>
+                <dd>{tool.summary}</dd>
+              </div>
+            </dl>
+          </details>
         </article>
       ))}
+    </div>
+  );
+}
+
+function ToolResultDrawer({
+  message,
+  copyLabel,
+  onCopy,
+  onClose
+}: {
+  message: ChatMessage;
+  copyLabel: string;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  const titleId = `tool-result-${message.id}`;
+  return (
+    <div className="tool-result-drawer-backdrop" onClick={onClose} role="presentation">
+      <aside
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="tool-result-drawer"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="tool-result-drawer-heading">
+          <div>
+            <p className="eyebrow">Tool result</p>
+            <h3 id={titleId}>{toolNameLabel(message.author)}</h3>
+          </div>
+          <button aria-label="关闭工具详情" className="icon-button" onClick={onClose} type="button">
+            <X size={16} />
+          </button>
+        </div>
+        <dl className="tool-result-meta">
+          <div>
+            <dt>工具标识</dt>
+            <dd>{message.author}</dd>
+          </div>
+          <div>
+            <dt>消息时间</dt>
+            <dd>{new Date(message.createdAt).toLocaleString()}</dd>
+          </div>
+        </dl>
+        <pre className="tool-result-drawer-body">{message.content || "工具没有返回内容。"}</pre>
+        <div className="tool-result-drawer-actions">
+          <button className="secondary-button" onClick={onCopy} type="button">
+            {copyLabel}
+          </button>
+          <button className="primary-button" onClick={onClose} type="button">
+            关闭
+          </button>
+        </div>
+      </aside>
     </div>
   );
 }
