@@ -260,7 +260,7 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配一个任务")) {
     throw new Error("Renderer smoke test failed: new task home was not rendered.");
   }
-  if (!workbenchText.includes("运行目标") || !workbenchText.includes("任务记录")) {
+  if (!workbenchText.includes("main") || !workbenchText.includes("任务记录") || !workbenchText.includes("设置")) {
     throw new Error("Renderer smoke test failed: WeSight-style sidebar run target and task history were not rendered.");
   }
   if (!workbenchText.includes("批量") || !workbenchText.includes("Renderer smoke task")) {
@@ -269,7 +269,7 @@ async function runRendererSmokeTest(apiPort) {
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
-    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
+    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')), hasBranchCard: Boolean(document.querySelector('.sidebar-branch-card')), hasUserBar: Boolean(document.querySelector('.sidebar-user-bar')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
   );
   if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas) {
     throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
@@ -277,7 +277,7 @@ async function runRendererSmokeTest(apiPort) {
   if (workbenchLayout.hasRightDock) {
     throw new Error("Renderer smoke test failed: new task home should not render the live context dock.");
   }
-  if (workbenchLayout.railDisplay !== "none" || String(workbenchLayout.shellColumns).split(" ").length !== 2) {
+  if (workbenchLayout.railDisplay !== "none" || !workbenchLayout.hasBranchCard || !workbenchLayout.hasUserBar || String(workbenchLayout.shellColumns).split(" ").length !== 2) {
     throw new Error("Renderer smoke test failed: workbench shell did not use the WeSight-style two-column layout.");
   }
   if (workbenchLayout.documentWidth > workbenchLayout.viewportWidth + 2) {

@@ -1287,64 +1287,16 @@ export function App() {
               </span>
               <b>{snapshot.agents.filter((agent) => agent.enabled).length}</b>
             </button>
-            <button className="nav-item nav-button" onClick={() => handleOpenSettings("engines")} type="button">
-              <Terminal size={17} />
-              <span>
-                <strong>Agent 引擎</strong>
-                <small>Codex / Claude / CLI</small>
-              </span>
-              <b>{runtimeSettings.assistant.engines.filter((engine) => engine.enabled).length}</b>
-            </button>
-            <button className="nav-item nav-button" onClick={() => handleOpenSettings("providers")} type="button">
-              <KeyRound size={17} />
-              <span>
-                <strong>模型中心</strong>
-                <small>Provider 与切换</small>
-              </span>
-              <b>{configuredProviders}</b>
-            </button>
-            <button
-              className={settingsOpen ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenSettings("appearance")}
-              type="button"
-            >
-              <Settings size={17} />
-              <span>
-                <strong>设置</strong>
-                <small>模型、字体、权限</small>
-              </span>
-            </button>
           </nav>
         </section>
 
-        <section className="sidebar-section">
-          <div className="section-heading">
-            <span>运行目标</span>
-            <button className="mini-button" onClick={() => handleOpenSettings("assistants")} type="button">
-              管理
-            </button>
-          </div>
-          <button className="run-target-card" onClick={() => handleOpenSettings("assistants")} type="button">
-            <span className="run-target-avatar">{activeAgent?.name.slice(0, 1) ?? "C"}</span>
-            <span className="run-target-main">
-              <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
-              <small>{teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}</small>
-            </span>
-            <span className={`agent-status ${activeAgent?.status ?? "running"}`} />
-          </button>
-          <div className="run-target-chips" aria-label="运行目标助手">
-            {teamAgents.slice(0, 4).map((agent) => (
-              <button
-                className={activeAgent?.id === agent.id ? "target-chip active" : "target-chip"}
-                key={agent.id}
-                onClick={() => handleActivateAgent(agent.id)}
-                type="button"
-              >
-                {agent.name}
-              </button>
-            ))}
-          </div>
-        </section>
+        <button className="sidebar-branch-card" onClick={() => handleOpenSettings("assistants")} type="button">
+          <span className="branch-icon">main</span>
+          <span>
+            <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
+            <small>{teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}</small>
+          </span>
+        </button>
 
         <section className="sidebar-section history-section grow">
           <div className="section-heading">
@@ -1455,12 +1407,18 @@ export function App() {
           </div>
         </section>
 
-        <div className={`connection-card ${mode}`}>
-          <CircleDot size={14} />
-          <div>
-            <strong>{mode === "live" ? "本地 API 已连接" : "演示模式"}</strong>
-            <span>{mode === "live" ? "127.0.0.1:3939" : "服务不可用"}</span>
-          </div>
+        <div className="sidebar-user-bar">
+          <button className="sidebar-user-button" onClick={() => handleOpenSettings("desktop")} type="button">
+            <span className="sidebar-user-avatar">N</span>
+            <span>
+              <strong>NexaDesk</strong>
+              <small>{mode === "live" ? "本地 API 已连接" : "演示模式"}</small>
+            </span>
+          </button>
+          <button className={settingsOpen ? "sidebar-settings-button active" : "sidebar-settings-button"} onClick={() => handleOpenSettings("providers")} type="button">
+            <Settings size={16} />
+            设置
+          </button>
         </div>
       </aside>
 
