@@ -205,6 +205,19 @@ function requestHealth(apiPort) {
 }
 
 async function runRendererSmokeTest(apiPort) {
+  const initialSnapshot = await requestJson(apiPort, "/api/snapshot");
+  const firstSession = initialSnapshot.sessions && initialSnapshot.sessions[0];
+  if (!firstSession) {
+    throw new Error("Renderer smoke test failed: no session was available for session management checks.");
+  }
+  const sessionUpdate = await requestJson(apiPort, "/api/sessions/" + encodeURIComponent(firstSession.id), {
+    method: "PATCH",
+    body: JSON.stringify({ title: "Renderer smoke task", pinned: true })
+  });
+  if (!sessionUpdate.sessions?.[0]?.pinned || sessionUpdate.sessions[0].title !== "Renderer smoke task") {
+    throw new Error("Renderer smoke test failed: session pin/rename API did not persist.");
+  }
+
   const workbenchText = await renderAndReadText(apiPort);
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
@@ -214,6 +227,9 @@ async function runRendererSmokeTest(apiPort) {
   }
   if (!workbenchText.includes("运行目标") || !workbenchText.includes("任务记录")) {
     throw new Error("Renderer smoke test failed: WeSight-style sidebar run target and task history were not rendered.");
+  }
+  if (!workbenchText.includes("批量") || !workbenchText.includes("Renderer smoke task")) {
+    throw new Error("Renderer smoke test failed: session management controls were not rendered.");
   }
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
@@ -290,7 +306,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const skillsText = await renderAndReadText(apiPort, "skills");
-  if (!skillsText.includes("技能市场") && !skillsText.includes("技能")) {
+  if ((!skillsText.includes("技能市场") && !skillsText.includes("技能")) || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
     throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
   }
 
@@ -300,7 +316,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const agentsText = await renderAndReadText(apiPort, "agents");
-  if (!agentsText.includes("我的 Agent") || !agentsText.includes("管理助手")) {
+  if (!agentsText.includes("我的 Agent") || !agentsText.includes("新建 Agent") || !agentsText.includes("编辑")) {
     throw new Error("Renderer smoke test failed: agents view was not rendered as a separate view.");
   }
 
@@ -463,16 +479,24 @@ async function renderAndEvaluate(apiPort, hash, script) {
   });
 
   await loadRenderer(smokeWindow, apiPort, hash);
+  const readySelector = hash === "thread"
+    ? ".thread-workspace"
+    : hash === "settings"
+      ? ".settings-modal"
+      : hash
+        ? ".module-workspace"
+        : ".start-canvas";
   const deadline = Date.now() + 6000;
   while (Date.now() < deadline) {
     const ready = await smokeWindow.webContents.executeJavaScript(
-      "Boolean(document.querySelector('.main-stage')) && !document.querySelector('.loading-screen')"
+      "Boolean(document.querySelector(" + JSON.stringify(readySelector) + ")) && !document.querySelector('.loading-screen')"
     );
     if (ready) {
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  await new Promise((resolve) => setTimeout(resolve, 200));
   const result = await smokeWindow.webContents.executeJavaScript(script);
   smokeWindow.close();
   return result;

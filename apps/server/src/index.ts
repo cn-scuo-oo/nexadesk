@@ -115,6 +115,75 @@ app.get("/api/sessions", (_req, res) => {
   res.json(snapshot.sessions);
 });
 
+const sessionPatchSchema = z.object({
+  title: z.string().trim().min(1).max(140).optional(),
+  pinned: z.boolean().optional()
+});
+
+app.patch("/api/sessions/:sessionId", async (req, res, next) => {
+  try {
+    const parsed = sessionPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+
+    const session = snapshot.sessions.find((item) => item.id === req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (parsed.data.title !== undefined) {
+      session.title = parsed.data.title;
+    }
+    if (parsed.data.pinned !== undefined) {
+      session.pinned = parsed.data.pinned;
+    }
+    session.updatedAt = new Date().toISOString();
+    sortSessions();
+    const activity = publishActivity({
+      level: "info",
+      title: "Session updated",
+      detail: `${session.title} was updated.`
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    res.json({ sessions: snapshot.sessions, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/sessions/:sessionId", async (req, res, next) => {
+  try {
+    const sessionIndex = snapshot.sessions.findIndex((item) => item.id === req.params.sessionId);
+    if (sessionIndex === -1) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    if (snapshot.sessions.length <= 1) {
+      res.status(400).json({ error: "At least one session must remain." });
+      return;
+    }
+
+    const [removed] = snapshot.sessions.splice(sessionIndex, 1);
+    snapshot.messages = snapshot.messages.filter((message) => message.sessionId !== req.params.sessionId);
+    snapshot.approvals = snapshot.approvals.filter((approval) => approval.sessionId !== req.params.sessionId);
+    snapshot.approvalHistory = snapshot.approvalHistory.filter((approval) => approval.sessionId !== req.params.sessionId);
+    const activity = publishActivity({
+      level: "warning",
+      title: "Session deleted",
+      detail: `${removed?.title ?? "Session"} was removed.`
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    res.json({ sessions: snapshot.sessions, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/events", (req, res) => {
   req.socket.setTimeout(0);
   res.writeHead(200, {
@@ -671,6 +740,16 @@ function syncSessionAgents() {
       session.activeAgentId = enabledAgentIds[0] ?? session.activeAgentId;
     }
   }
+  sortSessions();
+}
+
+function sortSessions() {
+  snapshot.sessions.sort((left, right) => {
+    if (Boolean(left.pinned) !== Boolean(right.pinned)) {
+      return left.pinned ? -1 : 1;
+    }
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  });
 }
 
 async function handleAgentToolRequests({

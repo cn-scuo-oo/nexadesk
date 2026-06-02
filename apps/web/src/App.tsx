@@ -7,12 +7,15 @@
   KeyRound,
   ListChecks,
   Mail,
+  Pencil,
+  Pin,
   Search,
   Send,
   Settings,
   ShieldCheck,
   Sparkles,
   Terminal,
+  Trash2,
   Users,
   Workflow,
   X,
@@ -54,6 +57,7 @@ import {
 } from "@nexadesk/shared";
 import {
   detectAgentEngines,
+  deleteSession,
   fetchDesktopStatus,
   fetchProviderModels,
   fetchSettings as fetchAppSettings,
@@ -66,7 +70,8 @@ import {
   saveSettings as persistAppSettings,
   streamMessage,
   subscribeActivity,
-  testProvider
+  testProvider,
+  updateSession
 } from "./api";
 
 declare global {
@@ -376,6 +381,12 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>(() => readInitialAppView());
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("providers");
   const [settingsOpen, setSettingsOpen] = useState(() => window.location.hash.replace(/^#/, "") === "settings");
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessionBatchMode, setSessionBatchMode] = useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(() => new Set());
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameSessionDraft, setRenameSessionDraft] = useState("");
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -479,7 +490,28 @@ export function App() {
     }
   }, [activeView, threadContextOpen]);
 
-  const activeSession = snapshot?.sessions[0];
+  useEffect(() => {
+    if (!snapshot?.sessions.length) {
+      setActiveSessionId(null);
+      return;
+    }
+    if (!activeSessionId || !snapshot.sessions.some((session) => session.id === activeSessionId)) {
+      setActiveSessionId(snapshot.sessions[0]?.id ?? null);
+    }
+  }, [activeSessionId, snapshot]);
+
+  const orderedSessions = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+    return [...snapshot.sessions].sort((left, right) => {
+      if (Boolean(left.pinned) !== Boolean(right.pinned)) {
+        return left.pinned ? -1 : 1;
+      }
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
+  }, [snapshot]);
+  const activeSession = orderedSessions.find((session) => session.id === activeSessionId) ?? orderedSessions[0];
   const teamAgents = useMemo(() => {
     if (!snapshot || !activeSession) {
       return [];
@@ -817,6 +849,144 @@ export function App() {
     });
   }
 
+  function applySessionResult(sessions: AppSnapshot["sessions"], activity?: ActivityEvent) {
+    setSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            sessions,
+            activity: activity ? [activity, ...current.activity].slice(0, 20) : current.activity
+          }
+        : current
+    );
+    setSelectedSessionIds((current) => new Set([...current].filter((id) => sessions.some((session) => session.id === id))));
+    if (!sessions.some((session) => session.id === activeSessionId)) {
+      setActiveSessionId(sessions[0]?.id ?? null);
+    }
+  }
+
+  function handleOpenSession(sessionId: string) {
+    setActiveSessionId(sessionId);
+    handleOpenView("thread");
+  }
+
+  function handleStartRenameSession(session: AppSnapshot["sessions"][number]) {
+    setRenamingSessionId(session.id);
+    setRenameSessionDraft(session.title);
+  }
+
+  async function handleConfirmRenameSession(sessionId: string) {
+    const title = renameSessionDraft.trim();
+    if (!title || !snapshot) {
+      setRenamingSessionId(null);
+      return;
+    }
+
+    if (mode === "demo") {
+      applySessionResult(
+        snapshot.sessions.map((session) =>
+          session.id === sessionId ? { ...session, title, updatedAt: new Date().toISOString() } : session
+        )
+      );
+    } else {
+      const result = await updateSession(sessionId, { title });
+      applySessionResult(result.sessions, result.activity);
+    }
+    setRenamingSessionId(null);
+    setRenameSessionDraft("");
+  }
+
+  async function handleToggleSessionPin(session: AppSnapshot["sessions"][number]) {
+    if (!snapshot) {
+      return;
+    }
+    const pinned = !session.pinned;
+    if (mode === "demo") {
+      applySessionResult(
+        snapshot.sessions.map((item) =>
+          item.id === session.id ? { ...item, pinned, updatedAt: new Date().toISOString() } : item
+        )
+      );
+      return;
+    }
+    const result = await updateSession(session.id, { pinned });
+    applySessionResult(result.sessions, result.activity);
+  }
+
+  function handleToggleSessionSelection(sessionId: string) {
+    setSelectedSessionIds((current) => {
+      const next = new Set(current);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    if (!snapshot || snapshot.sessions.length <= 1) {
+      setError("至少需要保留一个任务会话。");
+      return;
+    }
+
+    if (mode === "demo") {
+      applySessionResult(snapshot.sessions.filter((session) => session.id !== sessionId));
+      return;
+    }
+    const result = await deleteSession(sessionId);
+    applySessionResult(result.sessions, result.activity);
+  }
+
+  async function handleDeleteSelectedSessions() {
+    if (!snapshot || selectedSessionIds.size === 0) {
+      return;
+    }
+    const ids = [...selectedSessionIds].filter((id) => snapshot.sessions.some((session) => session.id === id));
+    if (snapshot.sessions.length - ids.length < 1) {
+      setError("至少需要保留一个任务会话。");
+      return;
+    }
+    for (const sessionId of ids) {
+      await handleDeleteSession(sessionId);
+    }
+    setSelectedSessionIds(new Set());
+    setSessionBatchMode(false);
+  }
+
+  async function handleSaveAgentFromHub(agent: AgentProfile) {
+    if (!settings) {
+      return;
+    }
+    const exists = settings.assistant.agents.some((item) => item.id === agent.id);
+    const nextSettings: AppSettings = {
+      ...settings,
+      assistant: {
+        ...settings.assistant,
+        agents: exists
+          ? settings.assistant.agents.map((item) => (item.id === agent.id ? agent : item))
+          : [...settings.assistant.agents, agent]
+      }
+    };
+    await handleSaveSettings(nextSettings);
+    setEditingAgentId(null);
+  }
+
+  async function handleToggleSkillFromHub(skillId: string, enabled: boolean) {
+    if (!settings) {
+      return;
+    }
+    const nextSettings: AppSettings = {
+      ...settings,
+      assistant: {
+        ...settings.assistant,
+        skills: settings.assistant.skills.map((skill) => (skill.id === skillId ? { ...skill, enabled } : skill))
+      }
+    };
+    await handleSaveSettings(nextSettings);
+  }
+
   function handleOpenView(view: AppView) {
     setActiveView(view);
     window.location.hash = view === "new" ? "" : view;
@@ -1060,24 +1230,99 @@ export function App() {
         <section className="sidebar-section history-section grow">
           <div className="section-heading">
             <span>任务记录</span>
-            <button className="mini-button" onClick={() => handleOpenView("search")} type="button">
-              搜索
-            </button>
+            <div className="section-heading-actions">
+              <button className="mini-button" onClick={() => handleOpenView("search")} type="button">
+                搜索
+              </button>
+              <button className="mini-button" onClick={() => setSessionBatchMode((current) => !current)} type="button">
+                {sessionBatchMode ? "取消" : "批量"}
+              </button>
+            </div>
           </div>
+          {sessionBatchMode ? (
+            <div className="session-batch-bar">
+              <span>已选 {selectedSessionIds.size}</span>
+              <button
+                className="mini-button danger-mini-button"
+                disabled={selectedSessionIds.size === 0}
+                onClick={() => void handleDeleteSelectedSessions()}
+                type="button"
+              >
+                删除
+              </button>
+            </div>
+          ) : null}
           <div className="session-history-list">
-            {snapshot.sessions.map((session) => (
+            {orderedSessions.map((session) => (
               <button
                 className={session.id === activeSession?.id && activeView === "thread" ? "session-history-card active" : "session-history-card"}
                 key={session.id}
-                onClick={() => handleOpenView("thread")}
+                onClick={() => (sessionBatchMode ? handleToggleSessionSelection(session.id) : handleOpenSession(session.id))}
                 type="button"
               >
-                <span className="history-status-dot" />
-                <span>
-                  <strong>{session.title}</strong>
-                  <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                {sessionBatchMode ? (
+                  <input
+                    aria-label={`选择 ${session.title}`}
+                    checked={selectedSessionIds.has(session.id)}
+                    onChange={() => handleToggleSessionSelection(session.id)}
+                    onClick={(event) => event.stopPropagation()}
+                    type="checkbox"
+                  />
+                ) : (
+                  <span className={session.pinned ? "history-status-dot pinned" : "history-status-dot"} />
+                )}
+                {renamingSessionId === session.id ? (
+                  <span className="session-rename-inline" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      value={renameSessionDraft}
+                      onChange={(event) => setRenameSessionDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          void handleConfirmRenameSession(session.id);
+                        }
+                        if (event.key === "Escape") {
+                          setRenamingSessionId(null);
+                          setRenameSessionDraft("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button className="mini-button" onClick={() => void handleConfirmRenameSession(session.id)} type="button">
+                      保存
+                    </button>
+                  </span>
+                ) : (
+                  <span>
+                    <strong>{session.title}</strong>
+                    <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                  </span>
+                )}
+                <span className="session-card-actions" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    className={session.pinned ? "icon-button active-icon-button" : "icon-button"}
+                    onClick={() => void handleToggleSessionPin(session)}
+                    type="button"
+                    aria-label="置顶任务"
+                  >
+                    <Pin size={13} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    onClick={() => handleStartRenameSession(session)}
+                    type="button"
+                    aria-label="重命名任务"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    className="icon-button danger-icon-button"
+                    onClick={() => void handleDeleteSession(session.id)}
+                    type="button"
+                    aria-label="删除任务"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </span>
-                <b>{session.id === activeSession?.id ? "当前" : "完成"}</b>
               </button>
             ))}
             <article className="session-history-card muted-history-card">
@@ -1154,7 +1399,11 @@ export function App() {
             totalAgents={snapshot.agents.length}
           />
         ) : activeView === "skills" ? (
-          <SkillsHubView skills={snapshot.skills} onOpenSettings={() => handleOpenSettings("skills")} />
+          <SkillsHubView
+            skills={snapshot.skills}
+            onOpenSettings={() => handleOpenSettings("skills")}
+            onToggleSkill={(skillId, enabled) => void handleToggleSkillFromHub(skillId, enabled)}
+          />
         ) : activeView === "mcp" ? (
           <McpHubView onOpenSettings={() => handleOpenSettings("permissions")} />
         ) : (
@@ -1163,6 +1412,8 @@ export function App() {
             agents={snapshot.agents}
             engines={runtimeSettings.assistant.engines}
             onActivate={handleActivateAgent}
+            onCreate={() => setEditingAgentId("__new__")}
+            onEdit={(agentId) => setEditingAgentId(agentId)}
             onOpenSettings={() => handleOpenSettings("assistants")}
           />
         )}
@@ -1401,6 +1652,16 @@ export function App() {
           />
         </SettingsModal>
       ) : null}
+      {editingAgentId ? (
+        <AgentEditorModal
+          agent={editingAgentId === "__new__" ? null : snapshot.agents.find((agent) => agent.id === editingAgentId) ?? null}
+          engines={runtimeSettings.assistant.engines}
+          providers={runtimeSettings.providers}
+          skills={runtimeSettings.assistant.skills}
+          onClose={() => setEditingAgentId(null)}
+          onSave={(agent) => void handleSaveAgentFromHub(agent)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -1420,6 +1681,161 @@ function SettingsModal({ children, onClose }: { children: ReactNode; onClose: ()
         </button>
         {children}
       </section>
+    </div>
+  );
+}
+
+function AgentEditorModal({
+  agent,
+  engines,
+  providers,
+  skills,
+  onClose,
+  onSave
+}: {
+  agent: AgentProfile | null;
+  engines: AgentEngineSettings[];
+  providers: ProviderSettings[];
+  skills: SkillProfile[];
+  onClose: () => void;
+  onSave: (agent: AgentProfile) => void;
+}) {
+  const fallbackEngine = engines.find((engine) => engine.enabled) ?? engines[0];
+  const fallbackProvider = providers.find((provider) => provider.connected) ?? providers[0];
+  const [name, setName] = useState(agent?.name ?? "自定义 Agent");
+  const [description, setDescription] = useState(agent?.description ?? "描述这个 Agent 负责的任务。");
+  const [category, setCategory] = useState<AgentProfile["category"]>(agent?.category ?? "custom");
+  const [enabled, setEnabled] = useState(agent?.enabled ?? true);
+  const [engineId, setEngineId] = useState(agent?.engineId ?? fallbackEngine?.id ?? "nexadesk_builtin");
+  const [providerId, setProviderId] = useState(agent?.providerId ?? fallbackProvider?.id ?? "openai-compatible");
+  const [instructions, setInstructions] = useState(
+    agent?.instructions ?? "说明这个 Agent 应该如何处理任务、何时请求工具、输出什么结果。"
+  );
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(() => new Set(agent?.skills ?? []));
+  const selectedEngine = engines.find((engine) => engine.id === engineId) ?? fallbackEngine;
+
+  function toggleSkill(skillId: string) {
+    setSelectedSkillIds((current) => {
+      const next = new Set(current);
+      if (next.has(skillId)) {
+        next.delete(skillId);
+      } else {
+        next.add(skillId);
+      }
+      return next;
+    });
+  }
+
+  function submitAgent(event: FormEvent) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+    onSave({
+      id: agent?.id ?? `custom-agent-${crypto.randomUUID().slice(0, 8)}`,
+      name: trimmedName,
+      description: description.trim() || "自定义 Agent",
+      runtime: selectedEngine?.name ?? "NexaDesk Built-in",
+      engineId,
+      providerId,
+      status: agent?.status ?? "idle",
+      skills: [...selectedSkillIds],
+      enabled,
+      category,
+      instructions: instructions.trim() || "按用户目标完成任务，必要时请求工具和审批。"
+    });
+  }
+
+  return (
+    <div className="agent-editor-backdrop" role="presentation" onMouseDown={onClose}>
+      <form className="agent-editor-modal" role="dialog" aria-modal="true" aria-label="Agent 编辑器" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAgent}>
+        <div className="agent-editor-header">
+          <div>
+            <p className="eyebrow">Agent Builder</p>
+            <h2>{agent ? "编辑 Agent" : "新建 Agent"}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="关闭 Agent 编辑器">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="agent-editor-grid">
+          <section className="settings-form">
+            <label>
+              <span>名称</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label>
+              <span>描述</span>
+              <input value={description} onChange={(event) => setDescription(event.target.value)} />
+            </label>
+            <label>
+              <span>类型</span>
+              <select value={category} onChange={(event) => setCategory(event.target.value as AgentProfile["category"])}>
+                <option value="cowork">Cowork</option>
+                <option value="code">代码</option>
+                <option value="office">Office</option>
+                <option value="file">文件</option>
+                <option value="report">报告</option>
+                <option value="custom">自定义</option>
+              </select>
+            </label>
+            <label>
+              <span>Agent 引擎</span>
+              <select value={engineId} onChange={(event) => setEngineId(event.target.value as AgentEngineSettings["id"])}>
+                {engines.map((engine) => (
+                  <option key={engine.id} value={engine.id}>
+                    {engine.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>默认 Provider</span>
+              <select value={providerId} onChange={(event) => setProviderId(event.target.value)}>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="inline-check-row">
+              <input checked={enabled} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" />
+              <span>启用这个 Agent</span>
+            </label>
+          </section>
+          <section className="settings-form">
+            <label>
+              <span>系统提示词</span>
+              <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} />
+            </label>
+            <div className="agent-skill-picker">
+              <span>绑定技能</span>
+              <div>
+                {skills.map((skill) => (
+                  <label key={skill.id}>
+                    <input
+                      checked={selectedSkillIds.has(skill.id)}
+                      onChange={() => toggleSkill(skill.id)}
+                      type="checkbox"
+                    />
+                    <strong>{skill.name}</strong>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+        <div className="agent-editor-actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            取消
+          </button>
+          <button className="primary-button" type="submit">
+            保存 Agent
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -1837,7 +2253,15 @@ function RuntimeDashboardView({
   );
 }
 
-function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onOpenSettings: () => void }) {
+function SkillsHubView({
+  skills,
+  onOpenSettings,
+  onToggleSkill
+}: {
+  skills: SkillProfile[];
+  onOpenSettings: () => void;
+  onToggleSkill: (skillId: string, enabled: boolean) => void;
+}) {
   const categories = ["全部", "推荐", "编程开发", "办公文档", "数据分析", "自动化", "研究写作"];
   return (
     <section className="workspace module-workspace">
@@ -1865,6 +2289,7 @@ function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onO
               <article className="module-row" key={skill.id}>
                 <strong>{skill.name}</strong>
                 <span>{skill.source}</span>
+                <b>运行中</b>
               </article>
             ))}
           </div>
@@ -1877,7 +2302,16 @@ function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onO
               <strong>{skill.name}</strong>
             </div>
             <p>{skill.description}</p>
-            <span>{skill.enabled ? "已启用" : "未启用"} · {skill.source}</span>
+            <div className="market-card-actions">
+              <span>{skill.enabled ? "已启用" : "未启用"} · {skill.source}</span>
+              <button
+                className={skill.enabled ? "secondary-button danger-soft-button" : "primary-button"}
+                onClick={() => onToggleSkill(skill.id, !skill.enabled)}
+                type="button"
+              >
+                {skill.enabled ? "停用" : "启用"}
+              </button>
+            </div>
           </article>
         ))}
         </section>
@@ -1930,26 +2364,28 @@ function AgentsHubView({
   agents,
   engines,
   onActivate,
+  onCreate,
+  onEdit,
   onOpenSettings
 }: {
   activeAgent: AgentProfile | null;
   agents: AgentProfile[];
   engines: AgentEngineSettings[];
   onActivate: (agentId: string) => void;
+  onCreate: () => void;
+  onEdit: (agentId: string) => void;
   onOpenSettings: () => void;
 }) {
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Agents" title="我的 Agent" detail="助手、团队和运行引擎集中到独立页面。" actionLabel="管理助手" onAction={onOpenSettings} />
+      <ModuleHeader eyebrow="Agents" title="我的 Agent" detail="助手、团队和运行引擎集中到独立页面。" actionLabel="新建 Agent" onAction={onCreate} />
       <div className="agent-hub-grid">
         {agents.map((agent) => {
           const engine = engines.find((item) => item.id === agent.engineId);
           return (
-            <button
+            <article
               className={activeAgent?.id === agent.id ? "agent-hub-card active" : "agent-hub-card"}
               key={agent.id}
-              onClick={() => onActivate(agent.id)}
-              type="button"
             >
               <div className="avatar">{agent.name.slice(0, 1)}</div>
               <div>
@@ -1957,11 +2393,22 @@ function AgentsHubView({
                 <span>{agent.description}</span>
                 <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
               </div>
-              {activeAgent?.id === agent.id ? <Check size={18} /> : null}
-            </button>
+              <div className="agent-card-actions">
+                <button className="secondary-button" onClick={() => onEdit(agent.id)} type="button">
+                  编辑
+                </button>
+                <button className="primary-button" onClick={() => onActivate(agent.id)} type="button">
+                  {activeAgent?.id === agent.id ? "当前" : "切换"}
+                </button>
+              </div>
+              {activeAgent?.id === agent.id ? <Check className="agent-active-check" size={18} /> : null}
+            </article>
           );
         })}
       </div>
+      <button className="secondary-button wide-module-action" onClick={onOpenSettings} type="button">
+        打开完整助手设置
+      </button>
     </section>
   );
 }

@@ -326,6 +326,7 @@ export interface AgentSession {
   agentIds: string[];
   activeAgentId: string;
   updatedAt: string;
+  pinned?: boolean;
 }
 
 export interface WorkspaceFile {

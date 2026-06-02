@@ -1,5 +1,6 @@
 ﻿import type {
   ActivityEvent,
+  AgentSession,
   AgentEngineDetectionResult,
   ApprovalHistoryEntry,
   AppSettings,
@@ -140,6 +141,33 @@ export async function fetchProviderModels(payload: ProviderModelsRequest): Promi
     throw new Error(`Provider models request failed with ${response.status}`);
   }
   return response.json() as Promise<ProviderModelsResult>;
+}
+
+export async function updateSession(
+  sessionId: string,
+  patch: { title?: string; pinned?: boolean }
+): Promise<{ sessions: AgentSession[]; activity: ActivityEvent }> {
+  const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!response.ok) {
+    throw new Error(`Session update failed with ${response.status}`);
+  }
+  return response.json() as Promise<{ sessions: AgentSession[]; activity: ActivityEvent }>;
+}
+
+export async function deleteSession(sessionId: string): Promise<{ sessions: AgentSession[]; activity: ActivityEvent }> {
+  const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(`Session delete failed with ${response.status}`);
+  }
+  return response.json() as Promise<{ sessions: AgentSession[]; activity: ActivityEvent }>;
 }
 
 export async function detectAgentEngines(): Promise<AgentEngineDetectionResult> {
