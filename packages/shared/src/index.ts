@@ -54,6 +54,48 @@ export type InterfaceDensity = "compact" | "comfortable";
 export type AppLanguage = "en" | "zh-CN";
 export type PermissionPolicy = "ask" | "allow" | "deny";
 
+export type AgentEngineId =
+  | "nexadesk_builtin"
+  | "codex_cli"
+  | "claude_code"
+  | "openclaw"
+  | "hermes"
+  | "opencode"
+  | "qwen_code"
+  | "deepseek_tui";
+
+export type AgentEngineKind = "builtin" | "cli" | "runtime";
+export type AgentEngineConfigSource = "nexadesk_model" | "local_cli";
+export type AgentEnginePermissionMode = "ask" | "auto" | "conservative" | "bypass";
+export type AgentEngineSetupStatus = "ready" | "needs_setup" | "not_installed";
+
+export type AgentEngineCapability =
+  | "chat"
+  | "streaming"
+  | "tools"
+  | "filesystem"
+  | "terminal"
+  | "mcp"
+  | "memory"
+  | "external_cli";
+
+export interface AgentEngineSettings {
+  id: AgentEngineId;
+  name: string;
+  description: string;
+  kind: AgentEngineKind;
+  enabled: boolean;
+  installed: boolean;
+  command?: string;
+  configPath?: string;
+  configSource: AgentEngineConfigSource;
+  providerId?: string;
+  model?: string;
+  permissionMode: AgentEnginePermissionMode;
+  setupStatus: AgentEngineSetupStatus;
+  capabilities: AgentEngineCapability[];
+}
+
 export interface AppearanceSettings {
   theme: ThemeMode;
   language: AppLanguage;
@@ -93,6 +135,7 @@ export interface ModelRuntimeSettings {
 export interface AssistantRuntimeSettings {
   agents: AgentProfile[];
   skills: SkillProfile[];
+  engines: AgentEngineSettings[];
 }
 
 export interface AppSettings {
@@ -222,6 +265,7 @@ export interface AgentProfile {
   name: string;
   description: string;
   runtime: string;
+  engineId?: AgentEngineId;
   providerId: string;
   status: AgentStatus;
   skills: string[];
@@ -515,6 +559,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "Cowork 助手",
       description: "总控型协作助手，负责拆解任务、选择工具、协调其他助手并汇总结论。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "ollama",
       status: "running",
       skills: ["planning", "filesystem", "terminal", "web"],
@@ -528,6 +573,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "代码助手",
       description: "阅读代码、修改实现、解释架构、运行测试并做代码审查。",
       runtime: "builtin",
+      engineId: "codex_cli",
       providerId: "ollama",
       status: "idle",
       skills: ["code-review", "filesystem", "terminal", "search"],
@@ -541,6 +587,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "Word 助手",
       description: "生成、润色和整理 Word 文档、报告正文、合同和正式材料。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "openai-compatible",
       status: "idle",
       skills: ["word", "report-writing", "filesystem"],
@@ -554,6 +601,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "Excel 助手",
       description: "处理表格、公式、数据清洗、统计汇总和图表分析。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "openai-compatible",
       status: "idle",
       skills: ["excel", "data-analysis", "filesystem"],
@@ -567,6 +615,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "PPT 助手",
       description: "制作演示文稿结构、页面文案、讲稿和视觉排版建议。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "openai-compatible",
       status: "idle",
       skills: ["ppt", "presentation-design", "filesystem"],
@@ -580,6 +629,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "文件整理助手",
       description: "整理目录、批量重命名、分类归档、查找重复和生成文件清单。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "ollama",
       status: "idle",
       skills: ["filesystem", "search", "file-organize"],
@@ -593,6 +643,7 @@ export function createDefaultAgents(): AgentProfile[] {
       name: "报告助手",
       description: "生成工程报告、分析报告、周报、评估材料和正式汇报文本。",
       runtime: "builtin",
+      engineId: "nexadesk_builtin",
       providerId: "openai-compatible",
       status: "idle",
       skills: ["report-writing", "word", "data-analysis"],
@@ -600,6 +651,113 @@ export function createDefaultAgents(): AgentProfile[] {
       category: "report",
       instructions:
         "你是报告助手。输出应正式、清楚、有依据；先搭结构，再写结论、依据、问题和建议。"
+    }
+  ];
+}
+
+export function createDefaultAgentEngines(): AgentEngineSettings[] {
+  return [
+    {
+      id: "nexadesk_builtin",
+      name: "NexaDesk Built-in",
+      description: "内置模型运行时，直接使用模型中心的 Provider、工具调用和审批队列。",
+      kind: "builtin",
+      enabled: true,
+      installed: true,
+      configSource: "nexadesk_model",
+      providerId: "ollama",
+      permissionMode: "ask",
+      setupStatus: "ready",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal"]
+    },
+    {
+      id: "codex_cli",
+      name: "Codex CLI",
+      description: "复用本机 Codex CLI 作为代码型 Agent 引擎，适合项目修改、测试和审查。",
+      kind: "cli",
+      enabled: false,
+      installed: false,
+      command: "codex",
+      configSource: "local_cli",
+      permissionMode: "ask",
+      setupStatus: "not_installed",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
+    },
+    {
+      id: "claude_code",
+      name: "Claude Code",
+      description: "复用 Claude Code CLI 作为外部代码 Agent，引擎配置优先从本机 CLI 读取。",
+      kind: "cli",
+      enabled: false,
+      installed: false,
+      command: "claude",
+      configSource: "local_cli",
+      permissionMode: "ask",
+      setupStatus: "not_installed",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
+    },
+    {
+      id: "qwen_code",
+      name: "Qwen Code",
+      description: "面向通义千问代码工作流的外部 CLI 引擎，后续支持本机配置同步。",
+      kind: "cli",
+      enabled: false,
+      installed: false,
+      command: "qwen",
+      configSource: "local_cli",
+      permissionMode: "conservative",
+      setupStatus: "not_installed",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
+    },
+    {
+      id: "deepseek_tui",
+      name: "DeepSeek-TUI",
+      description: "面向 DeepSeek 本机 TUI/CLI 的 Agent 引擎，适合国内模型链路。",
+      kind: "cli",
+      enabled: false,
+      installed: false,
+      command: "deepseek",
+      configSource: "local_cli",
+      permissionMode: "conservative",
+      setupStatus: "not_installed",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
+    },
+    {
+      id: "openclaw",
+      name: "OpenClaw",
+      description: "OpenClaw runtime 引擎，后续用于扩展 MCP、IM 和插件化运行时。",
+      kind: "runtime",
+      enabled: false,
+      installed: false,
+      configSource: "nexadesk_model",
+      permissionMode: "ask",
+      setupStatus: "needs_setup",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "mcp", "memory"]
+    },
+    {
+      id: "hermes",
+      name: "Hermes",
+      description: "Hermes 外部 Agent 引擎占位，后续支持独立配置文件和会话接管。",
+      kind: "runtime",
+      enabled: false,
+      installed: false,
+      configSource: "local_cli",
+      permissionMode: "ask",
+      setupStatus: "needs_setup",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
+    },
+    {
+      id: "opencode",
+      name: "OpenCode",
+      description: "OpenCode CLI 引擎占位，后续用于接入本机开源代码 Agent。",
+      kind: "cli",
+      enabled: false,
+      installed: false,
+      command: "opencode",
+      configSource: "local_cli",
+      permissionMode: "conservative",
+      setupStatus: "not_installed",
+      capabilities: ["chat", "streaming", "tools", "filesystem", "terminal", "external_cli"]
     }
   ];
 }
@@ -731,7 +889,8 @@ export function createDefaultSettings(
     },
     assistant: {
       agents: createDefaultAgents(),
-      skills: createDefaultSkills()
+      skills: createDefaultSkills(),
+      engines: createDefaultAgentEngines()
     },
     providerStatus: {
       tests: {},

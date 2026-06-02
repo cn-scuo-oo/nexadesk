@@ -1182,6 +1182,24 @@ h4 {
   white-space: nowrap;
 }
 
+.engine-status-row,
+.engine-capability-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.engine-capability-row span {
+  border: 1px solid #dcd2c0;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #3c4038;
+  background: #fffaf2;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .approval-card {
   position: relative;
   border: 1px solid #e2ebe6;

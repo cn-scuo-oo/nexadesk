@@ -271,7 +271,8 @@ function mergeSettings(defaults: AppSettings, saved: AppSettings | null): AppSet
     model: { ...defaults.model, ...saved.model },
     assistant: {
       agents: mergeAgents(defaults.assistant.agents, saved.assistant?.agents ?? []),
-      skills: mergeSkills(defaults.assistant.skills, saved.assistant?.skills ?? [])
+      skills: mergeSkills(defaults.assistant.skills, saved.assistant?.skills ?? []),
+      engines: mergeAgentEngines(defaults.assistant.engines, saved.assistant?.engines ?? [])
     },
     providerStatus: mergeProviderStatus(defaults.providerStatus, saved.providerStatus, providers),
     appearance: { ...defaults.appearance, ...saved.appearance },
@@ -378,4 +379,21 @@ function mergeSkills(defaultSkills: AppSettings["assistant"]["skills"], savedSki
   }));
   const defaultIds = new Set(defaultSkills.map((skill) => skill.id));
   return [...merged, ...savedSkills.filter((skill) => !defaultIds.has(skill.id))];
+}
+
+function mergeAgentEngines(
+  defaultEngines: AppSettings["assistant"]["engines"],
+  savedEngines: AppSettings["assistant"]["engines"]
+) {
+  const savedById = new Map(savedEngines.map((engine) => [engine.id, engine]));
+  const merged = defaultEngines.map((engine) => ({
+    ...engine,
+    ...savedById.get(engine.id),
+    name: isCorruptedText(savedById.get(engine.id)?.name) ? engine.name : savedById.get(engine.id)?.name ?? engine.name,
+    description: isCorruptedText(savedById.get(engine.id)?.description)
+      ? engine.description
+      : savedById.get(engine.id)?.description ?? engine.description
+  }));
+  const defaultIds = new Set(defaultEngines.map((engine) => engine.id));
+  return [...merged, ...savedEngines.filter((engine) => !defaultIds.has(engine.id))];
 }

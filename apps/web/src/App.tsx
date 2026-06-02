@@ -23,6 +23,7 @@ import {
   createDefaultProviders,
   createDefaultSettings,
   createDemoSnapshot,
+  type AgentEngineSettings,
   type ActivityEvent,
   type ApprovalHistoryEntry,
   type AppSettings,
@@ -76,7 +77,16 @@ declare global {
 
 type DataMode = "live" | "demo";
 type AppView = "cowork" | "settings";
-type SettingsTab = "providers" | "model" | "assistants" | "skills" | "appearance" | "workspace" | "permissions" | "desktop";
+type SettingsTab =
+  | "providers"
+  | "model"
+  | "engines"
+  | "assistants"
+  | "skills"
+  | "appearance"
+  | "workspace"
+  | "permissions"
+  | "desktop";
 
 type ProviderDraft = {
   id: string;
@@ -197,6 +207,7 @@ const domesticProviderMatrix: ProviderMatrixItem[] = [
 const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = [
   { id: "providers", label: "模型服务", detail: "API、Key、Base URL" },
   { id: "model", label: "默认模型", detail: "工作台模型切换" },
+  { id: "engines", label: "Agent 引擎", detail: "Codex、Claude、CLI" },
   { id: "assistants", label: "内置助手", detail: "Cowork、Office、报告" },
   { id: "skills", label: "技能系统", detail: "启用、禁用、自定义" },
   { id: "appearance", label: "界面字体", detail: "主题、语言、字号" },
@@ -919,6 +930,14 @@ export function App() {
               </span>
               <b>{enabledSkills.length}</b>
             </button>
+            <button className="nav-item nav-button" onClick={() => handleOpenSettings("engines")} type="button">
+              <Terminal size={17} />
+              <span>
+                <strong>Agent 引擎</strong>
+                <small>Codex / Claude / CLI</small>
+              </span>
+              <b>{runtimeSettings.assistant.engines.filter((engine) => engine.enabled).length}</b>
+            </button>
             <a className="nav-item" href="#tasks">
               <Zap size={17} />
               <span>
@@ -1596,6 +1615,15 @@ function SettingsCenter({
     });
   }
 
+  function updateEngine(engineId: string, patch: Partial<AgentEngineSettings>) {
+    updateDraft({
+      assistant: {
+        ...draft.assistant,
+        engines: draft.assistant.engines.map((engine) => (engine.id === engineId ? { ...engine, ...patch } : engine))
+      }
+    });
+  }
+
   function updateSkill(skillId: string, patch: Partial<SkillProfile>) {
     updateDraft({
       assistant: {
@@ -1632,7 +1660,7 @@ function SettingsCenter({
           <p className="eyebrow">设置中心</p>
           <h2>应用设置</h2>
           <p className="muted">
-            模型服务、默认模型、助手技能、界面字体、权限审批和桌面诊断都集中在这里配置。
+            模型服务、Agent 引擎、助手技能、界面字体、权限审批和桌面诊断都集中在这里配置。
           </p>
         </div>
         <div className="topbar-actions">
@@ -1744,6 +1772,138 @@ function SettingsCenter({
         </section>
         ) : null}
 
+        {activeTab === "engines" ? (
+        <section className="panel-block settings-section engine-settings">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Agent Engine Center</p>
+              <h3>外部 Agent 引擎</h3>
+            </div>
+            <Terminal size={18} />
+          </div>
+          <div className="settings-form">
+            <p className="secret-note">
+              这里把模型 Provider 和 Agent 执行器拆开管理：Provider 负责 API/模型，Agent 引擎负责本机 CLI、运行时、权限模式和后续启动检测。
+            </p>
+            <div className="collapse-list">
+              {draft.assistant.engines.map((engine) => (
+                <details className={engine.enabled ? "config-disclosure enabled" : "config-disclosure"} key={engine.id}>
+                  <summary>
+                    <span className="summary-main">
+                      <strong>{engine.name}</strong>
+                      <small>
+                        {engine.kind.toUpperCase()} · {engine.setupStatus === "ready" ? "可用" : engine.setupStatus === "needs_setup" ? "待配置" : "未安装"} · {engine.description}
+                      </small>
+                    </span>
+                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        checked={engine.enabled}
+                        onChange={(event) =>
+                          updateEngine(engine.id, {
+                            enabled: event.target.checked,
+                            setupStatus: event.target.checked && !engine.installed ? "needs_setup" : engine.setupStatus
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>{engine.enabled ? "启用" : "停用"}</span>
+                    </label>
+                  </summary>
+                  <div className="disclosure-body">
+                    <div className="engine-status-row">
+                      <span className={engine.installed ? "status ready" : "status muted-status"}>
+                        {engine.installed ? "已检测" : "未检测"}
+                      </span>
+                      <span className="runtime-pill">{engine.configSource === "local_cli" ? "读取本机 CLI 配置" : "使用 NexaDesk 模型中心"}</span>
+                    </div>
+                    <div className="field-grid">
+                      <label className="field-label">
+                        <span>配置来源</span>
+                        <select
+                          value={engine.configSource}
+                          onChange={(event) =>
+                            updateEngine(engine.id, {
+                              configSource: event.target.value as AgentEngineSettings["configSource"]
+                            })
+                          }
+                        >
+                          <option value="nexadesk_model">NexaDesk 模型中心</option>
+                          <option value="local_cli">本机 CLI 配置</option>
+                        </select>
+                      </label>
+                      <label className="field-label">
+                        <span>权限模式</span>
+                        <select
+                          value={engine.permissionMode}
+                          onChange={(event) =>
+                            updateEngine(engine.id, {
+                              permissionMode: event.target.value as AgentEngineSettings["permissionMode"]
+                            })
+                          }
+                        >
+                          <option value="ask">进入审批队列</option>
+                          <option value="conservative">保守模式</option>
+                          <option value="auto">自动模式</option>
+                          <option value="bypass">外部引擎自行处理</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="field-grid">
+                      <label className="field-label">
+                        <span>CLI 命令</span>
+                        <input
+                          disabled={engine.kind === "builtin"}
+                          value={engine.command ?? ""}
+                          onChange={(event) => updateEngine(engine.id, { command: event.target.value })}
+                          placeholder="例如 codex、claude、qwen"
+                        />
+                      </label>
+                      <label className="field-label">
+                        <span>配置文件路径</span>
+                        <input
+                          value={engine.configPath ?? ""}
+                          onChange={(event) => updateEngine(engine.id, { configPath: event.target.value })}
+                          placeholder="后续可自动检测本机 CLI 配置"
+                        />
+                      </label>
+                    </div>
+                    <div className="field-grid">
+                      <label className="field-label">
+                        <span>绑定 Provider</span>
+                        <select
+                          value={engine.providerId ?? ""}
+                          onChange={(event) => updateEngine(engine.id, { providerId: event.target.value || undefined })}
+                        >
+                          <option value="">跟随默认模型</option>
+                          {draft.providers.map((provider) => (
+                            <option key={provider.id} value={provider.id}>
+                              {provider.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field-label">
+                        <span>绑定模型</span>
+                        <input
+                          value={engine.model ?? ""}
+                          onChange={(event) => updateEngine(engine.id, { model: event.target.value })}
+                          placeholder="为空则跟随 Provider 默认模型"
+                        />
+                      </label>
+                    </div>
+                    <div className="engine-capability-row">
+                      {engine.capabilities.map((capability) => (
+                        <span key={capability}>{capability}</span>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+        ) : null}
+
         {activeTab === "assistants" ? (
         <section className="panel-block settings-section assistant-settings">
           <div className="panel-heading compact">
@@ -1774,6 +1934,19 @@ function SettingsCenter({
                     </label>
                   </summary>
                   <div className="disclosure-body">
+                    <label className="field-label">
+                      <span>绑定 Agent 引擎</span>
+                      <select
+                        value={agent.engineId ?? "nexadesk_builtin"}
+                        onChange={(event) => updateAgent(agent.id, { engineId: event.target.value as AgentProfile["engineId"] })}
+                      >
+                        {draft.assistant.engines.map((engine) => (
+                          <option key={engine.id} value={engine.id}>
+                            {engine.enabled ? "启用" : "停用"} - {engine.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="field-label">
                       <span>绑定 Provider</span>
                       <select

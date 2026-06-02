@@ -79,6 +79,7 @@
 - Packaged desktop smoke coverage validates the built `release/win-unpacked/NexaDesk.exe` before installer artifacts are shared.
 - Desktop smoke scripts tolerate slower GitHub runners and transient Windows user-data cleanup locks.
 - The workbench layout has started moving toward a WeSight-inspired AI Agentic Workspace shell: task navigation, project/session sidebar, central Cowork execution area, and live right-side context.
+- Agent Engine Center has started adopting the WeSight-style split between model Providers and Agent runtimes, with configurable built-in, Codex CLI, Claude Code, OpenClaw, Hermes, Qwen Code, DeepSeek-TUI, and OpenCode engine profiles.
 - Phase 7 focuses on clean install, reinstall, upgrade, shortcut, uninstall entry, data retention, and trusted-tester handoff checks.
 
 ## Later Phases
