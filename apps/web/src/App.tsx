@@ -104,6 +104,11 @@ type ProviderMatrixItem = {
   officialUrl: string;
 };
 
+type WorkspaceContextView = "files" | "search";
+
+const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
+const workspaceContextViewStorageKey = "nexadesk.workspaceContext.view";
+
 const apiModeOptions: Array<{ value: ProviderApiMode; label: string }> = [
   { value: "responses", label: "OpenAI Responses API" },
   { value: "chat_completions", label: "OpenAI 兼容 Chat Completions" },
@@ -199,6 +204,48 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
   { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
 ];
 
+function readStoredBoolean(key: string, fallback: boolean) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const value = window.localStorage.getItem(key);
+    return value === null ? fallback : value === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredBoolean(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+}
+
+function readStoredWorkspaceContextView(): WorkspaceContextView {
+  if (typeof window === "undefined") {
+    return "files";
+  }
+
+  try {
+    const value = window.localStorage.getItem(workspaceContextViewStorageKey);
+    return value === "search" ? "search" : "files";
+  } catch {
+    return "files";
+  }
+}
+
+function writeStoredWorkspaceContextView(view: WorkspaceContextView) {
+  try {
+    window.localStorage.setItem(workspaceContextViewStorageKey, view);
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+}
+
 const taskBoard = [
   {
     id: "task-1",
@@ -262,6 +309,9 @@ export function App() {
   const [workspaceFilePreview, setWorkspaceFilePreview] = useState<WorkspaceFilePreviewResult | null>(null);
   const [workspaceFileLoading, setWorkspaceFileLoading] = useState(false);
   const [workspaceFileError, setWorkspaceFileError] = useState<string | null>(null);
+  const [workspaceContextCollapsed, setWorkspaceContextCollapsed] = useState(() =>
+    readStoredBoolean(workspaceContextCollapsedStorageKey, false)
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +375,10 @@ export function App() {
       });
     });
   }, [mode]);
+
+  useEffect(() => {
+    writeStoredBoolean(workspaceContextCollapsedStorageKey, workspaceContextCollapsed);
+  }, [workspaceContextCollapsed]);
 
   const activeSession = snapshot?.sessions[0];
   const teamAgents = useMemo(() => {
@@ -1099,27 +1153,39 @@ export function App() {
           </div>
         </section>
 
-        <section className="panel-block">
+        <section className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}>
           <div className="panel-heading compact">
             <div>
               <p className="eyebrow">上下文</p>
               <h3>工作区上下文</h3>
             </div>
-            <FileText size={18} />
+            <div className="workspace-context-heading-actions">
+              <button
+                aria-expanded={!workspaceContextCollapsed}
+                className="mini-button workspace-context-toggle"
+                onClick={() => setWorkspaceContextCollapsed((current) => !current)}
+                type="button"
+              >
+                {workspaceContextCollapsed ? "展开" : "收起"}
+              </button>
+              <FileText size={18} />
+            </div>
           </div>
-          <WorkspaceFilePanel
-            configuredWorkspace={runtimeSettings.workspace.defaultWorkspace}
-            currentPath={workspacePath}
-            error={workspaceError}
-            fallbackFiles={snapshot.files}
-            loading={workspaceLoading}
-            result={workspaceList}
-            onOpenFile={setSelectedWorkspaceFile}
-            onOpenPath={setWorkspacePath}
-            onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
-            onAskAgent={handleAskAgentToReadFile}
-            sending={sending}
-          />
+          {workspaceContextCollapsed ? null : (
+            <WorkspaceFilePanel
+              configuredWorkspace={runtimeSettings.workspace.defaultWorkspace}
+              currentPath={workspacePath}
+              error={workspaceError}
+              fallbackFiles={snapshot.files}
+              loading={workspaceLoading}
+              result={workspaceList}
+              onOpenFile={setSelectedWorkspaceFile}
+              onOpenPath={setWorkspacePath}
+              onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
+              onAskAgent={handleAskAgentToReadFile}
+              sending={sending}
+            />
+          )}
         </section>
 
         <section className="panel-block">
@@ -3387,12 +3453,16 @@ function WorkspaceFilePanel({
 }) {
   const visiblePath = result?.path ?? currentPath;
   const canGoUp = visiblePath !== ".";
-  const [activeView, setActiveView] = useState<"files" | "search">("files");
+  const [activeView, setActiveView] = useState<WorkspaceContextView>(() => readStoredWorkspaceContextView());
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<WorkspaceSearchMode>("name");
   const [searchResult, setSearchResult] = useState<WorkspaceSearchResult | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    writeStoredWorkspaceContextView(activeView);
+  }, [activeView]);
 
   async function runWorkspaceSearch(event?: FormEvent) {
     event?.preventDefault();

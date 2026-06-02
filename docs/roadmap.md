@@ -67,6 +67,7 @@
 - The workbench can search workspace files by name or content and open matching files from the results.
 - Workspace search results can send matching files directly to the active Agent for analysis.
 - The workbench workspace file tree and search are grouped into a compact context panel with switchable views.
+- The workspace context panel can be collapsed, and its collapsed/view state is remembered locally.
 
 ## Later Phases
 

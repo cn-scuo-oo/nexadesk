@@ -548,6 +548,21 @@ h4 {
   padding: 13px 14px;
 }
 
+.workspace-context-block.collapsed .panel-heading {
+  border-bottom: 0;
+}
+
+.workspace-context-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.workspace-context-toggle {
+  min-width: 44px;
+}
+
 .team-node-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

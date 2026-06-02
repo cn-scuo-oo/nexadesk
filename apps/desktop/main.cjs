@@ -218,6 +218,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区上下文")) {
     throw new Error("Renderer smoke test failed: workspace context panel was not rendered.");
   }
+  if (!workbenchText.includes("收起")) {
+    throw new Error("Renderer smoke test failed: workspace context collapse control was not rendered.");
+  }
   if (!workbenchText.includes("刷新") || !workbenchText.includes("上级")) {
     throw new Error("Renderer smoke test failed: workspace file controls were not rendered.");
   }
