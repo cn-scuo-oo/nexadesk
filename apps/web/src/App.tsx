@@ -2365,6 +2365,13 @@ function TaskThreadView({
   const currentTask = taskBoard.find((task) => task.status === "Running") ?? taskBoard[0];
   const completedTasks = taskBoard.filter((task) => task.status === "Done").length;
   const pendingTasks = taskBoard.filter((task) => task.status !== "Done").length;
+  const toolActivity = activeMessages.flatMap((message) =>
+    (message.toolCalls ?? []).map((tool) => ({
+      ...tool,
+      messageAuthor: message.author,
+      createdAt: message.createdAt
+    }))
+  );
 
   return (
     <section className="workspace thread-workspace">
@@ -2433,42 +2440,175 @@ function TaskThreadView({
             </span>
           </div>
 
-          <div className="message-list workbench-message-list">
-            {activeMessages.length === 0 ? (
-              <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
-            ) : (
-              activeMessages.map((message) => <MessageBubble key={message.id} message={message} />)
-            )}
-          </div>
-
-          <form className="workbench-composer" onSubmit={onSend}>
-            <textarea
-              aria-label="任务输入"
-              placeholder="分配任务或继续提问..."
-              value={draft}
-              onChange={(event) => onDraftChange(event.target.value)}
-            />
-            <div className="workbench-composer-footer">
-              <span>
-                <Folder size={15} />
-                {workspaceLabel || "当前工作区"}
-              </span>
-              <div>
-                <button className="icon-button" onClick={onOpenContext} type="button" aria-label="打开上下文">
-                  <FileText size={15} />
-                </button>
-                <button className="icon-button" type="button" aria-label="选择技能">
-                  <Workflow size={15} />
-                </button>
-                <button className="send-orb" disabled={sending || !draft.trim()} type="submit" aria-label="发送任务">
-                  <Send size={20} />
-                </button>
+          <div className="task-workbench-body">
+            <section className="task-conversation-pane">
+              <div className="message-list workbench-message-list">
+                {activeMessages.length === 0 ? (
+                  <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
+                ) : (
+                  activeMessages.map((message) => <MessageBubble key={message.id} message={message} compactTools />)
+                )}
               </div>
-            </div>
-          </form>
+
+              <form className="workbench-composer" onSubmit={onSend}>
+                <textarea
+                  aria-label="任务输入"
+                  placeholder="分配任务或继续提问..."
+                  value={draft}
+                  onChange={(event) => onDraftChange(event.target.value)}
+                />
+                <div className="workbench-composer-footer">
+                  <span>
+                    <Folder size={15} />
+                    {workspaceLabel || "当前工作区"}
+                  </span>
+                  <div>
+                    <button className="icon-button" onClick={onOpenContext} type="button" aria-label="打开上下文">
+                      <FileText size={15} />
+                    </button>
+                    <button className="icon-button" type="button" aria-label="选择技能">
+                      <Workflow size={15} />
+                    </button>
+                    <button className="send-orb" disabled={sending || !draft.trim()} type="submit" aria-label="发送任务">
+                      <Send size={20} />
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <TaskRunPanel
+              activeAgent={activeAgent}
+              approvals={activeApprovals}
+              taskBoard={taskBoard}
+              toolActivity={toolActivity}
+              onOpenContext={onOpenContext}
+            />
+          </div>
         </section>
       </div>
     </section>
+  );
+}
+
+function TaskRunPanel({
+  activeAgent,
+  approvals,
+  taskBoard,
+  toolActivity,
+  onOpenContext
+}: {
+  activeAgent: AgentProfile | null;
+  approvals: number;
+  taskBoard: TaskBoardItem[];
+  toolActivity: Array<ToolCall & { messageAuthor: string; createdAt: string }>;
+  onOpenContext: () => void;
+}) {
+  const fileChanges = toolActivity.filter((tool) => {
+    const name = String(tool.name);
+    return name.includes("write") || name.includes("file") || name.includes("command");
+  });
+  const visibleTools = toolActivity.slice(-5).reverse();
+  const visibleChanges = fileChanges.slice(-4).reverse();
+
+  return (
+    <aside className="task-run-panel" aria-label="任务执行面板">
+      <div className="task-run-tabs" aria-label="执行面板标签">
+        <span className="active">运行概览</span>
+        <span>工具活动</span>
+        <span>代码变更</span>
+      </div>
+
+      <section className="task-run-card task-run-agent">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">Agent</p>
+            <h3>{activeAgent?.name ?? "Cowork 助手"}</h3>
+          </div>
+          <span className={`agent-status ${activeAgent?.status ?? "idle"}`} />
+        </div>
+        <p>{activeAgent?.description ?? "负责拆解任务、调用工具并汇总结论。"}</p>
+      </section>
+
+      <section className="task-run-card">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">工具活动</p>
+            <h3>实时执行</h3>
+          </div>
+          <Terminal size={17} />
+        </div>
+        <div className="task-activity-list">
+          {visibleTools.length === 0 ? (
+            <span className="task-panel-empty">暂无工具调用。Agent 读取文件、运行命令或写入结果后会出现在这里。</span>
+          ) : (
+            visibleTools.map((tool) => (
+              <article className={`task-activity-row ${tool.status}`} key={tool.id}>
+                <span className={`tool-call-dot ${tool.status}`} />
+                <div>
+                  <strong>{toolNameLabel(tool.name)}</strong>
+                  <small>{tool.summary}</small>
+                </div>
+                <b>{toolStatusLabel(tool.status)}</b>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="task-run-card">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">代码变更</p>
+            <h3>文件与命令</h3>
+          </div>
+          <FileText size={17} />
+        </div>
+        <div className="task-change-list">
+          {visibleChanges.length === 0 ? (
+            <span className="task-panel-empty">暂无代码或文件变更。</span>
+          ) : (
+            visibleChanges.map((tool) => (
+              <article key={`${tool.id}-change`}>
+                <strong>{toolNameLabel(tool.name)}</strong>
+                <span>{tool.summary}</span>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="task-run-card">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">审批</p>
+            <h3>{approvals > 0 ? `${approvals} 个待处理` : "无需审批"}</h3>
+          </div>
+          <ShieldCheck size={17} />
+        </div>
+        <button className="secondary-button" onClick={onOpenContext} type="button">
+          打开审批与上下文
+        </button>
+      </section>
+
+      <section className="task-run-card">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">任务队列</p>
+            <h3>协作步骤</h3>
+          </div>
+          <ListChecks size={17} />
+        </div>
+        <div className="task-mini-board">
+          {taskBoard.slice(0, 3).map((task) => (
+            <article key={task.id}>
+              <span className="status muted-status">{task.status}</span>
+              <strong>{task.title}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+    </aside>
   );
 }
 
@@ -5192,7 +5332,7 @@ function TeamNode({ agent, index }: { agent: AgentProfile; index: number }) {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, compactTools = false }: { message: ChatMessage; compactTools?: boolean }) {
   const isToolMessage = message.role === "tool";
   const [toolDetailOpen, setToolDetailOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -5238,7 +5378,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       ) : (
         <p>{message.content}</p>
       )}
-      {message.toolCalls?.length ? (
+      {message.toolCalls?.length && compactTools ? (
+        <div className="message-tool-summary">
+          <Terminal size={13} />
+          <span>{message.toolCalls.length} 个工具活动已同步到右侧执行面板</span>
+        </div>
+      ) : null}
+      {message.toolCalls?.length && !compactTools ? (
         <ToolCallTimeline tools={message.toolCalls} />
       ) : null}
     </article>

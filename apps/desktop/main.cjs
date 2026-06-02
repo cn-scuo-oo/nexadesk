@@ -288,18 +288,18 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const threadText = await renderAndReadText(apiPort, "thread");
-  if (!threadText.includes("任务工作台") || !threadText.includes("分配任务或继续提问") || !threadText.includes("上下文")) {
+  if (!threadText.includes("任务工作台") || !threadText.includes("分配任务或继续提问") || !threadText.includes("工具活动") || !threadText.includes("代码变更")) {
     throw new Error("Renderer smoke test failed: task thread did not render the WeSight-style session view.");
   }
   const threadLayout = await renderAndEvaluate(
     apiPort,
     "thread",
-    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasRightDock: Boolean(document.querySelector('.right-dock')), hasContextDrawer: Boolean(document.querySelector('.context-drawer')), hasTaskSidePanel: Boolean(document.querySelector('.task-side-panel')), hasContextTrigger: Boolean(document.querySelector('.thread-context-trigger')), hasWorkbenchComposer: Boolean(document.querySelector('.workbench-composer')), hasTaskStage: Boolean(document.querySelector('.task-workbench-stage')) }))()"
+    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasRightDock: Boolean(document.querySelector('.right-dock')), hasContextDrawer: Boolean(document.querySelector('.context-drawer')), hasTaskSidePanel: Boolean(document.querySelector('.task-side-panel')), hasContextTrigger: Boolean(document.querySelector('.thread-context-trigger')), hasWorkbenchComposer: Boolean(document.querySelector('.workbench-composer')), hasTaskStage: Boolean(document.querySelector('.task-workbench-stage')), hasTaskRunPanel: Boolean(document.querySelector('.task-run-panel')) }))()"
   );
   if (threadLayout.hasRightDock || threadLayout.hasContextDrawer || threadLayout.hasTaskSidePanel) {
     throw new Error("Renderer smoke test failed: task thread should not render stacked side panels by default.");
   }
-  if (!threadLayout.hasContextTrigger || !threadLayout.hasWorkbenchComposer || !threadLayout.hasTaskStage) {
+  if (!threadLayout.hasContextTrigger || !threadLayout.hasWorkbenchComposer || !threadLayout.hasTaskStage || !threadLayout.hasTaskRunPanel) {
     throw new Error("Renderer smoke test failed: task thread did not expose the on-demand context trigger.");
   }
   if (threadLayout.documentWidth > threadLayout.viewportWidth + 2) {
