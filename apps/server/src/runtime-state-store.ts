@@ -1,12 +1,33 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { AgentSession, AppSnapshot, ChatMessage, ActivityEvent, AutomationJob } from "@nexadesk/shared";
+import type {
+  AgentSession,
+  ApprovalHistoryEntry,
+  AppSnapshot,
+  ChatMessage,
+  ActivityEvent,
+  AutomationJob,
+  PermissionRequest
+} from "@nexadesk/shared";
+import type { AgentToolRequest } from "./agent-tools.js";
+
+export type PendingToolApprovalRecord = {
+  approvalId: string;
+  request: AgentToolRequest;
+  sessionId: string;
+  agentId: string;
+  messageId: string;
+  toolCallId: string;
+};
 
 type RuntimeStateFile = {
   version: 1;
   savedAt: string;
   sessions: AgentSession[];
   messages: ChatMessage[];
+  approvals?: PermissionRequest[];
+  approvalHistory?: ApprovalHistoryEntry[];
+  pendingToolApprovals?: PendingToolApprovalRecord[];
   activity: ActivityEvent[];
   automations: AutomationJob[];
 };
@@ -16,11 +37,11 @@ const dataDir = getEnv("NEXADESK_DATA_DIR", "AION_LITE_DATA_DIR") ?? join(repoRo
 export const runtimeStatePath =
   getEnv("NEXADESK_RUNTIME_STATE_PATH", "AION_LITE_RUNTIME_STATE_PATH") ?? join(dataDir, "runtime-state.json");
 
-export async function loadRuntimeState(snapshot: AppSnapshot): Promise<void> {
+export async function loadRuntimeState(snapshot: AppSnapshot): Promise<PendingToolApprovalRecord[]> {
   const saved = await readRuntimeState();
   if (!saved) {
     await saveRuntimeState(snapshot);
-    return;
+    return [];
   }
 
   if (saved.sessions.length) {
@@ -29,16 +50,25 @@ export async function loadRuntimeState(snapshot: AppSnapshot): Promise<void> {
   if (saved.messages.length) {
     snapshot.messages = saved.messages;
   }
+  snapshot.approvals = saved.approvals ?? snapshot.approvals;
+  snapshot.approvalHistory = saved.approvalHistory ?? snapshot.approvalHistory;
   snapshot.activity = saved.activity.length ? saved.activity.slice(0, 50) : snapshot.activity;
   snapshot.automations = saved.automations.length ? saved.automations : snapshot.automations;
+  return saved.pendingToolApprovals ?? [];
 }
 
-export async function saveRuntimeState(snapshot: AppSnapshot): Promise<void> {
+export async function saveRuntimeState(
+  snapshot: AppSnapshot,
+  pendingToolApprovals: PendingToolApprovalRecord[] = []
+): Promise<void> {
   const state: RuntimeStateFile = {
     version: 1,
     savedAt: new Date().toISOString(),
     sessions: snapshot.sessions,
     messages: snapshot.messages.slice(-500),
+    approvals: snapshot.approvals,
+    approvalHistory: snapshot.approvalHistory.slice(0, 100),
+    pendingToolApprovals,
     activity: snapshot.activity.slice(0, 50),
     automations: snapshot.automations
   };

@@ -22,6 +22,7 @@ export type ProviderCapability =
   | "structured_output";
 
 export type PermissionRisk = "low" | "medium" | "high";
+export type ApprovalDecision = "approved" | "rejected" | "failed";
 
 export type AgentToolName =
   | "list_dir"
@@ -248,6 +249,18 @@ export interface PermissionRequest {
   toolName?: AgentToolName;
 }
 
+export interface ApprovalHistoryEntry extends PermissionRequest {
+  decision: ApprovalDecision;
+  resolvedAt: string;
+  reason?: string;
+  resultSummary?: string;
+}
+
+export interface ResolveApprovalRequest {
+  approved: boolean;
+  reason?: string;
+}
+
 export interface AutomationJob {
   id: string;
   name: string;
@@ -272,6 +285,7 @@ export interface AppSnapshot {
   messages: ChatMessage[];
   files: WorkspaceFile[];
   approvals: PermissionRequest[];
+  approvalHistory: ApprovalHistoryEntry[];
   automations: AutomationJob[];
   activity: ActivityEvent[];
 }
@@ -745,6 +759,7 @@ export function createDemoSnapshot(now = new Date().toISOString()): AppSnapshot 
         requestedAt: now
       }
     ],
+    approvalHistory: [],
     automations: [
       {
         id: "daily-check",

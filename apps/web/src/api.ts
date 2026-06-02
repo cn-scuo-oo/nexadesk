@@ -1,5 +1,6 @@
 ﻿import type {
   ActivityEvent,
+  ApprovalHistoryEntry,
   AppSettings,
   AppSnapshot,
   ChatStreamEvent,
@@ -132,8 +133,9 @@ export async function streamMessage(
   drainSseBuffer(`${buffer}\n\n`, onEvent);
 }
 
-export async function resolveApproval(approvalId: string, approved: boolean): Promise<{
+export async function resolveApproval(approvalId: string, approved: boolean, reason?: string): Promise<{
   activity: ActivityEvent;
+  history: ApprovalHistoryEntry;
   messages?: ChatMessage[];
 }> {
   const response = await fetch(`${apiBase}/api/approvals/${approvalId}/resolve`, {
@@ -141,12 +143,12 @@ export async function resolveApproval(approvalId: string, approved: boolean): Pr
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ approved })
+    body: JSON.stringify({ approved, reason })
   });
   if (!response.ok) {
     throw new Error(`Approval request failed with ${response.status}`);
   }
-  return response.json() as Promise<{ activity: ActivityEvent; messages?: ChatMessage[] }>;
+  return response.json() as Promise<{ activity: ActivityEvent; history: ApprovalHistoryEntry; messages?: ChatMessage[] }>;
 }
 
 export function subscribeActivity(onEvent: (event: ActivityEvent) => void) {

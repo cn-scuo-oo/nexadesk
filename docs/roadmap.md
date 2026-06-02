@@ -51,6 +51,7 @@
 - Runtime state persistence is covered by a smoke test with a fake streaming model provider.
 - Desktop mode exposes a safe native directory picker for default workspace, export directory, and allowed workspace roots.
 - Settings pages now use collapsible sections for long Provider, assistant, and skill configuration surfaces.
+- Approval history records approved, rejected, and failed tool decisions with optional rejection reasons and restart persistence.
 
 ## Later Phases
 

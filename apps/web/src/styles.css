@@ -750,6 +750,49 @@ h4 {
   font-size: 13px;
 }
 
+.approval-card.history {
+  background: #f8fbf9;
+}
+
+.approval-card.history.approved {
+  border-color: #b7d9ca;
+}
+
+.approval-card.history.rejected,
+.approval-card.history.failed {
+  border-color: #ead0cf;
+}
+
+.approval-reason {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.approval-reason span {
+  color: #6b7f76;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.approval-reason input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #d8e4de;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #17201d;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.history-reason,
+.history-result {
+  color: #536b62;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
 .approval-actions {
   position: absolute;
   top: 10px;
@@ -786,6 +829,17 @@ h4 {
 }
 
 .risk.high {
+  color: #8c2c2c;
+  background: #f7dddd;
+}
+
+.risk.approved {
+  color: #26684f;
+  background: #dff2e8;
+}
+
+.risk.rejected,
+.risk.failed {
   color: #8c2c2c;
   background: #f7dddd;
 }

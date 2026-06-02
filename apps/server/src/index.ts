@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   createDemoSnapshot,
   type ActivityEvent,
+  type ApprovalHistoryEntry,
   type AppSettings,
   type AgentProfile,
   type ChatStreamEvent,
@@ -15,6 +16,7 @@ import {
   type ProviderTestRequest,
   type ProviderTestResult,
   type RecoverSettingsRequest,
+  type ResolveApprovalRequest,
   type SaveSettingsRequest,
   type SendMessageRequest
 } from "@nexadesk/shared";
@@ -28,7 +30,12 @@ import {
 } from "./agent-tools.js";
 import { addEventClient, publishActivity } from "./events.js";
 import { ProviderRuntimeError, streamProviderEvents, type RuntimeChatMessage } from "./provider-runtime.js";
-import { loadRuntimeState, runtimeStatePath, saveRuntimeState } from "./runtime-state-store.js";
+import {
+  loadRuntimeState,
+  runtimeStatePath,
+  saveRuntimeState,
+  type PendingToolApprovalRecord
+} from "./runtime-state-store.js";
 import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "./settings-store.js";
 
 const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
@@ -37,13 +44,7 @@ const snapshot = createDemoSnapshot();
 const app = express();
 const pendingToolApprovals = new Map<
   string,
-  {
-    request: AgentToolRequest;
-    sessionId: string;
-    agentId: string;
-    messageId: string;
-    toolCallId: string;
-  }
+  Omit<PendingToolApprovalRecord, "approvalId">
 >();
 
 app.use(cors());
@@ -567,14 +568,22 @@ function getEnv(name: string, legacyName: string) {
 
 async function persistRuntimeState() {
   try {
-    await saveRuntimeState(snapshot);
+    await saveRuntimeState(snapshot, pendingToolApprovalRecords());
   } catch (error) {
     console.error("Failed to persist runtime state", error);
   }
 }
 
+function pendingToolApprovalRecords(): PendingToolApprovalRecord[] {
+  return Array.from(pendingToolApprovals.entries()).map(([approvalId, pending]) => ({
+    approvalId,
+    ...pending
+  }));
+}
+
 const approvalSchema = z.object({
-  approved: z.boolean()
+  approved: z.boolean(),
+  reason: z.string().trim().max(1000).optional()
 });
 
 app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
@@ -591,23 +600,48 @@ app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
   }
 
   const [approval] = snapshot.approvals.splice(approvalIndex, 1);
+  if (!approval) {
+    res.status(404).json({ error: "Approval not found" });
+    return;
+  }
+
   try {
     const pending = pendingToolApprovals.get(req.params.approvalId);
     const messages: ChatMessage[] = [];
+    const body = parsed.data as ResolveApprovalRequest;
+    const reason = body.reason?.trim();
 
     if (!parsed.data.approved) {
       if (pending) {
         updateToolCall(pending.messageId, pending.toolCallId, "rejected");
         pendingToolApprovals.delete(req.params.approvalId);
       }
+      const history = pushApprovalHistory(approval, "rejected", {
+        reason
+      });
       const activity = publishActivity({
         level: "warning",
         title: "审批已拒绝",
-        detail: approval ? approval.action : "Approval resolved"
+        detail: `${approval.action}${reason ? `；原因：${reason}` : "；未填写拒绝原因"}`
       });
       snapshot.activity.unshift(activity);
       await persistRuntimeState();
-      res.json({ approval, activity, messages });
+      res.json({ approval, history, activity, messages });
+      return;
+    }
+
+    if (!pending) {
+      const history = pushApprovalHistory(approval, "failed", {
+        reason: "审批请求的执行上下文不存在，可能来自旧版本状态或服务重启前未保存的请求。"
+      });
+      const activity = publishActivity({
+        level: "error",
+        title: "审批无法执行",
+        detail: `${approval.action}；执行上下文不存在。`
+      });
+      snapshot.activity.unshift(activity);
+      await persistRuntimeState();
+      res.json({ approval, history, activity, messages });
       return;
     }
 
@@ -619,23 +653,49 @@ app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
       messages.push(toolMessage);
       updateToolCall(pending.messageId, pending.toolCallId, "completed");
       pendingToolApprovals.delete(req.params.approvalId);
+      const history = pushApprovalHistory(approval, "approved", {
+        resultSummary: result.slice(0, 500)
+      });
+      const activity = publishActivity({
+        level: "info",
+        title: "审批已通过",
+        detail: approval.action
+      });
+      snapshot.activity.unshift(activity);
+      await persistRuntimeState();
+      res.json({ approval, history, activity, messages });
+      return;
     }
-
-    const activity = publishActivity({
-      level: "info",
-      title: "审批已通过",
-      detail: approval ? approval.action : "Approval resolved"
-    });
-    snapshot.activity.unshift(activity);
-    await persistRuntimeState();
-    res.json({ approval, activity, messages });
   } catch (error) {
     if (approval?.messageId && approval.toolCallId) {
       updateToolCall(approval.messageId, approval.toolCallId, "failed");
     }
+    if (approval) {
+      pushApprovalHistory(approval, "failed", {
+        reason: error instanceof Error ? error.message : "审批执行失败。"
+      });
+      await persistRuntimeState();
+    }
     next(error);
   }
 });
+
+function pushApprovalHistory(
+  approval: PermissionRequest,
+  decision: ApprovalHistoryEntry["decision"],
+  options: { reason?: string; resultSummary?: string } = {}
+) {
+  const history: ApprovalHistoryEntry = {
+    ...approval,
+    decision,
+    resolvedAt: new Date().toISOString(),
+    reason: options.reason,
+    resultSummary: options.resultSummary
+  };
+  snapshot.approvalHistory.unshift(history);
+  snapshot.approvalHistory = snapshot.approvalHistory.slice(0, 100);
+  return history;
+}
 
 function updateToolCall(messageId: string, toolCallId: string, status: NonNullable<ChatMessage["toolCalls"]>[number]["status"]) {
   const message = snapshot.messages.find((item) => item.id === messageId);
@@ -666,7 +726,17 @@ void startServer().catch((error) => {
 });
 
 async function startServer() {
-  await loadRuntimeState(snapshot);
+  const pendingApprovals = await loadRuntimeState(snapshot);
+  pendingToolApprovals.clear();
+  for (const pending of pendingApprovals) {
+    pendingToolApprovals.set(pending.approvalId, {
+      request: pending.request,
+      sessionId: pending.sessionId,
+      agentId: pending.agentId,
+      messageId: pending.messageId,
+      toolCallId: pending.toolCallId
+    });
+  }
   app.listen(port, host, () => {
     console.log(`NexaDesk API listening on http://${host}:${port}`);
   });

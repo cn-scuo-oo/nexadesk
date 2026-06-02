@@ -24,6 +24,7 @@ import {
   createDefaultSettings,
   createDemoSnapshot,
   type ActivityEvent,
+  type ApprovalHistoryEntry,
   type AppSettings,
   type AgentProfile,
   type AppSnapshot,
@@ -347,21 +348,23 @@ export function App() {
     }
   }
 
-  async function handleResolveApproval(approval: PermissionRequest, approved: boolean) {
+  async function handleResolveApproval(approval: PermissionRequest, approved: boolean, reason?: string) {
     if (!snapshot) {
       return;
     }
 
     if (mode === "demo") {
+      const history = createLocalApprovalHistory(approval, approved ? "approved" : "rejected", reason);
       setSnapshot({
         ...snapshot,
         approvals: snapshot.approvals.filter((item) => item.id !== approval.id),
+        approvalHistory: [history, ...snapshot.approvalHistory].slice(0, 100),
         activity: [
           {
             id: crypto.randomUUID(),
             level: approved ? "info" : "warning",
             title: approved ? "Approval granted" : "Approval rejected",
-            detail: approval.action,
+            detail: approved || !reason ? approval.action : `${approval.action}；原因：${reason}`,
             createdAt: new Date().toISOString()
           },
           ...snapshot.activity
@@ -371,7 +374,7 @@ export function App() {
     }
 
     try {
-      const result = await resolveApproval(approval.id, approved);
+      const result = await resolveApproval(approval.id, approved, reason);
       setSnapshot((current) => {
         if (!current) {
           return current;
@@ -381,6 +384,10 @@ export function App() {
         return {
           ...current,
           approvals: current.approvals.filter((item) => item.id !== approval.id),
+          approvalHistory: [result.history, ...current.approvalHistory.filter((item) => item.id !== result.history.id)].slice(
+            0,
+            100
+          ),
           messages: [
             ...current.messages.map((message) =>
               message.id === approval.messageId
@@ -780,6 +787,29 @@ export function App() {
                   approval={approval}
                   agent={snapshot.agents.find((agent) => agent.id === approval.agentId)}
                   onResolve={handleResolveApproval}
+                />
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="panel-block">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">审计记录</p>
+              <h3>审批历史</h3>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          <div className="stack-list">
+            {snapshot.approvalHistory.length === 0 ? (
+              <EmptyState title="No approval history" detail="Resolved approvals will stay here." />
+            ) : (
+              snapshot.approvalHistory.slice(0, 6).map((history) => (
+                <ApprovalHistoryCard
+                  key={`${history.id}-${history.resolvedAt}`}
+                  history={history}
+                  agent={snapshot.agents.find((agent) => agent.id === history.agentId)}
                 />
               ))
             )}
@@ -1704,6 +1734,19 @@ function uniquePathList(paths: string[]) {
   return Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
 }
 
+function createLocalApprovalHistory(
+  approval: PermissionRequest,
+  decision: ApprovalHistoryEntry["decision"],
+  reason?: string
+): ApprovalHistoryEntry {
+  return {
+    ...approval,
+    decision,
+    resolvedAt: new Date().toISOString(),
+    reason: reason?.trim() || undefined
+  };
+}
+
 function ProviderStatusPanel({
   providers,
   onOpenSettings
@@ -2510,21 +2553,53 @@ function ApprovalCard({
 }: {
   approval: PermissionRequest;
   agent?: AgentProfile;
-  onResolve: (approval: PermissionRequest, approved: boolean) => void;
+  onResolve: (approval: PermissionRequest, approved: boolean, reason?: string) => void;
 }) {
+  const [reason, setReason] = useState("");
+
   return (
     <article className="approval-card">
       <span className={`risk ${approval.risk}`}>{approval.risk}</span>
       <h4>{approval.action}</h4>
-      <p>{agent?.name ?? "Unknown agent"}</p>
+      <p>
+        {agent?.name ?? "Unknown agent"} · {approval.toolName ?? "tool"}
+      </p>
+      <label className="approval-reason">
+        <span>拒绝原因</span>
+        <input
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="可选，拒绝时会写入历史"
+        />
+      </label>
       <div className="approval-actions">
         <button className="icon-button approve" onClick={() => onResolve(approval, true)} aria-label="Approve action">
           <Check size={15} />
         </button>
-        <button className="icon-button reject" onClick={() => onResolve(approval, false)} aria-label="Reject action">
+        <button
+          className="icon-button reject"
+          onClick={() => onResolve(approval, false, reason)}
+          aria-label="Reject action"
+        >
           <X size={15} />
         </button>
       </div>
+    </article>
+  );
+}
+
+function ApprovalHistoryCard({ history, agent }: { history: ApprovalHistoryEntry; agent?: AgentProfile }) {
+  return (
+    <article className={`approval-card history ${history.decision}`}>
+      <span className={`risk ${history.risk}`}>{history.decision}</span>
+      <h4>{history.action}</h4>
+      <p>
+        {agent?.name ?? "Unknown agent"} · {history.toolName ?? "tool"} ·{" "}
+        {new Date(history.resolvedAt).toLocaleString()}
+      </p>
+      {history.reason ? <p className="history-reason">原因：{history.reason}</p> : null}
+      {history.decision === "rejected" && !history.reason ? <p className="history-reason">原因：未填写</p> : null}
+      {history.resultSummary ? <p className="history-result">结果：{history.resultSummary}</p> : null}
     </article>
   );
 }

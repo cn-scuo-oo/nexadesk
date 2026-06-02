@@ -11,8 +11,15 @@ const settingsPath = join(dataDir, "settings.json");
 const secretsPath = join(dataDir, "secrets.encrypted.json");
 const runtimeStatePath = join(dataDir, "runtime-state.json");
 const secretKey = randomBytes(32).toString("base64");
-const fakeReply = "持久化测试回复";
-const userPrompt = "请验证这条消息会被持久化。";
+const fakeReply = "runtime persistence reply";
+const userPrompt = "verify this message is persisted";
+const approvalReason = "not allowed in smoke test";
+const toolReply = [
+  "need approval before writing",
+  "```nexadesk-tool",
+  JSON.stringify({ tool: "write_file", path: "approval-smoke.txt", content: "hello" }),
+  "```"
+].join("\n");
 
 let fakeModelServer;
 let firstApi;
@@ -76,6 +83,27 @@ try {
     "assistant reply was not written to runtime state"
   );
 
+  await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
+    method: "POST",
+    body: JSON.stringify({ content: "please request a write approval", providerId, model, agentId: "cowork" })
+  });
+  const withApproval = await requestJson(firstPort, "/api/snapshot");
+  const approval = withApproval.approvals.find((item) => item.toolName === "write_file");
+  assert(approval, "write_file approval was not queued");
+
+  const resolved = await requestJson(firstPort, `/api/approvals/${approval.id}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ approved: false, reason: approvalReason })
+  });
+  assert(resolved.history?.decision === "rejected", "approval rejection history was not returned");
+  assert(resolved.history?.reason === approvalReason, "approval rejection reason was not returned");
+
+  const stateWithHistory = JSON.parse(await readFile(runtimeStatePath, "utf8"));
+  assert(
+    stateWithHistory.approvalHistory.some((item) => item.id === approval.id && item.reason === approvalReason),
+    "approval rejection history was not written to runtime state"
+  );
+
   await stopApi(firstApi);
   firstApi = null;
 
@@ -91,6 +119,10 @@ try {
   assert(
     restored.messages.some((message) => message.role === "assistant" && message.content.includes(fakeReply)),
     "assistant reply did not survive server restart"
+  );
+  assert(
+    restored.approvalHistory.some((item) => item.id === approval.id && item.reason === approvalReason),
+    "approval history did not survive server restart"
   );
 
   console.log("NexaDesk runtime state smoke test passed.");
@@ -139,9 +171,15 @@ async function startFakeModelServer(port) {
         "Cache-Control": "no-cache",
         "Content-Type": "text/event-stream"
       });
-      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: fakeReply } }] })}\n\n`);
-      response.write("data: [DONE]\n\n");
-      response.end();
+      const chunks = [];
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8");
+        const content = body.includes("please request a write approval") ? toolReply : fakeReply;
+        response.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+        response.write("data: [DONE]\n\n");
+        response.end();
+      });
       return;
     }
 
