@@ -221,7 +221,7 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("刷新") || !workbenchText.includes("上级")) {
     throw new Error("Renderer smoke test failed: workspace file controls were not rendered.");
   }
-  if (!workbenchText.includes("搜索工作区") || !workbenchText.includes("文件名")) {
+  if (!workbenchText.includes("搜索工作区") || !workbenchText.includes("让 Agent 分析文件")) {
     throw new Error("Renderer smoke test failed: workspace search controls were not rendered.");
   }
 

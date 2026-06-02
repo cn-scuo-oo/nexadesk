@@ -65,6 +65,7 @@
 - Workspace files can be opened in a preview drawer and sent to the active Agent as a read-file task.
 - Packaged desktop startup ignores stray smoke-test environment flags, and desktop smoke tests run against isolated user data.
 - The workbench can search workspace files by name or content and open matching files from the results.
+- Workspace search results can send matching files directly to the active Agent for analysis.
 
 ## Later Phases
 

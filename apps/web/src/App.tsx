@@ -1117,6 +1117,8 @@ export function App() {
             onOpenFile={setSelectedWorkspaceFile}
             onOpenPath={setWorkspacePath}
             onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
+            onAskAgent={handleAskAgentToReadFile}
+            sending={sending}
           />
         </section>
 
@@ -3367,7 +3369,9 @@ function WorkspaceFilePanel({
   result,
   onOpenFile,
   onOpenPath,
-  onRefresh
+  onRefresh,
+  onAskAgent,
+  sending
 }: {
   configuredWorkspace: string;
   currentPath: string;
@@ -3378,6 +3382,8 @@ function WorkspaceFilePanel({
   onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
   onRefresh: () => void;
+  onAskAgent: (path: string) => Promise<void>;
+  sending: boolean;
 }) {
   const visiblePath = result?.path ?? currentPath;
   const canGoUp = visiblePath !== ".";
@@ -3444,6 +3450,7 @@ function WorkspaceFilePanel({
             {searchLoading ? "搜索中" : "搜索"}
           </button>
         </div>
+        <p>搜索结果可预览，也可让 Agent 分析文件。</p>
       </form>
       {searchResult || searchError ? (
         <WorkspaceSearchResults
@@ -3452,6 +3459,8 @@ function WorkspaceFilePanel({
           result={searchResult}
           onOpenFile={onOpenFile}
           onOpenPath={onOpenPath}
+          onAskAgent={onAskAgent}
+          sending={sending}
         />
       ) : null}
       <div className="file-list workspace-tree-list">
@@ -3485,13 +3494,17 @@ function WorkspaceSearchResults({
   loading,
   result,
   onOpenFile,
-  onOpenPath
+  onOpenPath,
+  onAskAgent,
+  sending
 }: {
   error: string | null;
   loading: boolean;
   result: WorkspaceSearchResult | null;
   onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
+  onAskAgent: (path: string) => Promise<void>;
+  sending: boolean;
 }) {
   return (
     <div className="workspace-search-results">
@@ -3510,7 +3523,14 @@ function WorkspaceSearchResults({
         <EmptyState title="没有匹配结果" detail="换一个关键词，或切换文件名/内容搜索。" />
       ) : null}
       {result?.matches.map((match) => (
-        <WorkspaceSearchRow key={`${match.path}-${match.line ?? "path"}`} match={match} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
+        <WorkspaceSearchRow
+          key={`${match.path}-${match.line ?? "path"}`}
+          match={match}
+          onAskAgent={onAskAgent}
+          onOpenFile={onOpenFile}
+          onOpenPath={onOpenPath}
+          sending={sending}
+        />
       ))}
     </div>
   );
@@ -3518,12 +3538,16 @@ function WorkspaceSearchResults({
 
 function WorkspaceSearchRow({
   match,
+  onAskAgent,
   onOpenFile,
-  onOpenPath
+  onOpenPath,
+  sending
 }: {
   match: WorkspaceSearchMatch;
+  onAskAgent: (path: string) => Promise<void>;
   onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
+  sending: boolean;
 }) {
   const entry: WorkspaceTreeEntry = {
     name: match.name,
@@ -3541,14 +3565,26 @@ function WorkspaceSearchRow({
   };
 
   return (
-    <button className="workspace-search-row" onClick={open} type="button">
-      <span>
-        {match.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
-        <strong>{match.name}</strong>
-      </span>
-      <small>{match.line ? `${match.path}:${match.line}` : match.path}</small>
-      {match.preview ? <em>{match.preview}</em> : null}
-    </button>
+    <article className="workspace-search-row">
+      <div>
+        <span>
+          {match.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
+          <strong>{match.name}</strong>
+        </span>
+        <small>{match.line ? `${match.path}:${match.line}` : match.path}</small>
+        {match.preview ? <em>{match.preview}</em> : null}
+      </div>
+      <div className="workspace-search-row-actions">
+        <button className="mini-button" onClick={open} type="button">
+          {match.kind === "folder" ? "进入" : "预览"}
+        </button>
+        {match.kind === "file" ? (
+          <button className="mini-button" disabled={sending} onClick={() => void onAskAgent(match.path)} type="button">
+            {sending ? "发送中" : "让 Agent 分析"}
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
