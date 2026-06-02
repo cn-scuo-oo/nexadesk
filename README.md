@@ -75,6 +75,12 @@ Run the desktop smoke test:
 npm run desktop:smoke
 ```
 
+Run the desktop user-data retention smoke test:
+
+```bash
+npm run desktop:retention-smoke
+```
+
 ## Desktop App
 
 Build and run the desktop app:
@@ -110,6 +116,7 @@ docs/
 scripts/
   build-server.mjs
   desktop-smoke.mjs
+  desktop-retention-smoke.mjs
   provider-matrix-check.mjs
   settings-persistence-smoke.mjs
   dev.mjs

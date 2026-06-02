@@ -21,6 +21,9 @@ let mainWindow;
 app.commandLine.appendSwitch("allow-file-access-from-files");
 app.setName("NexaDesk");
 app.setAppUserModelId("com.nexadesk.desktop");
+if (process.env.NEXADESK_USER_DATA_DIR) {
+  app.setPath("userData", process.env.NEXADESK_USER_DATA_DIR);
+}
 
 app.whenReady().then(async () => {
   try {
@@ -59,6 +62,13 @@ app.whenReady().then(async () => {
       await runSmokeTest(apiPort);
       await runRendererSmokeTest(apiPort);
       appendStartupLog(userData, "smoke passed");
+      app.exit(0);
+      return;
+    }
+    if (process.env.NEXADESK_RETENTION_SMOKE === "1") {
+      appendStartupLog(userData, "retention smoke mode");
+      await runDesktopRetentionSmoke(apiPort, userData);
+      appendStartupLog(userData, "retention smoke passed");
       app.exit(0);
       return;
     }
@@ -200,8 +210,134 @@ async function runRendererSmokeTest(apiPort) {
   }
 }
 
+async function runDesktopRetentionSmoke(apiPort, userData) {
+  await waitForHealth(apiPort);
+
+  const providerId = "openai-compatible";
+  const model = "desktop-retention-model";
+  const apiKey = "sk-desktop-retention-smoke";
+  const settingsPath = join(userData, "data", "settings.json");
+  const secretsPath = join(userData, "data", "secrets.encrypted.json");
+  const expectingExisting = process.env.NEXADESK_RETENTION_EXPECT_EXISTING === "1";
+
+  const initial = await requestJson(apiPort, "/api/settings");
+  const initialProvider = initial.providers.find((provider) => provider.id === providerId);
+  if (!initialProvider) {
+    throw new Error("Retention smoke failed: provider not found.");
+  }
+
+  if (expectingExisting) {
+    if (initial.model.activeProviderId !== providerId || initial.model.activeModel !== model) {
+      throw new Error("Retention smoke failed: saved active model was not restored.");
+    }
+    const restoredProvider = initial.providers.find((provider) => provider.id === providerId);
+    if (!restoredProvider || restoredProvider.defaultModel !== model || restoredProvider.apiKeyConfigured !== true) {
+      throw new Error("Retention smoke failed: saved provider state was not restored.");
+    }
+  }
+
+  const nextSettings = {
+    ...initial,
+    model: {
+      activeProviderId: providerId,
+      activeModel: model
+    },
+    appearance: {
+      ...initial.appearance,
+      fontSize: 16,
+      density: "compact"
+    },
+    providers: initial.providers.map((provider) =>
+      provider.id === providerId
+        ? {
+            ...provider,
+            connected: true,
+            baseUrl: "https://desktop-retention.example.test/v1",
+            models: [model, "desktop-retention-fallback"],
+            defaultModel: model
+          }
+        : provider
+    )
+  };
+
+  await requestJson(apiPort, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: nextSettings,
+      providerSecrets: [{ providerId, apiKey }]
+    })
+  });
+
+  const saved = await requestJson(apiPort, "/api/settings");
+  const provider = saved.providers.find((item) => item.id === providerId);
+  if (saved.model.activeModel !== model || saved.appearance.fontSize !== 16 || saved.appearance.density !== "compact") {
+    throw new Error("Retention smoke failed: settings were not saved.");
+  }
+  if (!provider || provider.apiKeyConfigured !== true || provider.defaultModel !== model) {
+    throw new Error("Retention smoke failed: provider key state was not saved.");
+  }
+  if (!existsSync(settingsPath) || !existsSync(secretsPath)) {
+    throw new Error("Retention smoke failed: desktop data files were not created.");
+  }
+
+  const secretsRaw = readFileSync(secretsPath, "utf8");
+  if (secretsRaw.includes(apiKey)) {
+    throw new Error("Retention smoke failed: API key leaked into the secrets file.");
+  }
+  const secrets = JSON.parse(secretsRaw);
+  if (secrets.encrypted !== true) {
+    throw new Error("Retention smoke failed: secrets file was not encrypted.");
+  }
+
+  console.log("NexaDesk desktop data retention smoke passed on port " + apiPort);
+}
+
 async function renderAndReadText(apiPort, hash) {
   return renderAndEvaluate(apiPort, hash, "document.body.innerText");
+}
+
+function requestJson(apiPort, path, init) {
+  return new Promise((resolve, reject) => {
+    const body = init && init.body ? init.body : undefined;
+    const request = http.request(
+      {
+        host: "127.0.0.1",
+        port: apiPort,
+        path,
+        method: init && init.method ? init.method : "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(body ? { "Content-Length": Buffer.byteLength(body) } : {})
+        },
+        timeout: 5000
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+            reject(new Error(path + " failed with " + response.statusCode + ": " + text));
+            return;
+          }
+          try {
+            resolve(text ? JSON.parse(text) : {});
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+    );
+
+    request.on("timeout", () => {
+      request.destroy(new Error(path + " timed out"));
+    });
+    request.on("error", reject);
+    if (body) {
+      request.write(body);
+    }
+    request.end();
+  });
 }
 
 async function renderAndEvaluate(apiPort, hash, script) {

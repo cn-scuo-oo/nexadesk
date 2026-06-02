@@ -45,3 +45,6 @@ jobs:
 
       - name: Desktop smoke
         run: npm run desktop:smoke
+
+      - name: Desktop data retention smoke
+        run: npm run desktop:retention-smoke

@@ -8,6 +8,7 @@ Use this before pushing to the private GitHub repository or sharing an installer
 - [ ] `npm run typecheck`
 - [ ] `npm run settings:smoke`
 - [ ] `npm run desktop:smoke`
+- [ ] `npm run desktop:retention-smoke`
 - [ ] `npm run dist:win`
 
 ## Privacy And Secrets
@@ -24,6 +25,8 @@ Use this before pushing to the private GitHub repository or sharing an installer
 - [ ] Window title, installer name, shortcut, and uninstall entry show NexaDesk.
 - [ ] Provider settings survive restart.
 - [ ] API key state survives restart without exposing the key in the UI.
+- [ ] Reinstall or upgrade keeps the same Electron user data directory.
+- [ ] Uninstall choice is understood: default uninstall may leave user data; manual data cleanup must be deliberate.
 - [ ] Settings page categories render and scroll correctly.
 - [ ] High-risk tools enter the approval queue.
 
