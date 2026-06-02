@@ -1,9 +1,16 @@
 ﻿import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import type { AgentToolName, PermissionRisk, ToolCall, WorkspaceSettings } from "@nexadesk/shared";
+import type {
+  AgentToolName,
+  PermissionRisk,
+  ToolCall,
+  WorkspaceListResult,
+  WorkspaceSettings,
+  WorkspaceTreeEntry
+} from "@nexadesk/shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -140,6 +147,69 @@ async function listDir(request: AgentToolRequest, workspace: WorkspaceSettings) 
     .slice(0, 120)
     .map((entry) => `${entry.isDirectory() ? "dir " : "file"} ${entry.name}`)
     .join("\n");
+}
+
+export async function listWorkspaceDirectory(
+  workspace: WorkspaceSettings,
+  inputPath = "."
+): Promise<WorkspaceListResult> {
+  const root = getWorkspaceRoot(workspace);
+  let target = root;
+  let currentPath = inputPath || ".";
+
+  try {
+    target = resolveWorkspacePath(workspace, inputPath || ".");
+    currentPath = toWorkspacePath(relative(root, target)) || ".";
+    const info = await stat(target);
+    if (!info.isDirectory()) {
+      return {
+        root,
+        path: currentPath,
+        entries: [],
+        exists: false,
+        error: "当前路径不是目录。"
+      };
+    }
+
+    const rawEntries = await readdir(target, { withFileTypes: true });
+    const entries = await Promise.all(
+      rawEntries.slice(0, 160).map(async (entry): Promise<WorkspaceTreeEntry> => {
+        const childPath = join(target, entry.name);
+        const relativePath = toWorkspacePath(relative(root, childPath)) || entry.name;
+        const childInfo = await stat(childPath).catch(() => null);
+        return {
+          name: entry.name,
+          path: relativePath,
+          kind: entry.isDirectory() ? "folder" : "file",
+          size: childInfo?.isFile() ? childInfo.size : undefined,
+          modifiedAt: childInfo?.mtime ? childInfo.mtime.toISOString() : undefined
+        };
+      })
+    );
+
+    entries.sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "folder" ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "zh-CN");
+    });
+
+    return {
+      root,
+      path: currentPath,
+      entries,
+      exists: true,
+      error: rawEntries.length > entries.length ? `仅显示前 ${entries.length} 项。` : undefined
+    };
+  } catch (error) {
+    return {
+      root,
+      path: currentPath,
+      entries: [],
+      exists: false,
+      error: error instanceof Error ? error.message : "工作区目录读取失败。"
+    };
+  }
 }
 
 async function readWorkspaceFile(request: AgentToolRequest, workspace: WorkspaceSettings) {
@@ -288,15 +358,32 @@ async function generateImage(request: AgentToolRequest, context: AgentToolContex
   throw new Error("图片生成接口返回格式不受支持。");
 }
 
-function resolveWorkspacePath(workspace: WorkspaceSettings, inputPath: string) {
-  const roots = workspace.allowedRoots.length ? workspace.allowedRoots : [workspace.defaultWorkspace];
-  const base = resolve(roots[0] || ".");
+export function resolveWorkspacePath(workspace: WorkspaceSettings, inputPath: string) {
+  const roots = getWorkspaceRoots(workspace);
+  const base = getWorkspaceRoot(workspace);
   const target = resolve(base, inputPath);
-  const normalizedBase = base.endsWith(sep) ? base : `${base}${sep}`;
-  if (target !== base && !target.startsWith(normalizedBase)) {
+  if (!roots.some((root) => isPathInside(root, target))) {
     throw new Error("路径不在允许的工作区范围内。");
   }
   return target;
+}
+
+export function getWorkspaceRoot(workspace: WorkspaceSettings) {
+  return resolve(workspace.defaultWorkspace || workspace.allowedRoots[0] || ".");
+}
+
+function getWorkspaceRoots(workspace: WorkspaceSettings) {
+  const roots = Array.from(new Set([workspace.defaultWorkspace, ...workspace.allowedRoots].filter(Boolean)));
+  return (roots.length ? roots : ["."]).map((root) => resolve(root));
+}
+
+function isPathInside(root: string, target: string) {
+  const normalizedRoot = root.endsWith(sep) ? root : `${root}${sep}`;
+  return target === root || target.startsWith(normalizedRoot);
+}
+
+function toWorkspacePath(path: string) {
+  return path.split(sep).join("/");
 }
 
 function extractPageText(url: string, html: string) {

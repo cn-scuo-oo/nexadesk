@@ -200,6 +200,9 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("批量批准低/中风险") || !workbenchText.includes("高风险动作必须逐条确认")) {
     throw new Error("Renderer smoke test failed: approval bulk controls were not rendered.");
   }
+  if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区文件")) {
+    throw new Error("Renderer smoke test failed: workspace file panel was not rendered.");
+  }
 
   const settingsText = await renderAndReadText(apiPort, "settings");
   if (!settingsText.includes("应用设置") || !settingsText.includes("模型服务")) {

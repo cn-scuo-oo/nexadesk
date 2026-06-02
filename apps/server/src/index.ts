@@ -26,6 +26,7 @@ import {
 } from "@nexadesk/shared";
 import {
   executeToolRequest,
+  listWorkspaceDirectory,
   parseToolRequests,
   prepareToolRequest,
   summarizeToolRequest,
@@ -112,6 +113,16 @@ app.get("/api/events", (req, res) => {
 app.get("/api/settings", async (_req, res, next) => {
   try {
     res.json(await loadSettings(snapshot.providers));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/workspace/list", async (req, res, next) => {
+  try {
+    const settings = await loadSettings(snapshot.providers);
+    const path = typeof req.query.path === "string" ? req.query.path : ".";
+    res.json(await listWorkspaceDirectory(settings.workspace, path));
   } catch (error) {
     next(error);
   }

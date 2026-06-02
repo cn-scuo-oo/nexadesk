@@ -1976,6 +1976,92 @@ h4 {
   font-size: 13px;
 }
 
+.workspace-file-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.workspace-status-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dfe9e4;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbf9;
+}
+
+.workspace-status-card span {
+  color: #6b7f76;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.workspace-status-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #203b33;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-status-card small {
+  color: #62756d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.workspace-file-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workspace-tree-list {
+  max-height: 280px;
+  overflow: auto;
+  gap: 7px;
+  padding: 0;
+}
+
+.workspace-entry-button,
+.workspace-entry-file {
+  width: 100%;
+  border: 1px solid #e2ebe6;
+  border-radius: 8px;
+  padding: 8px;
+  color: #243f36;
+  background: #fbfdfc;
+  text-align: left;
+}
+
+.workspace-entry-button:hover {
+  border-color: #b8d7ca;
+  background: #f1f8f5;
+}
+
+.workspace-entry-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.workspace-entry-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-entry-file small,
+.workspace-entry-button small {
+  flex: 0 0 auto;
+  color: #71857c;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .file-row b {
   color: #2b7459;
   font-size: 11px;

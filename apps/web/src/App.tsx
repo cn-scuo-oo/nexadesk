@@ -41,13 +41,17 @@ import {
   type ProviderStatusSettings,
   type ProviderTestResult,
   type SkillProfile,
-  type ToolCall
+  type ToolCall,
+  type WorkspaceFile,
+  type WorkspaceListResult,
+  type WorkspaceTreeEntry
 } from "@nexadesk/shared";
 import {
   fetchDesktopStatus,
   fetchProviderModels,
   fetchSettings as fetchAppSettings,
   fetchSnapshot,
+  fetchWorkspaceList,
   recoverSettings as recoverAppSettings,
   resolveApproval,
   saveSettings as persistAppSettings,
@@ -242,6 +246,11 @@ export function App() {
   const [recoveringSettings, setRecoveringSettings] = useState(false);
   const [batchRejectReason, setBatchRejectReason] = useState("");
   const [resolvingBatchApprovals, setResolvingBatchApprovals] = useState(false);
+  const [workspacePath, setWorkspacePath] = useState(".");
+  const [workspaceList, setWorkspaceList] = useState<WorkspaceListResult | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceRefreshTick, setWorkspaceRefreshTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -342,6 +351,51 @@ export function App() {
     runtimeSettings.providers[0];
   const activeRuntimeModel =
     runtimeSettings.model.activeModel || activeRuntimeProvider?.defaultModel || activeRuntimeProvider?.models[0] || "";
+  const workspaceSignature = [
+    runtimeSettings.workspace.defaultWorkspace,
+    runtimeSettings.workspace.exportDirectory,
+    ...runtimeSettings.workspace.allowedRoots
+  ].join("|");
+
+  useEffect(() => {
+    setWorkspacePath(".");
+  }, [workspaceSignature]);
+
+  useEffect(() => {
+    if (!settings || mode === "demo") {
+      setWorkspaceList(null);
+      setWorkspaceError(mode === "demo" ? "当前是演示数据，启动本地 API 后显示真实工作区。" : null);
+      return;
+    }
+
+    let cancelled = false;
+    setWorkspaceLoading(true);
+    setWorkspaceError(null);
+    fetchWorkspaceList(workspacePath)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setWorkspaceList(result);
+        setWorkspaceError(result.error ?? null);
+      })
+      .catch((reason) => {
+        if (cancelled) {
+          return;
+        }
+        setWorkspaceList(null);
+        setWorkspaceError(reason instanceof Error ? reason.message : "工作区读取失败。");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWorkspaceLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, settings, workspacePath, workspaceRefreshTick, workspaceSignature]);
 
   async function handleSend(event: FormEvent) {
     event.preventDefault();
@@ -688,7 +742,7 @@ export function App() {
           {snapshot.sessions.map((session) => (
             <button className="session-card active" key={session.id}>
               <strong>{session.title}</strong>
-              <span>{session.workspace}</span>
+              <span>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</span>
             </button>
           ))}
         </section>
@@ -989,14 +1043,16 @@ export function App() {
             </div>
             <FileText size={18} />
           </div>
-          <div className="file-list">
-            {snapshot.files.map((file) => (
-              <div className="file-row" key={file.path}>
-                <span>{file.path}</span>
-                {file.changed ? <b>changed</b> : null}
-              </div>
-            ))}
-          </div>
+          <WorkspaceFilePanel
+            configuredWorkspace={runtimeSettings.workspace.defaultWorkspace}
+            currentPath={workspacePath}
+            error={workspaceError}
+            fallbackFiles={snapshot.files}
+            loading={workspaceLoading}
+            result={workspaceList}
+            onOpenPath={setWorkspacePath}
+            onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
+          />
         </section>
 
         <section className="panel-block">
@@ -3224,6 +3280,114 @@ function toolStatusLabel(status: ToolCall["status"]) {
     failed: "失败"
   };
   return labels[status];
+}
+
+function WorkspaceFilePanel({
+  configuredWorkspace,
+  currentPath,
+  error,
+  fallbackFiles,
+  loading,
+  result,
+  onOpenPath,
+  onRefresh
+}: {
+  configuredWorkspace: string;
+  currentPath: string;
+  error: string | null;
+  fallbackFiles: WorkspaceFile[];
+  loading: boolean;
+  result: WorkspaceListResult | null;
+  onOpenPath: (path: string) => void;
+  onRefresh: () => void;
+}) {
+  const visiblePath = result?.path ?? currentPath;
+  const canGoUp = visiblePath !== ".";
+
+  return (
+    <div className="workspace-file-panel">
+      <div className="workspace-status-card">
+        <span>当前根目录</span>
+        <strong title={result?.root ?? configuredWorkspace}>{result?.root ?? (configuredWorkspace || "未设置工作区")}</strong>
+        <small>{result?.exists ? `当前：${visiblePath}` : error || "等待工作区状态..."}</small>
+      </div>
+      <div className="workspace-file-actions">
+        <button className="mini-button" onClick={onRefresh} type="button">
+          刷新
+        </button>
+        <button className="mini-button" disabled={!canGoUp} onClick={() => onOpenPath(parentWorkspacePath(visiblePath))} type="button">
+          上级
+        </button>
+      </div>
+      <div className="file-list workspace-tree-list">
+        {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
+        {!loading && result?.exists && result.entries.length === 0 ? (
+          <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
+        ) : null}
+        {!loading && result?.exists
+          ? result.entries.map((entry) => (
+              <WorkspaceEntryRow entry={entry} key={entry.path} onOpenPath={onOpenPath} />
+            ))
+          : null}
+        {!loading && !result?.exists && error ? (
+          <EmptyState title="工作区不可用" detail={error} />
+        ) : null}
+        {!loading && !result && !error
+          ? fallbackFiles.map((file) => (
+              <div className="file-row" key={file.path}>
+                <span>{file.path}</span>
+                {file.changed ? <b>changed</b> : null}
+              </div>
+            ))
+          : null}
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceEntryRow({ entry, onOpenPath }: { entry: WorkspaceTreeEntry; onOpenPath: (path: string) => void }) {
+  const content = (
+    <>
+      <span className="workspace-entry-name">
+        {entry.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
+        <span>{entry.name}</span>
+      </span>
+      <small>{entry.kind === "folder" ? "folder" : formatFileSize(entry.size)}</small>
+    </>
+  );
+
+  if (entry.kind === "folder") {
+    return (
+      <button className="file-row workspace-entry-button" onClick={() => onOpenPath(entry.path)} type="button">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="file-row workspace-entry-file" title={entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : entry.path}>
+      {content}
+    </div>
+  );
+}
+
+function parentWorkspacePath(path: string) {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  parts.pop();
+  return parts.length ? parts.join("/") : ".";
+}
+
+function formatFileSize(size: number | undefined) {
+  if (size === undefined) {
+    return "file";
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function TaskCard({

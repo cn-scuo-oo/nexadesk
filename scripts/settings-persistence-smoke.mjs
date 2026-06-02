@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ const port = "49397";
 const dataDir = await mkdtemp(join(tmpdir(), "nexadesk-settings-"));
 const settingsPath = join(dataDir, "settings.json");
 const secretsPath = join(dataDir, "secrets.encrypted.json");
+const workspaceDir = join(dataDir, "workspace");
 const secretKey = randomBytes(32).toString("base64");
 
 const child = spawn(process.execPath, ["apps/server/dist/index.cjs"], {
@@ -34,6 +35,8 @@ child.stderr.on("data", (chunk) => {
 
 try {
   await waitForHealth();
+  await mkdir(workspaceDir, { recursive: true });
+  await writeFile(join(workspaceDir, "workspace-panel-smoke.txt"), "workspace panel smoke", "utf8");
 
   const initial = await requestJson("/api/settings");
   const providerId = "openai-compatible";
@@ -53,6 +56,12 @@ try {
     app: {
       ...initial.app,
       logLevel: "debug"
+    },
+    workspace: {
+      ...initial.workspace,
+      defaultWorkspace: workspaceDir,
+      exportDirectory: workspaceDir,
+      allowedRoots: [workspaceDir]
     },
     providers: initial.providers.map((provider) =>
       provider.id === providerId
@@ -82,7 +91,14 @@ try {
   assert(reloaded.appearance.fontFamily === "JetBrains Mono", "font family did not persist");
   assert(reloaded.appearance.fontSize === 15, "font size did not persist");
   assert(reloaded.app.logLevel === "debug", "log level did not persist");
+  assert(reloaded.workspace.defaultWorkspace === workspaceDir, "workspace path did not persist");
   assert(provider?.apiKeyConfigured === true, "provider API key state did not persist");
+  const workspaceList = await requestJson("/api/workspace/list?path=.");
+  assert(workspaceList.exists === true, "workspace list did not report an existing directory");
+  assert(
+    workspaceList.entries.some((entry) => entry.name === "workspace-panel-smoke.txt" && entry.kind === "file"),
+    "workspace list did not include the smoke file"
+  );
 
   const secretsRaw = await readFile(secretsPath, "utf8");
   const secrets = JSON.parse(secretsRaw);

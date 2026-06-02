@@ -272,6 +272,22 @@ export interface WorkspaceFile {
   changed: boolean;
 }
 
+export interface WorkspaceTreeEntry {
+  name: string;
+  path: string;
+  kind: "file" | "folder";
+  size?: number;
+  modifiedAt?: string;
+}
+
+export interface WorkspaceListResult {
+  root: string;
+  path: string;
+  entries: WorkspaceTreeEntry[];
+  exists: boolean;
+  error?: string;
+}
+
 export interface PermissionRequest {
   id: string;
   sessionId: string;

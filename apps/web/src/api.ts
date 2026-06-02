@@ -12,7 +12,8 @@
   ProviderTestRequest,
   ProviderTestResult,
   SaveSettingsRequest,
-  SendMessageRequest
+  SendMessageRequest,
+  WorkspaceListResult
 } from "@nexadesk/shared";
 
 const apiBase =
@@ -43,6 +44,14 @@ export async function fetchDesktopStatus(): Promise<DesktopStatus> {
     throw new Error(`Desktop status request failed with ${response.status}`);
   }
   return response.json() as Promise<DesktopStatus>;
+}
+
+export async function fetchWorkspaceList(path = "."): Promise<WorkspaceListResult> {
+  const response = await fetch(`${apiBase}/api/workspace/list?path=${encodeURIComponent(path)}`);
+  if (!response.ok) {
+    throw new Error(`Workspace list request failed with ${response.status}`);
+  }
+  return response.json() as Promise<WorkspaceListResult>;
 }
 
 export async function saveSettings(payload: SaveSettingsRequest): Promise<{
