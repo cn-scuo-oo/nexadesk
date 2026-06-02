@@ -51,6 +51,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add manual build workflow for Windows installer artifacts. Done in Phase 7 first pass.
 - Add packaged desktop smoke coverage for `release/win-unpacked/NexaDesk.exe`. Done in Phase 7 first pass.
 - Harden desktop smoke scripts for slower GitHub runners and locked temporary user data. Done in Phase 7 second pass.
+- Disable electron-builder implicit GitHub publishing for private installer builds. Done in Phase 7 second pass.
 
 ## Public Release Later
 

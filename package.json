@@ -27,7 +27,7 @@
     "provider:matrix:live": "tsx scripts/provider-matrix-check.mjs --live",
     "settings:smoke": "npm run build:server-bundle && node scripts/settings-persistence-smoke.mjs",
     "runtime:smoke": "npm run build:server-bundle && node scripts/runtime-state-smoke.mjs",
-    "dist:win": "npm run build:desktop && electron-builder --win nsis --x64",
+    "dist:win": "npm run build:desktop && electron-builder --win nsis --x64 --publish never",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {

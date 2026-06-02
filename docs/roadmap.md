@@ -75,7 +75,7 @@
 
 - Status: in progress
 - A manual private GitHub Actions workflow can build the Windows NSIS installer after typecheck, runtime, desktop, and data-retention smoke tests pass.
-- Installer artifacts are uploaded only as short-lived private workflow artifacts; no public GitHub Release or automatic update channel is created.
+- Installer builds explicitly disable electron-builder publishing; artifacts are uploaded only as short-lived private workflow artifacts.
 - Packaged desktop smoke coverage validates the built `release/win-unpacked/NexaDesk.exe` before installer artifacts are shared.
 - Desktop smoke scripts tolerate slower GitHub runners and transient Windows user-data cleanup locks.
 - Phase 7 focuses on clean install, reinstall, upgrade, shortcut, uninstall entry, data retention, and trusted-tester handoff checks.
