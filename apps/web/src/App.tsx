@@ -2363,21 +2363,23 @@ function TaskThreadView({
   onSend: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const currentTask = taskBoard.find((task) => task.status === "Running") ?? taskBoard[0];
+  const completedTasks = taskBoard.filter((task) => task.status === "Done").length;
+  const pendingTasks = taskBoard.filter((task) => task.status !== "Done").length;
 
   return (
     <section className="workspace thread-workspace">
-      <header className="thread-topbar">
-        <div className="thread-topbar-left">
+      <header className="task-command-bar">
+        <div className="task-command-left">
           <div className="thread-tabs" aria-label="任务视图">
             <span className="active">对话</span>
             <span>工作室</span>
           </div>
           <div>
             <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
-            <small>{workspaceLabel}</small>
+            <small>{currentTask?.title ?? "开始协作"}</small>
           </div>
         </div>
-        <div className="thread-topbar-actions">
+        <div className="task-command-actions">
           <RuntimePicker
             activeRuntimeModel={activeRuntimeModel}
             activeRuntimeProvider={activeRuntimeProvider}
@@ -2392,36 +2394,77 @@ function TaskThreadView({
         </div>
       </header>
 
-      <div className="thread-grid">
-        <section className="task-thread-panel">
-          <div className="thread-session-summary">
+      <div className="task-workbench-canvas">
+        <section className="task-workbench-stage">
+          <div className="task-status-ribbon">
             <div>
-              <p className="eyebrow">当前任务</p>
+              <p className="eyebrow">任务工作台</p>
               <h2>{currentTask?.title ?? "开始协作"}</h2>
               <span>{currentTask?.detail ?? "把问题交给 Cowork，工具、审批和上下文会进入右侧抽屉。"}</span>
             </div>
-            <button className="mini-button" onClick={onOpenContext} type="button">
-              查看运行面板
-            </button>
+            <div className="task-status-metrics">
+              <span>
+                <b>{activeMessages.length}</b>
+                消息
+              </span>
+              <span>
+                <b>{pendingTasks}</b>
+                进行中
+              </span>
+              <span>
+                <b>{completedTasks}</b>
+                已完成
+              </span>
+            </div>
           </div>
-          <div className="message-list clean-message-list">
+
+          <div className="task-workbench-meta">
+            <span>
+              <Folder size={14} />
+              {workspaceLabel}
+            </span>
+            <span>
+              <Bot size={14} />
+              {activeAgent?.name ?? "Cowork 助手"}
+            </span>
+            <span>
+              <ShieldCheck size={14} />
+              {activeApprovals > 0 ? `${activeApprovals} 个审批待处理` : "安全防护中"}
+            </span>
+          </div>
+
+          <div className="message-list workbench-message-list">
             {activeMessages.length === 0 ? (
               <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
             ) : (
               activeMessages.map((message) => <MessageBubble key={message.id} message={message} />)
             )}
           </div>
-          <form className="composer floating-composer" onSubmit={onSend}>
-            <input
-              aria-label="Message"
-              placeholder="继续对话..."
+
+          <form className="workbench-composer" onSubmit={onSend}>
+            <textarea
+              aria-label="任务输入"
+              placeholder="分配任务或继续提问..."
               value={draft}
               onChange={(event) => onDraftChange(event.target.value)}
             />
-            <button className="primary-button" disabled={sending || !draft.trim()} type="submit">
-              <Send size={15} />
-              {sending ? "生成中..." : "发送"}
-            </button>
+            <div className="workbench-composer-footer">
+              <span>
+                <Folder size={15} />
+                {workspaceLabel || "当前工作区"}
+              </span>
+              <div>
+                <button className="icon-button" onClick={onOpenContext} type="button" aria-label="打开上下文">
+                  <FileText size={15} />
+                </button>
+                <button className="icon-button" type="button" aria-label="选择技能">
+                  <Workflow size={15} />
+                </button>
+                <button className="send-orb" disabled={sending || !draft.trim()} type="submit" aria-label="发送任务">
+                  <Send size={20} />
+                </button>
+              </div>
+            </div>
           </form>
         </section>
       </div>
