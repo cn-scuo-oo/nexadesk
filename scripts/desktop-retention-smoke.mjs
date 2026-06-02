@@ -21,6 +21,7 @@ function runDesktopPass({ port, expectExisting }) {
       env: {
         ...process.env,
         NEXADESK_PORT: port,
+        NEXADESK_INTERNAL_TEST_RUN: "1",
         NEXADESK_USER_DATA_DIR: userDataDir,
         NEXADESK_RETENTION_SMOKE: "1",
         ...(expectExisting ? { NEXADESK_RETENTION_EXPECT_EXISTING: "1" } : {})

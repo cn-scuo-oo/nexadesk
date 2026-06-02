@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
     await startBundledServer();
     appendStartupLog(userData, "server started on " + apiPort);
 
-    if (process.env.NEXADESK_SMOKE_TEST === "1" || process.env.AION_LITE_SMOKE_TEST === "1") {
+    if (isSmokeModeRequested("NEXADESK_SMOKE_TEST", "AION_LITE_SMOKE_TEST")) {
       appendStartupLog(userData, "smoke mode");
       await runSmokeTest(apiPort);
       await runRendererSmokeTest(apiPort);
@@ -65,7 +65,7 @@ app.whenReady().then(async () => {
       app.exit(0);
       return;
     }
-    if (process.env.NEXADESK_RETENTION_SMOKE === "1") {
+    if (isSmokeModeRequested("NEXADESK_RETENTION_SMOKE")) {
       appendStartupLog(userData, "retention smoke mode");
       await runDesktopRetentionSmoke(apiPort, userData);
       appendStartupLog(userData, "retention smoke passed");
@@ -94,6 +94,21 @@ app.on("activate", () => {
     createMainWindow(Number(apiPort));
   }
 });
+
+function isSmokeModeRequested(...names) {
+  if (!names.some((name) => process.env[name] === "1")) {
+    return false;
+  }
+  if (process.env.NEXADESK_INTERNAL_TEST_RUN !== "1" && process.env.NEXADESK_ALLOW_PACKAGED_SMOKE !== "1") {
+    appendStartupLog(app.getPath("userData"), "ignored smoke flag without internal test marker: " + names.join(","));
+    return false;
+  }
+  if (!app.isPackaged || process.env.NEXADESK_ALLOW_PACKAGED_SMOKE === "1") {
+    return true;
+  }
+  appendStartupLog(app.getPath("userData"), "ignored packaged smoke flag: " + names.join(","));
+  return false;
+}
 
 async function startBundledServer() {
   const appPath = app.getAppPath();

@@ -63,6 +63,7 @@
 - The approval queue explains action risk and supports batch rejection plus low/medium-risk batch approval while keeping high-risk approvals manual.
 - The workbench shows the configured workspace root and a real read-only file tree backed by the local API.
 - Workspace files can be opened in a preview drawer and sent to the active Agent as a read-file task.
+- Packaged desktop startup ignores stray smoke-test environment flags, and desktop smoke tests run against isolated user data.
 
 ## Later Phases
 
