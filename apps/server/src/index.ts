@@ -43,7 +43,13 @@ import {
   type AgentToolRequest
 } from "./agent-tools.js";
 import { addEventClient, publishActivity } from "./events.js";
-import { ProviderRuntimeError, streamProviderEvents, type RuntimeChatMessage } from "./provider-runtime.js";
+import { canRunExternalAgentEngine, streamExternalAgentEvents } from "./external-agent-runtime.js";
+import {
+  ProviderRuntimeError,
+  streamProviderEvents,
+  type RuntimeChatMessage,
+  type RuntimeStreamEvent
+} from "./provider-runtime.js";
 import {
   loadRuntimeState,
   runtimeStatePath,
@@ -356,6 +362,8 @@ app.post("/api/sessions/:sessionId/messages/stream", async (req, res, next) => {
   }
 });
 
+type ResolvedModelRuntime = Awaited<ReturnType<typeof resolveRuntime>>;
+
 async function runModelExchange(
   sessionId: string,
   input: SendMessageRequest,
@@ -378,7 +386,14 @@ async function runModelExchange(
   if (activeAgent && session.activeAgentId !== activeAgent.id) {
     session.activeAgentId = activeAgent.id;
   }
-  const runtime = await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
+  const activeEngine = resolveAgentEngine(settings, activeAgent);
+  const externalEngine = canRunExternalAgentEngine(activeEngine) ? activeEngine : undefined;
+  let runtime: ResolvedModelRuntime | undefined = externalEngine
+    ? undefined
+    : await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
+  let activityDetail = externalEngine
+    ? `${externalEngine.name} used codex exec in read-only mode to answer a workbench message.`
+    : `${runtime?.provider.name} used ${runtime?.model} to answer a workbench message.`;
   const createdAt = new Date().toISOString();
   const userMessage: ChatMessage = {
     id: randomUUID(),
@@ -401,7 +416,7 @@ async function runModelExchange(
         name: "model.stream",
         status: "running",
         risk: "low",
-        summary: `${runtime.provider.name} / ${runtime.model}`
+        summary: externalEngine ? `${externalEngine.name} / codex exec (read-only)` : modelRuntimeLabel(runtime)
       }
     ]
   };
@@ -411,25 +426,77 @@ async function runModelExchange(
   onEvent?.({
     type: "assistant_start",
     message: assistantMessage,
-    provider: { id: runtime.provider.id, name: runtime.provider.name, model: runtime.model }
+    provider: externalEngine
+      ? { id: externalEngine.id, name: externalEngine.name, model: "codex exec" }
+      : {
+          id: runtime?.provider.id ?? "unknown",
+          name: runtime?.provider.name ?? "Unknown Provider",
+          model: runtime?.model ?? "unknown"
+        }
   });
 
   const history = buildRuntimeMessages(session.id, activeAgent, settings);
   let assistantContent = "";
 
   const nativeToolRequests: AgentToolRequest[] = [];
-  for await (const event of streamProviderEvents({
-    provider: runtime.provider,
-    model: runtime.model,
-    apiKey: runtime.apiKey,
-    messages: history
-  })) {
-    if (event.type === "text") {
-      assistantContent += event.delta;
-      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
-    } else {
-      nativeToolRequests.push(event.request);
+  if (externalEngine) {
+    try {
+      const result = await collectRuntimeEvents(
+        streamExternalAgentEvents({
+          engine: externalEngine,
+          messages: history,
+          cwd: resolveExternalRuntimeCwd(settings)
+        }),
+        assistantMessage,
+        onEvent
+      );
+      assistantContent += result.content;
+      nativeToolRequests.push(...result.toolRequests);
+    } catch (error) {
+      let fallbackRuntime: ResolvedModelRuntime;
+      try {
+        fallbackRuntime = await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
+      } catch (fallbackError) {
+        throw new ProviderRuntimeError(
+          `${externalEngine.name} 暂不可用，且模型中心回退也失败：${formatRuntimeError(fallbackError)}`
+        );
+      }
+
+      const fallbackDelta = formatExternalFallbackNotice(externalEngine, fallbackRuntime, error);
+      assistantContent += fallbackDelta;
+      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: fallbackDelta });
+      updateModelStreamSummary(
+        assistantMessage,
+        `${externalEngine.name} failed; fallback ${modelRuntimeLabel(fallbackRuntime)}`
+      );
+      activityDetail = `${externalEngine.name} failed and NexaDesk fell back to ${fallbackRuntime.provider.name} / ${fallbackRuntime.model}.`;
+
+      const result = await collectRuntimeEvents(
+        streamProviderEvents({
+          provider: fallbackRuntime.provider,
+          model: fallbackRuntime.model,
+          apiKey: fallbackRuntime.apiKey,
+          messages: history
+        }),
+        assistantMessage,
+        onEvent
+      );
+      assistantContent += result.content;
+      nativeToolRequests.push(...result.toolRequests);
     }
+  } else if (runtime) {
+    const result = await collectRuntimeEvents(
+      streamProviderEvents({
+        provider: runtime.provider,
+        model: runtime.model,
+        apiKey: runtime.apiKey,
+        messages: history
+      }),
+      assistantMessage,
+      onEvent
+    );
+    assistantContent += result.content;
+    nativeToolRequests.push(...result.toolRequests);
   }
 
   const toolRequests = [...nativeToolRequests, ...parseToolRequests(assistantContent)];
@@ -458,7 +525,7 @@ async function runModelExchange(
   const activity = publishActivity({
     level: "info",
     title: "模型回答完成",
-    detail: `${runtime.provider.name} used ${runtime.model} to answer a workbench message.`
+    detail: activityDetail
   });
   snapshot.activity.unshift(activity);
   await persistRuntimeState();
@@ -502,6 +569,58 @@ async function resolveRuntime(
   }
 
   return { provider, model, apiKey };
+}
+
+async function collectRuntimeEvents(
+  events: AsyncIterable<RuntimeStreamEvent>,
+  assistantMessage: ChatMessage,
+  onEvent?: (event: ChatStreamEvent) => void
+) {
+  let content = "";
+  const toolRequests: AgentToolRequest[] = [];
+
+  for await (const event of events) {
+    if (event.type === "text") {
+      content += event.delta;
+      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
+    } else {
+      toolRequests.push(event.request);
+    }
+  }
+
+  return { content, toolRequests };
+}
+
+function resolveAgentEngine(settings: AppSettings, activeAgent: AgentProfile | undefined) {
+  const engineId = activeAgent?.engineId ?? "nexadesk_builtin";
+  return settings.assistant.engines.find((engine) => engine.id === engineId);
+}
+
+function resolveExternalRuntimeCwd(settings: AppSettings) {
+  return path.resolve(settings.workspace.defaultWorkspace || settings.workspace.allowedRoots[0] || process.cwd());
+}
+
+function modelRuntimeLabel(runtime: ResolvedModelRuntime | undefined) {
+  return runtime ? `${runtime.provider.name} / ${runtime.model}` : "Unknown Provider / unknown";
+}
+
+function formatExternalFallbackNotice(
+  engine: AgentEngineSettings,
+  fallbackRuntime: ResolvedModelRuntime,
+  error: unknown
+) {
+  return `\n\n（${engine.name} 暂不可用，已回退到 ${fallbackRuntime.provider.name} / ${fallbackRuntime.model}。原因：${formatRuntimeError(error)}）\n\n`;
+}
+
+function formatRuntimeError(error: unknown) {
+  const message = error instanceof Error ? error.message : "未知错误";
+  return message.length > 240 ? `${message.slice(0, 240)}...` : message;
+}
+
+function updateModelStreamSummary(assistantMessage: ChatMessage, summary: string) {
+  assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
+    tool.name === "model.stream" ? { ...tool, summary } : tool
+  );
 }
 
 function buildRuntimeMessages(

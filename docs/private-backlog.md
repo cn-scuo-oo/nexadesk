@@ -45,6 +45,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.
 - Add workspace root selector in desktop mode. Done in Phase 6 fourth pass.
 - Detect local Codex CLI, Claude Code, Qwen Code, DeepSeek-TUI, OpenCode, OpenClaw, and Hermes runtime configs from Agent Engine Center. Started in Phase 7 fifth pass.
+- Bind Code Assistant to the ready Codex CLI engine with read-only external execution and Provider fallback. Done in Phase 7 sixth pass.
 
 ## Desktop Packaging
 

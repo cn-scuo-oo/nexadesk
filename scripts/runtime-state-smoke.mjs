@@ -16,6 +16,8 @@ const userPrompt = "verify this message is persisted";
 const toolPrompt = "please list the workspace";
 const agentOverridePrompt = "verify the report agent provider override";
 const agentOverrideReply = "agent provider override reply";
+const codexPrompt = "ask code assistant through external codex";
+const codexReply = "external codex cli reply";
 const approvalReason = "not allowed in smoke test";
 const toolReply = [
   "need approval before writing",
@@ -97,6 +99,23 @@ try {
     })
   });
   await writeFile(join(dataDir, "workspace-smoke.txt"), "workspace tool smoke", "utf8");
+  const fakeCodexPath = join(dataDir, "fake-codex.cjs");
+  await writeFile(
+    fakeCodexPath,
+    [
+      `const reply = ${JSON.stringify(codexReply)};`,
+      "const prompt = process.argv.at(-1) || '';",
+      "process.stdout.write(JSON.stringify({ type: 'thread.started' }) + '\\n');",
+      "process.stdout.write(JSON.stringify({",
+      "  type: 'item.completed',",
+      "  item: {",
+      "    type: 'agent_message',",
+      "    text: `${reply}: ${prompt.includes('ask code assistant through external codex')}`",
+      "  }",
+      "}) + '\\n');"
+    ].join("\n"),
+    "utf8"
+  );
 
   const refreshedModels = await requestJson(firstPort, "/api/providers/models", {
     method: "POST",
@@ -143,6 +162,37 @@ try {
     body: JSON.stringify({ content: agentOverridePrompt, agentId: "report" })
   });
 
+  const settingsBeforeCodex = await requestJson(firstPort, "/api/settings");
+  await requestJson(firstPort, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: {
+        ...settingsBeforeCodex,
+        assistant: {
+          ...settingsBeforeCodex.assistant,
+          agents: settingsBeforeCodex.assistant.agents.map((agent) =>
+            agent.id === "code" ? { ...agent, engineId: "codex_cli" } : agent
+          ),
+          engines: settingsBeforeCodex.assistant.engines.map((engine) =>
+            engine.id === "codex_cli"
+              ? {
+                  ...engine,
+                  enabled: true,
+                  installed: true,
+                  command: `${quoteCommandArg(process.execPath)} ${quoteCommandArg(fakeCodexPath)}`,
+                  setupStatus: "ready"
+                }
+              : engine
+          )
+        }
+      }
+    })
+  });
+  await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
+    method: "POST",
+    body: JSON.stringify({ content: codexPrompt, agentId: "code" })
+  });
+
   const savedState = JSON.parse(await readFile(runtimeStatePath, "utf8"));
   assert(
     savedState.messages.some((message) => message.role === "user" && message.content === userPrompt),
@@ -167,6 +217,10 @@ try {
       (message) => message.role === "assistant" && message.content.includes(agentOverrideReply)
     ),
     "agent provider override reply was not written to runtime state"
+  );
+  assert(
+    savedState.messages.some((message) => message.role === "assistant" && message.content.includes(codexReply)),
+    "external Codex CLI reply was not written to runtime state"
   );
 
   await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
@@ -226,6 +280,10 @@ try {
       (message) => message.role === "assistant" && message.content.includes(agentOverrideReply)
     ),
     "agent provider override reply did not survive server restart"
+  );
+  assert(
+    restored.messages.some((message) => message.role === "assistant" && message.content.includes(codexReply)),
+    "external Codex CLI reply did not survive server restart"
   );
   assert(
     restored.approvalHistory.some((item) => item.id === approval.id && item.reason === approvalReason),
@@ -402,4 +460,8 @@ function assert(condition, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function quoteCommandArg(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
 }
