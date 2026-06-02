@@ -1530,7 +1530,7 @@ h4 {
   min-height: 0;
   flex: 1;
   place-items: stretch center;
-  padding: 12px;
+  padding: 12px 14px 14px;
 }
 
 .task-workbench-stage {
@@ -1544,6 +1544,18 @@ h4 {
   border-radius: 14px;
   background: #fffdf8;
   box-shadow: 0 16px 36px rgba(145, 105, 33, 0.1);
+}
+
+.task-workbench-stage.task-run-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  grid-template-rows: minmax(0, 1fr);
+  width: min(1180px, 100%);
+  min-height: 0;
+  background: #fffaf0;
+}
+
+.run-topbar {
+  border-bottom: 1px solid #eadfca;
 }
 
 .task-status-ribbon {
@@ -1622,17 +1634,86 @@ h4 {
   min-height: 0;
 }
 
+.task-chat-column {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fffdf8;
+}
+
+.task-chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid #eadfca;
+  padding: 20px 24px 16px;
+  background: linear-gradient(180deg, #fffdf8 0%, #fff8e6 100%);
+}
+
+.task-chat-header > div:first-child {
+  min-width: 0;
+}
+
+.task-chat-header h2 {
+  margin-top: 4px;
+  color: #191611;
+  font-size: 24px;
+}
+
+.task-chat-header span {
+  display: block;
+  max-width: 620px;
+  margin-top: 6px;
+  color: #62594b;
+  line-height: 1.45;
+}
+
+.task-chat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.task-chat-pills span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid #eadfca;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #62594b;
+  background: #fffaf0;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .task-conversation-pane {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid #eadfca;
+  flex: 1;
+  overflow: hidden;
+  border-right: 0;
 }
 
 .workbench-message-list {
   gap: 14px;
   padding: 20px 26px;
+}
+
+.run-message-list {
+  flex: 1;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 240, 0.84), rgba(255, 253, 248, 0.98)),
+    radial-gradient(circle at top left, rgba(226, 151, 34, 0.08), transparent 32%);
 }
 
 .message-tool-summary {
@@ -1657,6 +1738,10 @@ h4 {
   border-radius: 14px;
   background: #fffdf8;
   box-shadow: 0 10px 26px rgba(76, 59, 34, 0.13);
+}
+
+.run-composer {
+  margin: 0 24px 24px;
 }
 
 .workbench-composer textarea {
@@ -1702,8 +1787,9 @@ h4 {
   flex-direction: column;
   gap: 10px;
   overflow: auto;
+  border-left: 1px solid #eadfca;
   padding: 12px;
-  background: #fff6dc;
+  background: #fff4cf;
 }
 
 .task-run-tabs {
@@ -1742,6 +1828,10 @@ h4 {
   background: #fffdf8;
 }
 
+.run-overview-card {
+  background: linear-gradient(180deg, #fffdf8 0%, #fff6dc 100%);
+}
+
 .task-run-card p {
   color: #62594d;
   font-size: 13px;
@@ -1758,6 +1848,29 @@ h4 {
 .task-run-heading h3 {
   margin-top: 3px;
   font-size: 16px;
+}
+
+.run-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.run-metric-strip span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #eadfca;
+  border-radius: 9px;
+  padding: 9px;
+  color: #6f614d;
+  background: #fffaf0;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.run-metric-strip b {
+  color: #1f1b15;
+  font-size: 19px;
 }
 
 .task-activity-list,
@@ -1805,6 +1918,20 @@ h4 {
   text-overflow: ellipsis;
 }
 
+.task-change-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.task-change-list article b {
+  border-radius: 999px;
+  padding: 3px 6px;
+  color: #5d503d;
+  background: #f4ead4;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .task-activity-row b {
   border-radius: 999px;
   padding: 3px 6px;
@@ -1820,6 +1947,59 @@ h4 {
   border-radius: 8px;
   padding: 9px;
   background: #fffaf0;
+}
+
+.code-change-card {
+  gap: 12px;
+}
+
+.code-preview-window {
+  overflow: hidden;
+  border: 1px solid #d7c7a7;
+  border-radius: 10px;
+  background: #fff8e6;
+}
+
+.code-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid #eadfca;
+  padding: 8px 10px;
+  color: #6b5a3c;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.code-preview-title span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #68a389;
+}
+
+.code-preview-window pre {
+  display: grid;
+  gap: 2px;
+  max-height: 176px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  color: #345646;
+  font: 12px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+}
+
+.code-preview-window code {
+  display: block;
+}
+
+.code-preview-window code.added {
+  color: #26734f;
+}
+
+.code-preview-window code.removed {
+  color: #a44438;
 }
 
 .task-panel-empty {
@@ -4608,6 +4788,11 @@ h4 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .task-workbench-stage.task-run-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
   .task-workbench-body {
     grid-template-columns: 1fr;
     overflow: auto;
@@ -4620,6 +4805,8 @@ h4 {
   }
 
   .task-run-panel {
+    border-top: 1px solid #eadfca;
+    border-left: 0;
     max-height: none;
     overflow: visible;
   }
@@ -4685,6 +4872,20 @@ h4 {
 
   .workbench-composer {
     margin: 0 12px 14px;
+  }
+
+  .task-chat-header {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .task-chat-pills {
+    justify-content: flex-start;
+  }
+
+  .run-metric-strip {
+    grid-template-columns: 1fr;
   }
 
   .new-task-composer-footer,

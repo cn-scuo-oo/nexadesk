@@ -2366,14 +2366,14 @@ function TaskThreadView({
 
   return (
     <section className="workspace thread-workspace">
-      <header className="task-command-bar">
+      <header className="task-command-bar run-topbar">
         <div className="task-command-left">
           <div className="thread-tabs" aria-label="任务视图">
             <span className="active">对话</span>
             <span>工作室</span>
           </div>
           <div>
-            <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
+            <strong>任务工作台</strong>
             <small>{currentTask?.title ?? "开始协作"}</small>
           </div>
         </div>
@@ -2393,47 +2393,28 @@ function TaskThreadView({
       </header>
 
       <div className="task-workbench-canvas">
-        <section className="task-workbench-stage">
-          <div className="task-status-ribbon">
-            <div>
-              <p className="eyebrow">任务工作台</p>
-              <h2>{currentTask?.title ?? "开始协作"}</h2>
-              <span>{currentTask?.detail ?? "把问题交给 Cowork，工具、审批和上下文会进入右侧抽屉。"}</span>
+        <section className="task-workbench-stage task-run-layout">
+          <section className="task-chat-column" aria-label="任务对话区">
+            <div className="task-chat-header">
+              <div>
+                <p className="eyebrow">Conversation</p>
+                <h2>{activeAgent?.name ?? "Cowork 助手"}</h2>
+                <span>{currentTask?.detail ?? "把问题交给 Cowork，工具、审批和上下文会进入右侧运行面板。"}</span>
+              </div>
+              <div className="task-chat-pills" aria-label="任务状态">
+                <span>
+                  <Bot size={14} />
+                  {activeAgent?.status === "running" ? "运行中" : "待命"}
+                </span>
+                <span>
+                  <ShieldCheck size={14} />
+                  {activeApprovals > 0 ? `${activeApprovals} 个审批` : "安全防护中"}
+                </span>
+              </div>
             </div>
-            <div className="task-status-metrics">
-              <span>
-                <b>{activeMessages.length}</b>
-                消息
-              </span>
-              <span>
-                <b>{pendingTasks}</b>
-                进行中
-              </span>
-              <span>
-                <b>{completedTasks}</b>
-                已完成
-              </span>
-            </div>
-          </div>
 
-          <div className="task-workbench-meta">
-            <span>
-              <Folder size={14} />
-              {workspaceLabel}
-            </span>
-            <span>
-              <Bot size={14} />
-              {activeAgent?.name ?? "Cowork 助手"}
-            </span>
-            <span>
-              <ShieldCheck size={14} />
-              {activeApprovals > 0 ? `${activeApprovals} 个审批待处理` : "安全防护中"}
-            </span>
-          </div>
-
-          <div className="task-workbench-body">
-            <section className="task-conversation-pane">
-              <div className="message-list workbench-message-list">
+            <div className="task-conversation-pane">
+              <div className="message-list workbench-message-list run-message-list">
                 {activeMessages.length === 0 ? (
                   <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
                 ) : (
@@ -2441,7 +2422,7 @@ function TaskThreadView({
                 )}
               </div>
 
-              <form className="workbench-composer" onSubmit={onSend}>
+              <form className="workbench-composer run-composer" onSubmit={onSend}>
                 <textarea
                   aria-label="任务输入"
                   placeholder="分配任务或继续提问..."
@@ -2466,16 +2447,22 @@ function TaskThreadView({
                   </div>
                 </div>
               </form>
-            </section>
+            </div>
+          </section>
 
-            <TaskRunPanel
-              activeAgent={activeAgent}
-              approvals={activeApprovals}
-              taskBoard={taskBoard}
-              toolActivity={toolActivity}
-              onOpenContext={onOpenContext}
-            />
-          </div>
+          <TaskRunPanel
+            activeAgent={activeAgent}
+            activeRuntimeModel={activeRuntimeModel}
+            activeRuntimeProvider={activeRuntimeProvider}
+            approvals={activeApprovals}
+            completedTasks={completedTasks}
+            messageCount={activeMessages.length}
+            pendingTasks={pendingTasks}
+            taskBoard={taskBoard}
+            toolActivity={toolActivity}
+            workspaceLabel={workspaceLabel}
+            onOpenContext={onOpenContext}
+          />
         </section>
       </div>
     </section>
@@ -2484,15 +2471,27 @@ function TaskThreadView({
 
 function TaskRunPanel({
   activeAgent,
+  activeRuntimeModel,
+  activeRuntimeProvider,
   approvals,
+  completedTasks,
+  messageCount,
+  pendingTasks,
   taskBoard,
   toolActivity,
+  workspaceLabel,
   onOpenContext
 }: {
   activeAgent: AgentProfile | null;
+  activeRuntimeModel: string;
+  activeRuntimeProvider?: ProviderSettings;
   approvals: number;
+  completedTasks: number;
+  messageCount: number;
+  pendingTasks: number;
   taskBoard: TaskBoardItem[];
   toolActivity: Array<ToolCall & { messageAuthor: string; createdAt: string }>;
+  workspaceLabel: string;
   onOpenContext: () => void;
 }) {
   const fileChanges = toolActivity.filter((tool) => {
@@ -2501,24 +2500,84 @@ function TaskRunPanel({
   });
   const visibleTools = toolActivity.slice(-5).reverse();
   const visibleChanges = fileChanges.slice(-4).reverse();
+  const runningTools = toolActivity.filter((tool) => tool.status === "running" || tool.status === "queued").length;
+  const completedTools = toolActivity.filter((tool) => tool.status === "completed" || tool.status === "approved").length;
+  const codePreviewLines =
+    visibleChanges.length > 0
+      ? visibleChanges.slice(0, 3).map((tool) => ({
+          id: tool.id,
+          sign: tool.status === "failed" || tool.status === "rejected" ? "-" : "+",
+          text: `${toolNameLabel(tool.name)} · ${tool.summary}`
+        }))
+      : [
+          { id: "waiting-1", sign: "+", text: "等待 Agent 产生文件写入、命令输出或代码 diff。" },
+          { id: "waiting-2", sign: "+", text: "高风险写入会先进入审批队列，批准后再执行。" },
+          { id: "waiting-3", sign: "+", text: "这里会作为任务运行页的代码变更预览区。" }
+        ];
 
   return (
     <aside className="task-run-panel" aria-label="任务执行面板">
-      <div className="task-run-tabs" aria-label="执行面板标签">
-        <span className="active">运行概览</span>
-        <span>工具活动</span>
-        <span>代码变更</span>
-      </div>
-
-      <section className="task-run-card task-run-agent">
+      <section className="task-run-card run-overview-card">
         <div className="task-run-heading">
           <div>
-            <p className="eyebrow">Agent</p>
+            <p className="eyebrow">运行概览</p>
             <h3>{activeAgent?.name ?? "Cowork 助手"}</h3>
           </div>
           <span className={`agent-status ${activeAgent?.status ?? "idle"}`} />
         </div>
-        <p>{activeAgent?.description ?? "负责拆解任务、调用工具并汇总结论。"}</p>
+        <p>{activeRuntimeProvider?.name ?? "未选择模型服务"} · {activeRuntimeModel || "未选择模型"}</p>
+        <div className="run-metric-strip">
+          <span>
+            <b>{messageCount}</b>
+            消息
+          </span>
+          <span>
+            <b>{runningTools}</b>
+            运行中
+          </span>
+          <span>
+            <b>{completedTools}</b>
+            已完成
+          </span>
+        </div>
+      </section>
+
+      <section className="task-run-card code-change-card">
+        <div className="task-run-heading">
+          <div>
+            <p className="eyebrow">代码变更</p>
+            <h3>文件与命令</h3>
+          </div>
+          <FileText size={17} />
+        </div>
+        <div className="task-change-list">
+          {visibleChanges.length === 0 ? (
+            <span className="task-panel-empty">暂无代码或文件变更。</span>
+          ) : (
+            visibleChanges.map((tool) => (
+              <article key={`${tool.id}-change`}>
+                <div>
+                  <strong>{toolNameLabel(tool.name)}</strong>
+                  <span>{tool.summary}</span>
+                </div>
+                <b>{toolStatusLabel(tool.status)}</b>
+              </article>
+            ))
+          )}
+        </div>
+        <div className="code-preview-window" aria-label="实时写入预览">
+          <div className="code-preview-title">
+            <span />
+            实时写入
+          </div>
+          <pre>
+            {codePreviewLines.map((line) => (
+              <code className={line.sign === "-" ? "removed" : "added"} key={line.id}>
+                {line.sign} {line.text}
+              </code>
+            ))}
+          </pre>
+        </div>
       </section>
 
       <section className="task-run-card">
@@ -2550,28 +2609,6 @@ function TaskRunPanel({
       <section className="task-run-card">
         <div className="task-run-heading">
           <div>
-            <p className="eyebrow">代码变更</p>
-            <h3>文件与命令</h3>
-          </div>
-          <FileText size={17} />
-        </div>
-        <div className="task-change-list">
-          {visibleChanges.length === 0 ? (
-            <span className="task-panel-empty">暂无代码或文件变更。</span>
-          ) : (
-            visibleChanges.map((tool) => (
-              <article key={`${tool.id}-change`}>
-                <strong>{toolNameLabel(tool.name)}</strong>
-                <span>{tool.summary}</span>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="task-run-card">
-        <div className="task-run-heading">
-          <div>
             <p className="eyebrow">审批</p>
             <h3>{approvals > 0 ? `${approvals} 个待处理` : "无需审批"}</h3>
           </div>
@@ -2591,6 +2628,14 @@ function TaskRunPanel({
           <ListChecks size={17} />
         </div>
         <div className="task-mini-board">
+          <article>
+            <span className="status muted-status">Workspace</span>
+            <strong>{workspaceLabel || "当前工作区"}</strong>
+          </article>
+          <article>
+            <span className="status muted-status">Progress</span>
+            <strong>{pendingTasks} 个进行中 · {completedTasks} 个完成</strong>
+          </article>
           {taskBoard.slice(0, 3).map((task) => (
             <article key={task.id}>
               <span className="status muted-status">{task.status}</span>
