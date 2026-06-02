@@ -1139,6 +1139,30 @@ h4 {
   padding: 0 6px 12px;
 }
 
+.assignment-topbar {
+  padding: 8px 14px 12px;
+}
+
+.assignment-topbar-title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: #6f6048;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.assignment-topbar-title span {
+  border-radius: 999px;
+  padding: 6px 11px;
+}
+
+.assignment-topbar-title .workspace-view-pill {
+  color: #3c2b15;
+  background: #fff4cf;
+}
+
 .compact-runtime-picker {
   display: flex;
   align-items: center;
@@ -1193,37 +1217,46 @@ h4 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: 24px 20px 70px;
+  gap: 16px;
+  padding: 24px 20px 58px;
   text-align: center;
 }
 
-.start-bot-mark {
+.assignment-bot-mark {
   display: grid;
-  width: 66px;
-  height: 66px;
+  width: 58px;
+  height: 58px;
   place-items: center;
-  border-radius: 20px;
+  border-radius: 18px;
   color: #d97706;
-  background: #fff0c9;
-  box-shadow: inset 0 -4px 0 rgba(217, 119, 6, 0.12);
+  background:
+    linear-gradient(180deg, #fff8df, #ffe5a7);
+  box-shadow: inset 0 -4px 0 rgba(217, 119, 6, 0.12), 0 12px 24px rgba(158, 111, 31, 0.12);
+}
+
+.assignment-heading {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
 }
 
 .start-canvas h2 {
-  font-size: 32px;
+  font-size: 34px;
+  letter-spacing: 0;
 }
 
-.start-canvas > p {
-  color: #676054;
+.assignment-heading p {
+  color: #6b614f;
   font-size: 15px;
+  line-height: 1.55;
 }
 
 .new-task-composer {
   display: grid;
   width: min(760px, 100%);
-  min-height: 126px;
+  min-height: 132px;
   overflow: hidden;
-  border: 1px solid #d8caa9;
+  border: 1px solid #d6c9ad;
   border-radius: 14px;
   background: #fffdf8;
   box-shadow: 0 12px 26px rgba(145, 105, 33, 0.12);
@@ -1231,13 +1264,14 @@ h4 {
 
 .new-task-composer textarea {
   width: 100%;
-  min-height: 76px;
+  min-height: 82px;
   resize: none;
   border: 0;
-  padding: 16px;
+  padding: 17px 18px;
   color: #1f241f;
   background: transparent;
   outline: 0;
+  font-size: 15px;
 }
 
 .new-task-composer-footer {
@@ -1245,6 +1279,7 @@ h4 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  border-top: 1px solid #f1e5ce;
   padding: 10px 14px;
 }
 
@@ -1255,6 +1290,18 @@ h4 {
   gap: 10px;
   color: #5b554b;
   font-size: 13px;
+}
+
+.new-task-composer-footer > span {
+  min-width: 0;
+}
+
+.new-task-composer-footer b {
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #8a4d00;
+  background: #fff2c8;
+  font-size: 11px;
 }
 
 .send-orb {
@@ -1278,17 +1325,72 @@ h4 {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 20px;
 }
 
 .quick-prompt-row button {
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid #ded1b5;
   border-radius: 8px;
   padding: 0 14px;
   color: #413a30;
   background: #fffdf8;
   font-weight: 800;
+}
+
+.assignment-quick-row {
+  width: min(620px, 100%);
+}
+
+.assignment-quick-row button {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 136px;
+  gap: 8px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.assignment-quick-row button:hover {
+  color: #c66b00;
+  border-color: #e7b75d;
+  background: #fff4cf;
+}
+
+.assignment-quick-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.assignment-quick-row strong,
+.assignment-quick-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignment-quick-row small {
+  color: #776d5c;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.assignment-context-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.assignment-context-strip span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #77613b;
+  background: #fff7db;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .thread-workspace {
@@ -4522,6 +4624,15 @@ h4 {
     overflow: visible;
   }
 
+  .assignment-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assignment-topbar-title {
+    flex-wrap: wrap;
+  }
+
   .settings-grid .provider-config-panel {
     grid-row: auto;
   }
@@ -4574,6 +4685,17 @@ h4 {
 
   .workbench-composer {
     margin: 0 12px 14px;
+  }
+
+  .new-task-composer-footer,
+  .new-task-composer-footer > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assignment-quick-row {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .topbar-actions {

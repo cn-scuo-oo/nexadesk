@@ -257,7 +257,7 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
   }
-  if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配一个任务")) {
+  if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配任务或提出问题") || !workbenchText.includes("制作幻灯片")) {
     throw new Error("Renderer smoke test failed: new task home was not rendered.");
   }
   if (!workbenchText.includes("main") || !workbenchText.includes("任务记录") || !workbenchText.includes("设置")) {
@@ -269,9 +269,9 @@ async function runRendererSmokeTest(apiPort) {
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
-    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')), hasBranchCard: Boolean(document.querySelector('.sidebar-branch-card')), hasUserBar: Boolean(document.querySelector('.sidebar-user-bar')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
+    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasAssignmentComposer: Boolean(document.querySelector('.new-task-composer')), hasAssignmentQuickRow: Boolean(document.querySelector('.assignment-quick-row')), hasRightDock: Boolean(document.querySelector('.right-dock')), hasBranchCard: Boolean(document.querySelector('.sidebar-branch-card')), hasUserBar: Boolean(document.querySelector('.sidebar-user-bar')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
   );
-  if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas) {
+  if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas || !workbenchLayout.hasAssignmentComposer || !workbenchLayout.hasAssignmentQuickRow) {
     throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
   }
   if (workbenchLayout.hasRightDock) {
