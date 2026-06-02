@@ -78,7 +78,7 @@ declare global {
 }
 
 type DataMode = "live" | "demo";
-type AppView = "cowork" | "settings";
+type AppView = "new" | "thread" | "search" | "scheduled" | "runtime" | "skills" | "mcp" | "agents" | "settings";
 type SettingsTab =
   | "providers"
   | "model"
@@ -218,6 +218,23 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
   { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
 ];
 
+const appViews = new Set<AppView>([
+  "new",
+  "thread",
+  "search",
+  "scheduled",
+  "runtime",
+  "skills",
+  "mcp",
+  "agents",
+  "settings"
+]);
+
+function readInitialAppView(): AppView {
+  const hash = window.location.hash.replace(/^#/, "") as AppView;
+  return appViews.has(hash) ? hash : "new";
+}
+
 function readStoredBoolean(key: string, fallback: boolean) {
   if (typeof window === "undefined") {
     return fallback;
@@ -333,6 +350,8 @@ const taskBoard = [
   }
 ];
 
+type TaskBoardItem = (typeof taskBoard)[number];
+
 const mailbox = [
   {
     id: "mail-1",
@@ -351,9 +370,7 @@ const mailbox = [
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [activeView, setActiveView] = useState<AppView>(() =>
-    window.location.hash === "#settings" ? "settings" : "cowork"
-  );
+  const [activeView, setActiveView] = useState<AppView>(() => readInitialAppView());
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("providers");
   const [mode, setMode] = useState<DataMode>("live");
   const [loading, setLoading] = useState(true);
@@ -622,11 +639,13 @@ export function App() {
         }
       ];
       setSnapshot({ ...snapshot, messages: [...snapshot.messages, ...optimisticMessages] });
+      handleOpenView("thread");
       return;
     }
 
     setSending(true);
     setError(null);
+    handleOpenView("thread");
     try {
       await streamMessage(activeSession.id, {
         content: trimmedContent,
@@ -788,6 +807,11 @@ export function App() {
     });
   }
 
+  function handleOpenView(view: AppView) {
+    setActiveView(view);
+    window.location.hash = view === "new" ? "" : view;
+  }
+
   function handleOpenSettings(tab: SettingsTab = "providers") {
     setSettingsInitialTab(tab);
     window.location.hash = "settings";
@@ -863,6 +887,7 @@ export function App() {
     <main
       className={`app-shell${rightDockCollapsed ? " context-collapsed" : ""}${
         activeView === "settings" ? " settings-mode" : ""
+      }${activeView !== "thread" && activeView !== "settings" ? " no-context" : ""
       }`}
     >
       <aside className="rail">
@@ -870,20 +895,20 @@ export function App() {
           <Workflow size={22} />
         </div>
         <button
-          className={activeView === "cowork" ? "rail-button active" : "rail-button"}
-          aria-label="Cowork"
+          className={activeView === "new" || activeView === "thread" ? "rail-button active" : "rail-button"}
+          aria-label="New task"
           onClick={() => {
             window.location.hash = "";
-            setActiveView("cowork");
+            setActiveView("new");
           }}
           type="button"
         >
           <Sparkles size={19} />
         </button>
-        <button className="rail-button" aria-label="Agents">
+        <button className={activeView === "agents" ? "rail-button active" : "rail-button"} aria-label="Agents" onClick={() => handleOpenView("agents")} type="button">
           <Bot size={19} />
         </button>
-        <button className="rail-button" aria-label="Workspace">
+        <button className={activeView === "search" ? "rail-button active" : "rail-button"} aria-label="Workspace" onClick={() => handleOpenView("search")} type="button">
           <Folder size={19} />
         </button>
         <button
@@ -909,33 +934,59 @@ export function App() {
           </div>
           <nav className="nav-list workspace-nav-list" aria-label="Workspace sections">
             <button
-              className="nav-item nav-button active"
-              onClick={() => {
-                window.location.hash = "";
-                setActiveView("cowork");
-              }}
+              className={activeView === "new" || activeView === "thread" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("new")}
               type="button"
             >
               <Sparkles size={17} />
               <span>
-                <strong>快速对话</strong>
-                <small>交给 Cowork 处理</small>
+                <strong>新建任务</strong>
+                <small>开始一次协作</small>
               </span>
             </button>
-            <a className="nav-item" href="#workspace-context">
+            <button className={activeView === "search" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("search")} type="button">
               <Search size={17} />
               <span>
-                <strong>搜索</strong>
-                <small>文件与上下文</small>
+                <strong>搜索任务</strong>
+                <small>会话与文件</small>
               </span>
-            </a>
-            <button className="nav-item nav-button" onClick={() => handleOpenSettings("skills")} type="button">
+            </button>
+            <button className={activeView === "scheduled" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("scheduled")} type="button">
+              <CircleDot size={17} />
+              <span>
+                <strong>定时任务</strong>
+                <small>计划与自动化</small>
+              </span>
+            </button>
+            <button className={activeView === "runtime" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("runtime")} type="button">
+              <Zap size={17} />
+              <span>
+                <strong>运行监控</strong>
+                <small>调用与成本</small>
+              </span>
+            </button>
+            <button className={activeView === "skills" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("skills")} type="button">
               <Workflow size={17} />
               <span>
-                <strong>插件</strong>
-                <small>技能与工具</small>
+                <strong>技能</strong>
+                <small>市场与启用</small>
               </span>
               <b>{enabledSkills.length}</b>
+            </button>
+            <button className={activeView === "mcp" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("mcp")} type="button">
+              <Terminal size={17} />
+              <span>
+                <strong>MCP</strong>
+                <small>工具服务器</small>
+              </span>
+            </button>
+            <button className={activeView === "agents" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("agents")} type="button">
+              <Users size={17} />
+              <span>
+                <strong>我的 Agent</strong>
+                <small>助手与团队</small>
+              </span>
+              <b>{snapshot.agents.filter((agent) => agent.enabled).length}</b>
             </button>
             <button className="nav-item nav-button" onClick={() => handleOpenSettings("engines")} type="button">
               <Terminal size={17} />
@@ -945,13 +996,6 @@ export function App() {
               </span>
               <b>{runtimeSettings.assistant.engines.filter((engine) => engine.enabled).length}</b>
             </button>
-            <a className="nav-item" href="#tasks">
-              <Zap size={17} />
-              <span>
-                <strong>自动化</strong>
-                <small>任务板与计划</small>
-              </span>
-            </a>
             <button className="nav-item nav-button" onClick={() => handleOpenSettings("providers")} type="button">
               <KeyRound size={17} />
               <span>
@@ -960,16 +1004,8 @@ export function App() {
               </span>
               <b>{configuredProviders}</b>
             </button>
-            <a className="nav-item" href="#approvals">
-              <ShieldCheck size={17} />
-              <span>
-                <strong>审批</strong>
-                <small>高风险动作网关</small>
-              </span>
-              <b>{activeApprovals}</b>
-            </a>
             <button
-              className="nav-item nav-button"
+              className={activeView === "settings" ? "nav-item nav-button active" : "nav-item nav-button"}
               onClick={() => handleOpenSettings("appearance")}
               type="button"
             >
@@ -989,7 +1025,12 @@ export function App() {
           </div>
           <div className="project-list">
             {snapshot.sessions.map((session) => (
-              <button className="session-card project-card active" key={session.id}>
+              <button
+                className={activeView === "thread" ? "session-card project-card active" : "session-card project-card"}
+                key={session.id}
+                onClick={() => handleOpenView("thread")}
+                type="button"
+              >
                 <span className="project-dot" />
                 <strong>{session.title}</strong>
                 <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
@@ -1000,37 +1041,6 @@ export function App() {
               <strong>桌面发布 QA</strong>
               <small>安装包、保留数据、私有分发</small>
             </article>
-          </div>
-        </section>
-
-        <section className="sidebar-section sidebar-metrics">
-          <div className="sidebar-metric">
-            <span>助手</span>
-            <b>{runningAgents.length}/{snapshot.agents.length}</b>
-          </div>
-          <div className="sidebar-metric">
-            <span>技能</span>
-            <b>{enabledSkills.length}</b>
-          </div>
-          <div className="sidebar-metric">
-            <span>审批</span>
-            <b>{activeApprovals}</b>
-          </div>
-        </section>
-
-        <section className="sidebar-section grow">
-          <div className="section-heading">
-            <span>助手</span>
-          </div>
-          <div className="agent-list">
-            {snapshot.agents.map((agent) => (
-              <AgentPill
-                key={agent.id}
-                agent={agent}
-                active={activeAgent?.id === agent.id}
-                onActivate={() => handleActivateAgent(agent.id)}
-              />
-            ))}
           </div>
         </section>
 
@@ -1051,178 +1061,71 @@ export function App() {
             status={settingsStatus}
             onSave={handleSaveSettings}
           />
+        ) : activeView === "new" ? (
+          <NewTaskView
+            activeRuntimeModel={activeRuntimeModel}
+            activeRuntimeProvider={activeRuntimeProvider}
+            draft={draft}
+            error={error}
+            providers={settings.providers}
+            recoveringSettings={recoveringSettings}
+            sending={sending}
+            onDraftChange={setDraft}
+            onRecoverSettings={() => void handleRecoverSettings(false)}
+            onRuntimeChange={handleWorkbenchRuntimeChange}
+            onSend={handleSend}
+          />
+        ) : activeView === "thread" ? (
+          <TaskThreadView
+            activeAgent={activeAgent}
+            activeMessages={activeMessages}
+            activeRuntimeModel={activeRuntimeModel}
+            activeRuntimeProvider={activeRuntimeProvider}
+            agents={snapshot.agents}
+            draft={draft}
+            providers={settings.providers}
+            sending={sending}
+            taskBoard={taskBoard}
+            onDraftChange={setDraft}
+            onRuntimeChange={handleWorkbenchRuntimeChange}
+            onSend={handleSend}
+          />
+        ) : activeView === "search" ? (
+          <TaskSearchView
+            files={snapshot.files}
+            recentFiles={recentWorkspaceFiles}
+            sessions={snapshot.sessions}
+            onOpenSession={() => handleOpenView("thread")}
+            onOpenWorkspace={() => handleOpenView("thread")}
+          />
+        ) : activeView === "scheduled" ? (
+          <ScheduledTasksView taskBoard={taskBoard} agents={snapshot.agents} />
+        ) : activeView === "runtime" ? (
+          <RuntimeDashboardView
+            activeRuntimeModel={activeRuntimeModel}
+            activeRuntimeProvider={activeRuntimeProvider}
+            activeApprovals={activeApprovals}
+            configuredProviders={configuredProviders}
+            enabledSkills={enabledSkills.length}
+            runningAgents={runningAgents.length}
+            totalAgents={snapshot.agents.length}
+          />
+        ) : activeView === "skills" ? (
+          <SkillsHubView skills={snapshot.skills} onOpenSettings={() => handleOpenSettings("skills")} />
+        ) : activeView === "mcp" ? (
+          <McpHubView onOpenSettings={() => handleOpenSettings("permissions")} />
         ) : (
-      <section className="workspace cowork-workspace" id="team">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">NexaDesk Cowork</p>
-            <h2>{activeAgent?.name ?? activeSession?.title ?? "Cowork Workspace"}</h2>
-            <p className="muted">
-              把任务、模型、文件上下文和审批队列放进同一个 Agent 工作台。
-            </p>
-          </div>
-          <div className="topbar-actions">
-            <label className="runtime-select">
-              <span>模型服务</span>
-              <select
-                value={activeRuntimeProvider?.id ?? ""}
-                onChange={(event) => void handleWorkbenchRuntimeChange(event.target.value)}
-              >
-                {settings.providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.connected ? "已启用 - " : "未启用 - "}
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="runtime-select">
-              <span>模型</span>
-              <select
-                value={activeRuntimeModel}
-                onChange={(event) => void handleWorkbenchRuntimeChange(activeRuntimeProvider?.id ?? "", event.target.value)}
-              >
-                {Array.from(new Set([activeRuntimeModel, ...(activeRuntimeProvider?.models ?? [])]))
-                  .filter(Boolean)
-                  .map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </div>
-        </header>
-
-        {error ? (
-          <div className="notice notice-with-actions">
-            <span>API note: {error}. The workbench is using demo data until the server is available.</span>
-            <button
-              className="mini-button"
-              disabled={recoveringSettings}
-              onClick={() => void handleRecoverSettings(false)}
-              type="button"
-            >
-              {recoveringSettings ? "恢复中..." : "恢复本地设置"}
-            </button>
-          </div>
-        ) : null}
-
-        <section className="workspace-overview">
-          <article className="cowork-start-card">
-            <div className="cowork-start-icon">
-              <Workflow size={28} />
-            </div>
-            <div>
-              <p className="eyebrow">AI Agentic Workspace</p>
-              <h3>今天想让 NexaDesk 做什么？</h3>
-              <p>
-                从这里发起任务，Cowork 会结合当前模型、助手、技能和工作区文件，把执行过程沉淀到消息流和右侧上下文里。
-              </p>
-            </div>
-            <div className="start-chip-row">
-              <span>读文件</span>
-              <span>写报告</span>
-              <span>跑命令</span>
-              <span>模型切换</span>
-            </div>
-          </article>
-
-          <article className="leader-card">
-            <div className="card-title-row">
-              <span className="role-pill">Leader</span>
-              <span className="runtime-pill">
-                <Terminal size={14} />
-                {activeAgent?.runtime ?? "runtime"}
-              </span>
-            </div>
-            <h3>{activeAgent?.name ?? "Cowork Agent"}</h3>
-            <p>{activeAgent?.description ?? "Coordinates the team and owns final synthesis."}</p>
-            <div className="leader-stats">
-              <Metric label="Agents" value={String(teamAgents.length)} />
-              <Metric label="Skills" value={String(enabledSkills.length)} />
-              <Metric label="Approvals" value={String(activeApprovals)} />
-            </div>
-          </article>
-        </section>
-
-        <section className="workspace-summary-strip" aria-label="Workspace status">
-          <Metric label="会话" value={String(snapshot.sessions.length)} />
-          <Metric label="运行助手" value={`${runningAgents.length}/${snapshot.agents.length}`} />
-          <Metric label="已启用技能" value={String(enabledSkills.length)} />
-          <Metric label="模型服务" value={String(configuredProviders)} />
-        </section>
-
-        <section className="team-map workspace-team-map" id="agents">
-            <div className="panel-heading compact">
-              <div>
-                <p className="eyebrow">Agent Team</p>
-                <h3>多助手协作队列</h3>
-              </div>
-              <Users size={18} />
-            </div>
-            <div className="team-node-row">
-              {teamAgents.map((agent, index) => (
-                <TeamNode key={agent.id} agent={agent} index={index} />
-              ))}
-            </div>
-        </section>
-
-        <div className="work-grid">
-          <section className="cowork-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Cowork Thread</p>
-                <h3>共享执行流</h3>
-              </div>
-              <span className="status ready">
-                <Zap size={14} />
-                流式同步
-              </span>
-            </div>
-
-            <div className="message-list">
-              {activeMessages.length === 0 ? (
-                <EmptyState title="还没有消息" detail="输入一个目标，让 Cowork 开始规划、调用工具并等待审批。" />
-              ) : (
-                activeMessages.map((message) => <MessageBubble key={message.id} message={message} />)
-              )}
-            </div>
-
-            <form className="composer" onSubmit={handleSend}>
-              <input
-                aria-label="Message"
-                placeholder="让 Cowork 规划、读文件、调用工具、总结结果..."
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <button className="primary-button" disabled={sending || !draft.trim()} type="submit">
-                <Send size={15} />
-                {sending ? "生成中..." : "发送"}
-              </button>
-            </form>
-          </section>
-
-          <section className="task-panel" id="tasks">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Task Board</p>
-                <h3>任务编排</h3>
-              </div>
-              <ListChecks size={18} />
-            </div>
-            <div className="task-list">
-              {taskBoard.map((task) => (
-                <TaskCard key={task.id} task={task} agents={snapshot.agents} />
-              ))}
-            </div>
-          </section>
-        </div>
-      </section>
-      )}
+          <AgentsHubView
+            activeAgent={activeAgent}
+            agents={snapshot.agents}
+            engines={runtimeSettings.assistant.engines}
+            onActivate={handleActivateAgent}
+            onOpenSettings={() => handleOpenSettings("assistants")}
+          />
+        )}
       </section>
 
-      {activeView === "cowork" ? (
+      {activeView === "thread" ? (
       <aside className={`right-dock${rightDockCollapsed ? " collapsed" : ""}`}>
         {rightDockCollapsed ? (
           <button
@@ -1437,6 +1340,465 @@ export function App() {
         />
       ) : null}
     </main>
+  );
+}
+
+function RuntimePicker({
+  activeRuntimeModel,
+  activeRuntimeProvider,
+  providers,
+  onRuntimeChange
+}: {
+  activeRuntimeModel: string;
+  activeRuntimeProvider?: ProviderSettings;
+  providers: ProviderSettings[];
+  onRuntimeChange: (providerId: string, model?: string) => Promise<void>;
+}) {
+  return (
+    <div className="compact-runtime-picker">
+      <label>
+        <span>模型服务</span>
+        <select
+          value={activeRuntimeProvider?.id ?? ""}
+          onChange={(event) => void onRuntimeChange(event.target.value)}
+        >
+          {providers.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.connected ? "已启用 - " : "未启用 - "}
+              {provider.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>模型</span>
+        <select
+          value={activeRuntimeModel}
+          onChange={(event) => void onRuntimeChange(activeRuntimeProvider?.id ?? "", event.target.value)}
+        >
+          {Array.from(new Set([activeRuntimeModel, ...(activeRuntimeProvider?.models ?? [])]))
+            .filter(Boolean)
+            .map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function NewTaskView({
+  activeRuntimeModel,
+  activeRuntimeProvider,
+  draft,
+  error,
+  providers,
+  recoveringSettings,
+  sending,
+  onDraftChange,
+  onRecoverSettings,
+  onRuntimeChange,
+  onSend
+}: {
+  activeRuntimeModel: string;
+  activeRuntimeProvider?: ProviderSettings;
+  draft: string;
+  error: string | null;
+  providers: ProviderSettings[];
+  recoveringSettings: boolean;
+  sending: boolean;
+  onDraftChange: (value: string) => void;
+  onRecoverSettings: () => void;
+  onRuntimeChange: (providerId: string, model?: string) => Promise<void>;
+  onSend: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const quickPrompts = [
+    "帮我整理这个项目下一步开发计划",
+    "读取工作区文件并总结关键问题",
+    "检查模型 Provider 配置是否完整",
+    "设计一个多 Agent 自动化流程"
+  ];
+
+  return (
+    <section className="workspace welcome-workspace">
+      <header className="minimal-topbar">
+        <div />
+        <RuntimePicker
+          activeRuntimeModel={activeRuntimeModel}
+          activeRuntimeProvider={activeRuntimeProvider}
+          providers={providers}
+          onRuntimeChange={onRuntimeChange}
+        />
+        <span className="safe-badge">
+          <ShieldCheck size={14} />
+          安全防护中
+        </span>
+      </header>
+
+      {error ? (
+        <div className="notice notice-with-actions start-notice">
+          <span>API note: {error}. The workbench is using demo data until the server is available.</span>
+          <button className="mini-button" disabled={recoveringSettings} onClick={onRecoverSettings} type="button">
+            {recoveringSettings ? "恢复中..." : "恢复本地设置"}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="start-canvas">
+        <div className="start-bot-mark">
+          <Sparkles size={34} />
+        </div>
+        <h2>开始协作</h2>
+        <p>7×24 小时帮你干活的本地多 Agent 工作台</p>
+
+        <form className="new-task-composer" onSubmit={onSend}>
+          <textarea
+            aria-label="新建任务"
+            placeholder="分配一个任务或提问任何问题"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+          />
+          <div className="new-task-composer-footer">
+            <span>
+              <Folder size={15} />
+              当前工作区
+            </span>
+            <div>
+              <button className="icon-button" type="button" aria-label="附件">
+                <FileText size={15} />
+              </button>
+              <button className="icon-button" type="button" aria-label="技能">
+                <Workflow size={15} />
+              </button>
+              <button className="send-orb" disabled={sending || !draft.trim()} type="submit">
+                <Send size={20} />
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div className="quick-prompt-row">
+          {quickPrompts.map((prompt) => (
+            <button key={prompt} onClick={() => onDraftChange(prompt)} type="button">
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TaskThreadView({
+  activeAgent,
+  activeMessages,
+  activeRuntimeModel,
+  activeRuntimeProvider,
+  agents,
+  draft,
+  providers,
+  sending,
+  taskBoard,
+  onDraftChange,
+  onRuntimeChange,
+  onSend
+}: {
+  activeAgent: AgentProfile | null;
+  activeMessages: ChatMessage[];
+  activeRuntimeModel: string;
+  activeRuntimeProvider?: ProviderSettings;
+  agents: AgentProfile[];
+  draft: string;
+  providers: ProviderSettings[];
+  sending: boolean;
+  taskBoard: TaskBoardItem[];
+  onDraftChange: (value: string) => void;
+  onRuntimeChange: (providerId: string, model?: string) => Promise<void>;
+  onSend: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <section className="workspace thread-workspace">
+      <header className="thread-topbar">
+        <div className="thread-tabs" aria-label="任务视图">
+          <span className="active">对话</span>
+          <span>工作室</span>
+        </div>
+        <strong>{activeAgent?.name ?? "Cowork"}</strong>
+        <RuntimePicker
+          activeRuntimeModel={activeRuntimeModel}
+          activeRuntimeProvider={activeRuntimeProvider}
+          providers={providers}
+          onRuntimeChange={onRuntimeChange}
+        />
+      </header>
+
+      <div className="thread-grid">
+        <section className="task-thread-panel">
+          <div className="message-list clean-message-list">
+            {activeMessages.length === 0 ? (
+              <EmptyState title="还没有任务消息" detail="从新建任务发起一次协作，消息会出现在这里。" />
+            ) : (
+              activeMessages.map((message) => <MessageBubble key={message.id} message={message} />)
+            )}
+          </div>
+          <form className="composer floating-composer" onSubmit={onSend}>
+            <input
+              aria-label="Message"
+              placeholder="继续对话..."
+              value={draft}
+              onChange={(event) => onDraftChange(event.target.value)}
+            />
+            <button className="primary-button" disabled={sending || !draft.trim()} type="submit">
+              <Send size={15} />
+              {sending ? "生成中..." : "发送"}
+            </button>
+          </form>
+        </section>
+
+        <aside className="task-side-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">运行概览</p>
+              <h3>任务执行状态</h3>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          <div className="task-list">
+            {taskBoard.map((task) => (
+              <TaskCard key={task.id} task={task} agents={agents} />
+            ))}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function TaskSearchView({
+  files,
+  recentFiles,
+  sessions,
+  onOpenSession,
+  onOpenWorkspace
+}: {
+  files: WorkspaceFile[];
+  recentFiles: WorkspaceTreeEntry[];
+  sessions: AppSnapshot["sessions"];
+  onOpenSession: () => void;
+  onOpenWorkspace: () => void;
+}) {
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="Search" title="搜索任务" detail="像 WeSight 一样，把任务记录和上下文搜索放在独立页面。" />
+      <div className="module-search-bar">
+        <Search size={18} />
+        <input placeholder="搜索任务、文件或上下文" />
+      </div>
+      <div className="module-grid two-column">
+        <section className="panel-block">
+          <div className="panel-heading compact">
+            <h3>任务记录</h3>
+          </div>
+          <div className="stack-list">
+            {sessions.map((session) => (
+              <button className="module-row" key={session.id} onClick={onOpenSession} type="button">
+                <strong>{session.title}</strong>
+                <span>{session.workspace}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="panel-block">
+          <div className="panel-heading compact">
+            <h3>最近上下文</h3>
+          </div>
+          <div className="stack-list">
+            {[...recentFiles, ...files.slice(0, 4)].slice(0, 8).map((file) => (
+              <button className="module-row" key={file.path} onClick={onOpenWorkspace} type="button">
+                <strong>{file.path}</strong>
+                <span>{file.kind}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ScheduledTasksView({ taskBoard, agents }: { taskBoard: TaskBoardItem[]; agents: AgentProfile[] }) {
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="Automation" title="定时任务" detail="后续用于创建每日、每周、后台自动运行的 Agent 任务。" />
+      <div className="module-grid three-column">
+        {taskBoard.map((task) => (
+          <TaskCard key={task.id} task={task} agents={agents} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RuntimeDashboardView({
+  activeApprovals,
+  activeRuntimeModel,
+  activeRuntimeProvider,
+  configuredProviders,
+  enabledSkills,
+  runningAgents,
+  totalAgents
+}: {
+  activeApprovals: number;
+  activeRuntimeModel: string;
+  activeRuntimeProvider?: ProviderSettings;
+  configuredProviders: number;
+  enabledSkills: number;
+  runningAgents: number;
+  totalAgents: number;
+}) {
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、工具审批和执行趋势集中在这里。" />
+      <div className="dashboard-filter-row">
+        <span>近 24 小时</span>
+        <span>{activeRuntimeProvider?.name ?? "未选择 Provider"}</span>
+        <span>{activeRuntimeModel || "未选择模型"}</span>
+        <button className="mini-button" type="button">刷新</button>
+      </div>
+      <div className="runtime-metric-grid">
+        <Metric label="总调用" value={String(Math.max(1, runningAgents))} />
+        <Metric label="运行助手" value={`${runningAgents}/${totalAgents}`} />
+        <Metric label="启用技能" value={String(enabledSkills)} />
+        <Metric label="模型服务" value={String(configuredProviders)} />
+        <Metric label="待审批" value={String(activeApprovals)} />
+      </div>
+      <section className="runtime-chart panel-block">
+        <h3>调用趋势</h3>
+        <div />
+      </section>
+    </section>
+  );
+}
+
+function SkillsHubView({ skills, onOpenSettings }: { skills: SkillProfile[]; onOpenSettings: () => void }) {
+  const categories = ["全部", "推荐", "编程开发", "办公文档", "数据分析", "自动化", "研究写作"];
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="Skills" title="技能" detail="技能市场和已安装技能独立管理，不挤在工作台首页。" actionLabel="管理技能" onAction={onOpenSettings} />
+      <div className="module-search-bar">
+        <Search size={18} />
+        <input placeholder="搜索技能" />
+      </div>
+      <div className="chip-tabs">
+        {categories.map((category, index) => (
+          <span className={index === 1 ? "active" : ""} key={category}>{category}</span>
+        ))}
+      </div>
+      <div className="module-grid two-column">
+        {skills.map((skill) => (
+          <article className="market-card" key={skill.id}>
+            <div>
+              <Workflow size={17} />
+              <strong>{skill.name}</strong>
+            </div>
+            <p>{skill.description}</p>
+            <span>{skill.enabled ? "已启用" : "未启用"} · {skill.source}</span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function McpHubView({ onOpenSettings }: { onOpenSettings: () => void }) {
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="后续在这里管理本地和远程 MCP，避免混进聊天首页。" actionLabel="权限设置" onAction={onOpenSettings} />
+      <div className="module-grid two-column">
+        {["文件系统 MCP", "浏览器 MCP", "图片生成 MCP", "Office MCP"].map((name) => (
+          <article className="market-card" key={name}>
+            <div>
+              <Terminal size={17} />
+              <strong>{name}</strong>
+            </div>
+            <p>计划接入，所有高风险工具仍然进入审批队列。</p>
+            <span>未启用</span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AgentsHubView({
+  activeAgent,
+  agents,
+  engines,
+  onActivate,
+  onOpenSettings
+}: {
+  activeAgent: AgentProfile | null;
+  agents: AgentProfile[];
+  engines: AgentEngineSettings[];
+  onActivate: (agentId: string) => void;
+  onOpenSettings: () => void;
+}) {
+  return (
+    <section className="workspace module-workspace">
+      <ModuleHeader eyebrow="Agents" title="我的 Agent" detail="助手、团队和运行引擎集中到独立页面。" actionLabel="管理助手" onAction={onOpenSettings} />
+      <div className="agent-hub-grid">
+        {agents.map((agent) => {
+          const engine = engines.find((item) => item.id === agent.engineId);
+          return (
+            <button
+              className={activeAgent?.id === agent.id ? "agent-hub-card active" : "agent-hub-card"}
+              key={agent.id}
+              onClick={() => onActivate(agent.id)}
+              type="button"
+            >
+              <div className="avatar">{agent.name.slice(0, 1)}</div>
+              <div>
+                <strong>{agent.name}</strong>
+                <span>{agent.description}</span>
+                <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
+              </div>
+              {activeAgent?.id === agent.id ? <Check size={18} /> : null}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ModuleHeader({
+  actionLabel,
+  detail,
+  eyebrow,
+  title,
+  onAction
+}: {
+  actionLabel?: string;
+  detail: string;
+  eyebrow: string;
+  title: string;
+  onAction?: () => void;
+}) {
+  return (
+    <header className="module-header">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+        <p>{detail}</p>
+      </div>
+      {actionLabel && onAction ? (
+        <button className="secondary-button" onClick={onAction} type="button">
+          {actionLabel}
+        </button>
+      ) : null}
+    </header>
   );
 }
 

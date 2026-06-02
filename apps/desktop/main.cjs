@@ -209,13 +209,19 @@ async function runRendererSmokeTest(apiPort) {
   if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
   }
+  if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配一个任务")) {
+    throw new Error("Renderer smoke test failed: new task home was not rendered.");
+  }
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
-    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasRightDock: Boolean(document.querySelector('.right-dock')) }))()"
+    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')) }))()"
   );
-  if (!workbenchLayout.hasMainStage || !workbenchLayout.hasRightDock) {
+  if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas) {
     throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
+  }
+  if (workbenchLayout.hasRightDock) {
+    throw new Error("Renderer smoke test failed: new task home should not render the live context dock.");
   }
   if (workbenchLayout.documentWidth > workbenchLayout.viewportWidth + 2) {
     throw new Error(
@@ -226,26 +232,25 @@ async function runRendererSmokeTest(apiPort) {
         ")."
     );
   }
-  if (!workbenchText.includes("复制结果") || !workbenchText.includes("调用详情")) {
-    throw new Error("Renderer smoke test failed: tool result controls were not rendered.");
+
+  const threadText = await renderAndReadText(apiPort, "thread");
+  if (!threadText.includes("任务执行状态") || !threadText.includes("审批队列") || !threadText.includes("工作区上下文")) {
+    throw new Error("Renderer smoke test failed: task execution view did not render its right-side context.");
   }
-  if (!workbenchText.includes("批量批准低/中风险") || !workbenchText.includes("高风险动作必须逐条确认")) {
-    throw new Error("Renderer smoke test failed: approval bulk controls were not rendered.");
+
+  const runtimeText = await renderAndReadText(apiPort, "runtime");
+  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势")) {
+    throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
   }
-  if (!workbenchText.includes("当前根目录") || !workbenchText.includes("工作区上下文")) {
-    throw new Error("Renderer smoke test failed: workspace context panel was not rendered.");
+
+  const skillsText = await renderAndReadText(apiPort, "skills");
+  if (!skillsText.includes("技能市场") && !skillsText.includes("技能")) {
+    throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
   }
-  if (!workbenchText.includes("收起")) {
-    throw new Error("Renderer smoke test failed: workspace context collapse control was not rendered.");
-  }
-  if (!workbenchText.includes("刷新") || !workbenchText.includes("上级")) {
-    throw new Error("Renderer smoke test failed: workspace file controls were not rendered.");
-  }
-  if (!workbenchText.includes("文件树") || !workbenchText.includes("搜索")) {
-    throw new Error("Renderer smoke test failed: workspace context tabs were not rendered.");
-  }
-  if (!workbenchText.includes("最近文件")) {
-    throw new Error("Renderer smoke test failed: workspace recent files area was not rendered.");
+
+  const agentsText = await renderAndReadText(apiPort, "agents");
+  if (!agentsText.includes("我的 Agent") || !agentsText.includes("管理助手")) {
+    throw new Error("Renderer smoke test failed: agents view was not rendered as a separate view.");
   }
 
   const settingsText = await renderAndReadText(apiPort, "settings");

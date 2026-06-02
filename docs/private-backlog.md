@@ -19,6 +19,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add an in-app diagnostics copy button for log paths and app status. Done in Phase 6 second pass.
 - Rework the workbench information architecture using a WeSight-inspired task/sidebar/context layout. Started in Phase 7 third pass.
 - Tighten the WeSight-inspired desktop shell so the workbench has a bounded main stage, collapsible live context dock, and no horizontal overflow at desktop smoke width. Done in Phase 7 seventh pass.
+- Split the WeSight-inspired shell into single-purpose main views for New Task, Search, Scheduled Tasks, Runtime Dashboard, Skills, MCP, Agents, Settings, and Task Thread instead of stacking everything into one scroll page. Done in Phase 7 eighth pass.
 - Split model Providers from Agent runtimes and add an Agent Engine Center for built-in and external CLI engines. Started in Phase 7 fourth pass.
 - Collapse long Provider, assistant, and skill configuration surfaces into expandable sections. Done in Phase 6 fifth pass.
 - Add a domestic Provider matrix and static default verification. Done in Phase 6 seventh pass.
