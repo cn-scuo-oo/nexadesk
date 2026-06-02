@@ -300,6 +300,29 @@ export interface WorkspaceFilePreviewResult {
   error?: string;
 }
 
+export type WorkspaceSearchMode = "name" | "content";
+
+export interface WorkspaceSearchMatch {
+  name: string;
+  path: string;
+  kind: "file" | "folder";
+  size?: number;
+  modifiedAt?: string;
+  line?: number;
+  preview?: string;
+}
+
+export interface WorkspaceSearchResult {
+  root: string;
+  path: string;
+  query: string;
+  mode: WorkspaceSearchMode;
+  matches: WorkspaceSearchMatch[];
+  searchedEntries: number;
+  truncated?: boolean;
+  error?: string;
+}
+
 export interface PermissionRequest {
   id: string;
   sessionId: string;

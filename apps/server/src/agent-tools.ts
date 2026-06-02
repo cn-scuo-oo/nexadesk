@@ -9,12 +9,18 @@ import type {
   ToolCall,
   WorkspaceFilePreviewResult,
   WorkspaceListResult,
+  WorkspaceSearchMatch,
+  WorkspaceSearchMode,
+  WorkspaceSearchResult,
   WorkspaceSettings,
   WorkspaceTreeEntry
 } from "@nexadesk/shared";
 
 const execFileAsync = promisify(execFile);
 const maxPreviewFileSize = 256_000;
+const maxWorkspaceSearchEntries = 3000;
+const maxWorkspaceSearchMatches = 80;
+const ignoredWorkspaceEntries = new Set([".git", "node_modules", "dist", "build", "release", ".vite", ".turbo", ".cache"]);
 
 export type AgentToolRequest = {
   tool: AgentToolName;
@@ -274,6 +280,83 @@ export async function readWorkspaceFilePreview(
   }
 }
 
+export async function searchWorkspaceFiles({
+  workspace,
+  query,
+  mode,
+  inputPath = "."
+}: {
+  workspace: WorkspaceSettings;
+  query: string;
+  mode: WorkspaceSearchMode;
+  inputPath?: string;
+}): Promise<WorkspaceSearchResult> {
+  const root = getWorkspaceRoot(workspace);
+  const normalizedQuery = query.trim();
+  let target = root;
+  let currentPath = inputPath || ".";
+  const matches: WorkspaceSearchMatch[] = [];
+  let searchedEntries = 0;
+  let truncated = false;
+
+  try {
+    target = resolveWorkspacePath(workspace, inputPath || ".");
+    currentPath = toWorkspacePath(relative(root, target)) || ".";
+    if (!normalizedQuery) {
+      return { root, path: currentPath, query: normalizedQuery, mode, matches, searchedEntries };
+    }
+    const info = await stat(target);
+    if (!info.isDirectory()) {
+      return {
+        root,
+        path: currentPath,
+        query: normalizedQuery,
+        mode,
+        matches,
+        searchedEntries,
+        error: "搜索路径不是目录。"
+      };
+    }
+
+    await walkSearchDirectory(target, root, normalizedQuery.toLocaleLowerCase(), mode, {
+      onEntry() {
+        searchedEntries += 1;
+        if (searchedEntries >= maxWorkspaceSearchEntries) {
+          truncated = true;
+          return false;
+        }
+        return matches.length < maxWorkspaceSearchMatches;
+      },
+      onMatch(match) {
+        if (matches.length < maxWorkspaceSearchMatches) {
+          matches.push(match);
+        }
+      }
+    });
+
+    return {
+      root,
+      path: currentPath,
+      query: normalizedQuery,
+      mode,
+      matches,
+      searchedEntries,
+      truncated: truncated || matches.length >= maxWorkspaceSearchMatches,
+      error: truncated ? `仅搜索前 ${maxWorkspaceSearchEntries} 项。` : undefined
+    };
+  } catch (error) {
+    return {
+      root,
+      path: currentPath,
+      query: normalizedQuery,
+      mode,
+      matches,
+      searchedEntries,
+      error: error instanceof Error ? error.message : "工作区搜索失败。"
+    };
+  }
+}
+
 async function readWorkspaceFile(request: AgentToolRequest, workspace: WorkspaceSettings) {
   if (!request.path) {
     throw new Error("read_file 需要 path。");
@@ -446,6 +529,94 @@ function isPathInside(root: string, target: string) {
 
 function toWorkspacePath(path: string) {
   return path.split(sep).join("/");
+}
+
+async function walkSearchDirectory(
+  directory: string,
+  root: string,
+  query: string,
+  mode: WorkspaceSearchMode,
+  callbacks: {
+    onEntry: () => boolean;
+    onMatch: (match: WorkspaceSearchMatch) => void;
+  }
+) {
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+  entries.sort((left, right) => {
+    if (left.isDirectory() !== right.isDirectory()) {
+      return left.isDirectory() ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name, "zh-CN");
+  });
+
+  for (const entry of entries) {
+    if (!callbacks.onEntry()) {
+      return;
+    }
+    if (isIgnoredWorkspaceEntry(entry.name)) {
+      continue;
+    }
+
+    const childPath = join(directory, entry.name);
+    const relativePath = toWorkspacePath(relative(root, childPath)) || entry.name;
+    const info = await stat(childPath).catch(() => null);
+    const kind = entry.isDirectory() ? "folder" : "file";
+
+    if (mode === "name" && entry.name.toLocaleLowerCase().includes(query)) {
+      callbacks.onMatch({
+        name: entry.name,
+        path: relativePath,
+        kind,
+        size: info?.isFile() ? info.size : undefined,
+        modifiedAt: info?.mtime ? info.mtime.toISOString() : undefined
+      });
+    }
+
+    if (mode === "content" && entry.isFile() && info?.size !== undefined && info.size <= maxPreviewFileSize) {
+      const match = await findContentMatch(childPath, relativePath, entry.name, info.size, info.mtime.toISOString(), query);
+      if (match) {
+        callbacks.onMatch(match);
+      }
+    }
+
+    if (entry.isDirectory()) {
+      await walkSearchDirectory(childPath, root, query, mode, callbacks);
+    }
+  }
+}
+
+async function findContentMatch(
+  filePath: string,
+  relativePath: string,
+  name: string,
+  size: number,
+  modifiedAt: string,
+  query: string
+) {
+  try {
+    const content = await readFile(filePath, "utf8");
+    const lines = content.split(/\r?\n/);
+    const lineIndex = lines.findIndex((line) => line.toLocaleLowerCase().includes(query));
+    if (lineIndex === -1) {
+      return null;
+    }
+    const matchedLine = lines[lineIndex] ?? "";
+    return {
+      name,
+      path: relativePath,
+      kind: "file" as const,
+      size,
+      modifiedAt,
+      line: lineIndex + 1,
+      preview: matchedLine.trim().slice(0, 220)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isIgnoredWorkspaceEntry(name: string) {
+  return ignoredWorkspaceEntries.has(name.toLocaleLowerCase());
 }
 
 function formatSize(size: number) {

@@ -102,6 +102,16 @@ try {
   const workspaceFile = await requestJson("/api/workspace/file?path=workspace-panel-smoke.txt");
   assert(workspaceFile.exists === true, "workspace file preview did not report an existing file");
   assert(workspaceFile.content === "workspace panel smoke", "workspace file preview did not return the smoke file content");
+  const workspaceNameSearch = await requestJson("/api/workspace/search?query=panel&mode=name&path=.");
+  assert(
+    workspaceNameSearch.matches.some((match) => match.name === "workspace-panel-smoke.txt"),
+    "workspace filename search did not include the smoke file"
+  );
+  const workspaceContentSearch = await requestJson("/api/workspace/search?query=workspace%20panel&mode=content&path=.");
+  assert(
+    workspaceContentSearch.matches.some((match) => match.path === "workspace-panel-smoke.txt" && match.line === 1),
+    "workspace content search did not include the smoke file"
+  );
 
   const secretsRaw = await readFile(secretsPath, "utf8");
   const secrets = JSON.parse(secretsRaw);

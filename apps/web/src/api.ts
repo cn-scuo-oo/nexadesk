@@ -14,7 +14,9 @@
   SaveSettingsRequest,
   SendMessageRequest,
   WorkspaceFilePreviewResult,
-  WorkspaceListResult
+  WorkspaceListResult,
+  WorkspaceSearchMode,
+  WorkspaceSearchResult
 } from "@nexadesk/shared";
 
 const apiBase =
@@ -61,6 +63,23 @@ export async function fetchWorkspaceFile(path: string): Promise<WorkspaceFilePre
     throw new Error(`Workspace file request failed with ${response.status}`);
   }
   return response.json() as Promise<WorkspaceFilePreviewResult>;
+}
+
+export async function fetchWorkspaceSearch({
+  query,
+  mode,
+  path = "."
+}: {
+  query: string;
+  mode: WorkspaceSearchMode;
+  path?: string;
+}): Promise<WorkspaceSearchResult> {
+  const params = new URLSearchParams({ query, mode, path });
+  const response = await fetch(`${apiBase}/api/workspace/search?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Workspace search request failed with ${response.status}`);
+  }
+  return response.json() as Promise<WorkspaceSearchResult>;
 }
 
 export async function saveSettings(payload: SaveSettingsRequest): Promise<{

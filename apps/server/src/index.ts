@@ -30,6 +30,7 @@ import {
   parseToolRequests,
   prepareToolRequest,
   readWorkspaceFilePreview,
+  searchWorkspaceFiles,
   summarizeToolRequest,
   type AgentToolContext,
   type AgentToolRequest
@@ -134,6 +135,18 @@ app.get("/api/workspace/file", async (req, res, next) => {
     const settings = await loadSettings(snapshot.providers);
     const path = typeof req.query.path === "string" ? req.query.path : "";
     res.json(await readWorkspaceFilePreview(settings.workspace, path));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/workspace/search", async (req, res, next) => {
+  try {
+    const settings = await loadSettings(snapshot.providers);
+    const query = typeof req.query.query === "string" ? req.query.query : "";
+    const path = typeof req.query.path === "string" ? req.query.path : ".";
+    const mode = req.query.mode === "content" ? "content" : "name";
+    res.json(await searchWorkspaceFiles({ workspace: settings.workspace, query, mode, inputPath: path }));
   } catch (error) {
     next(error);
   }

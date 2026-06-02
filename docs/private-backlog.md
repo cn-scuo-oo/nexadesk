@@ -33,6 +33,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 - Add a real workspace file panel to the workbench. Done in Phase 6 sixteenth pass.
 - Add workspace file preview and send-to-Agent read action. Done in Phase 6 seventeenth pass.
 - Prevent packaged desktop startup from being blocked by renderer smoke tests. Done in Phase 6 eighteenth pass.
+- Add workspace filename and content search in the workbench. Done in Phase 6 nineteenth pass.
 - Persist sessions and messages beyond in-memory demo state. Done in Phase 6 third pass.
 - Add per-agent model override tests.
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.

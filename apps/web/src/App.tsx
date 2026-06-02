@@ -8,6 +8,7 @@
   LayoutDashboard,
   ListChecks,
   Mail,
+  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -45,6 +46,9 @@ import {
   type WorkspaceFilePreviewResult,
   type WorkspaceFile,
   type WorkspaceListResult,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchMode,
+  type WorkspaceSearchResult,
   type WorkspaceTreeEntry
 } from "@nexadesk/shared";
 import {
@@ -54,6 +58,7 @@ import {
   fetchSnapshot,
   fetchWorkspaceFile,
   fetchWorkspaceList,
+  fetchWorkspaceSearch,
   recoverSettings as recoverAppSettings,
   resolveApproval,
   saveSettings as persistAppSettings,
@@ -3376,6 +3381,34 @@ function WorkspaceFilePanel({
 }) {
   const visiblePath = result?.path ?? currentPath;
   const canGoUp = visiblePath !== ".";
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<WorkspaceSearchMode>("name");
+  const [searchResult, setSearchResult] = useState<WorkspaceSearchResult | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  async function runWorkspaceSearch(event?: FormEvent) {
+    event?.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResult(null);
+      setSearchError(null);
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const nextResult = await fetchWorkspaceSearch({ query, mode: searchMode, path: visiblePath });
+      setSearchResult(nextResult);
+      setSearchError(nextResult.error ?? null);
+    } catch (reason) {
+      setSearchResult(null);
+      setSearchError(reason instanceof Error ? reason.message : "工作区搜索失败。");
+    } finally {
+      setSearchLoading(false);
+    }
+  }
 
   return (
     <div className="workspace-file-panel">
@@ -3392,6 +3425,35 @@ function WorkspaceFilePanel({
           上级
         </button>
       </div>
+      <form className="workspace-search-form" onSubmit={(event) => void runWorkspaceSearch(event)}>
+        <label>
+          <span>搜索工作区</span>
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="文件名或内容关键词"
+          />
+        </label>
+        <div className="workspace-search-actions">
+          <select value={searchMode} onChange={(event) => setSearchMode(event.target.value as WorkspaceSearchMode)}>
+            <option value="name">文件名</option>
+            <option value="content">内容</option>
+          </select>
+          <button className="mini-button" disabled={searchLoading || !searchQuery.trim()} type="submit">
+            <Search size={13} />
+            {searchLoading ? "搜索中" : "搜索"}
+          </button>
+        </div>
+      </form>
+      {searchResult || searchError ? (
+        <WorkspaceSearchResults
+          error={searchError}
+          loading={searchLoading}
+          result={searchResult}
+          onOpenFile={onOpenFile}
+          onOpenPath={onOpenPath}
+        />
+      ) : null}
       <div className="file-list workspace-tree-list">
         {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
         {!loading && result?.exists && result.entries.length === 0 ? (
@@ -3415,6 +3477,78 @@ function WorkspaceFilePanel({
           : null}
       </div>
     </div>
+  );
+}
+
+function WorkspaceSearchResults({
+  error,
+  loading,
+  result,
+  onOpenFile,
+  onOpenPath
+}: {
+  error: string | null;
+  loading: boolean;
+  result: WorkspaceSearchResult | null;
+  onOpenFile: (entry: WorkspaceTreeEntry) => void;
+  onOpenPath: (path: string) => void;
+}) {
+  return (
+    <div className="workspace-search-results">
+      <div className="workspace-search-summary">
+        <strong>搜索结果</strong>
+        <span>
+          {loading
+            ? "正在搜索..."
+            : result
+              ? `${result.matches.length} 项 · ${result.mode === "name" ? "文件名" : "内容"}`
+              : "无结果"}
+        </span>
+      </div>
+      {error ? <p className="workspace-search-error">{error}</p> : null}
+      {result && result.matches.length === 0 && !loading ? (
+        <EmptyState title="没有匹配结果" detail="换一个关键词，或切换文件名/内容搜索。" />
+      ) : null}
+      {result?.matches.map((match) => (
+        <WorkspaceSearchRow key={`${match.path}-${match.line ?? "path"}`} match={match} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
+      ))}
+    </div>
+  );
+}
+
+function WorkspaceSearchRow({
+  match,
+  onOpenFile,
+  onOpenPath
+}: {
+  match: WorkspaceSearchMatch;
+  onOpenFile: (entry: WorkspaceTreeEntry) => void;
+  onOpenPath: (path: string) => void;
+}) {
+  const entry: WorkspaceTreeEntry = {
+    name: match.name,
+    path: match.path,
+    kind: match.kind,
+    size: match.size,
+    modifiedAt: match.modifiedAt
+  };
+  const open = () => {
+    if (match.kind === "folder") {
+      onOpenPath(match.path);
+      return;
+    }
+    onOpenFile(entry);
+  };
+
+  return (
+    <button className="workspace-search-row" onClick={open} type="button">
+      <span>
+        {match.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
+        <strong>{match.name}</strong>
+      </span>
+      <small>{match.line ? `${match.path}:${match.line}` : match.path}</small>
+      {match.preview ? <em>{match.preview}</em> : null}
+    </button>
   );
 }
 
