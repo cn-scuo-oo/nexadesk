@@ -2820,6 +2820,20 @@ h4 {
   font-size: 13px;
 }
 
+.skills-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skills-hero-actions .primary-button,
+.skills-hero-actions .secondary-button {
+  min-height: 34px;
+  padding-inline: 12px;
+  white-space: nowrap;
+}
+
 .skills-tabs {
   display: inline-flex;
   width: fit-content;

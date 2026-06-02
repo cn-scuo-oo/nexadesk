@@ -329,7 +329,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const runtimeText = await renderAndReadText(apiPort, "runtime");
-  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字")) {
+  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字") || !runtimeText.includes("输出 TPS") || !runtimeText.includes("Token 总量")) {
     throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
   }
   const runtimeLayout = await renderAndEvaluate(
@@ -360,7 +360,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const skillsText = await renderAndReadText(apiPort, "skills");
-  if (!skillsText.includes("已安装") || !skillsText.includes("技能市场") || !skillsText.includes("添加自定义技能") || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
+  if (!skillsText.includes("已安装") || !skillsText.includes("技能市场") || !skillsText.includes("导入技能包") || !skillsText.includes("接入本地目录") || !skillsText.includes("添加自定义技能") || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
     throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
   }
   const skillsLayout = await renderAndEvaluate(

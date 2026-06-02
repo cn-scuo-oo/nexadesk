@@ -128,10 +128,40 @@ type ProviderMatrixItem = {
 
 type WorkspaceContextView = "files" | "search";
 
+type RuntimeTelemetryEntry = {
+  id: string;
+  sessionId: string;
+  providerName: string;
+  model: string;
+  startedAt: string;
+  completedAt?: string;
+  firstTokenMs?: number;
+  durationMs?: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  status: "running" | "completed" | "failed";
+};
+
+type RuntimeDashboardStats = {
+  totalCalls: number;
+  successRateLabel: string;
+  averageCompletionLabel: string;
+  averageFirstTokenLabel: string;
+  outputTpsLabel: string;
+  modelTpsLabel: string;
+  totalTokens: number;
+  contextTokens: number;
+  telemetrySourceLabel: string;
+  trendBars: number[];
+};
+
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
 const workspaceContextViewStorageKey = "nexadesk.workspaceContext.view";
 const workspaceRecentFilesStorageKey = "nexadesk.workspaceContext.recentFiles";
+const runtimeTelemetryStorageKey = "nexadesk.runtime.telemetry";
 const maxWorkspaceRecentFiles = 8;
+const maxRuntimeTelemetryEntries = 80;
 
 const apiModeOptions: Array<{ value: ProviderApiMode; label: string }> = [
   { value: "responses", label: "OpenAI Responses API" },
@@ -335,6 +365,43 @@ function writeStoredWorkspaceRecentFiles(entries: WorkspaceTreeEntry[]) {
   }
 }
 
+function readStoredRuntimeTelemetry(): RuntimeTelemetryEntry[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(runtimeTelemetryStorageKey) ?? "[]");
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter(
+        (item): item is RuntimeTelemetryEntry =>
+          typeof item?.id === "string" &&
+          typeof item.sessionId === "string" &&
+          typeof item.providerName === "string" &&
+          typeof item.model === "string" &&
+          typeof item.startedAt === "string" &&
+          typeof item.inputTokens === "number" &&
+          typeof item.outputTokens === "number" &&
+          typeof item.totalTokens === "number" &&
+          (item.status === "running" || item.status === "completed" || item.status === "failed")
+      )
+      .slice(0, maxRuntimeTelemetryEntries);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredRuntimeTelemetry(entries: RuntimeTelemetryEntry[]) {
+  try {
+    window.localStorage.setItem(runtimeTelemetryStorageKey, JSON.stringify(entries.slice(0, maxRuntimeTelemetryEntries)));
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+}
+
 function rememberWorkspaceFile(current: WorkspaceTreeEntry[], entry: WorkspaceTreeEntry) {
   if (entry.kind !== "file") {
     return current;
@@ -429,6 +496,8 @@ export function App() {
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
     readStoredWorkspaceRecentFiles()
   );
+  const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetryEntry[]>(() => readStoredRuntimeTelemetry());
+  const runtimeTelemetryRuntimeRef = useRef(new Map<string, { startedMs: number; outputTokens: number }>());
 
   useEffect(() => {
     let cancelled = false;
@@ -500,6 +569,10 @@ export function App() {
   useEffect(() => {
     writeStoredWorkspaceRecentFiles(recentWorkspaceFiles);
   }, [recentWorkspaceFiles]);
+
+  useEffect(() => {
+    writeStoredRuntimeTelemetry(runtimeTelemetry);
+  }, [runtimeTelemetry]);
 
   useEffect(() => {
     if (activeView !== "thread" && threadContextOpen) {
@@ -576,6 +649,10 @@ export function App() {
     [mcpToolResults]
   );
   const runningAgents = snapshot?.agents.filter((agent) => agent.status === "running") ?? [];
+  const runtimeStats = useMemo(
+    () => buildRuntimeDashboardStats(snapshot?.messages ?? [], runtimeTelemetry, activeSession?.id ?? null),
+    [activeSession, runtimeTelemetry, snapshot]
+  );
   const workspaceSignature = [
     runtimeSettings.workspace.defaultWorkspace,
     runtimeSettings.workspace.exportDirectory,
@@ -717,14 +794,93 @@ export function App() {
     setError(null);
     handleOpenView("thread");
     try {
+      const streamStartedMs = performance.now();
+      let activeTelemetryMessageId: string | null = null;
       await streamMessage(activeSession.id, {
         content: trimmedContent,
         providerId: activeRuntimeProvider?.id,
         model: activeRuntimeModel,
         agentId: activeAgent?.id
       }, (streamEvent) => {
+        if (streamEvent.type === "assistant_start") {
+          activeTelemetryMessageId = streamEvent.message.id;
+          runtimeTelemetryRuntimeRef.current.set(streamEvent.message.id, {
+            startedMs: streamStartedMs,
+            outputTokens: 0
+          });
+          const entry: RuntimeTelemetryEntry = {
+            id: streamEvent.message.id,
+            sessionId: activeSession.id,
+            providerName: streamEvent.provider.name,
+            model: streamEvent.provider.model,
+            startedAt: new Date().toISOString(),
+            inputTokens: estimateTokenCount(trimmedContent),
+            outputTokens: 0,
+            totalTokens: estimateTokenCount(trimmedContent),
+            status: "running"
+          };
+          setRuntimeTelemetry((current) => [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, maxRuntimeTelemetryEntries));
+        }
+        if (streamEvent.type === "assistant_delta") {
+          const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.messageId);
+          if (runtime) {
+            const nowMs = performance.now();
+            const deltaTokens = estimateTokenCount(streamEvent.delta);
+            runtime.outputTokens += deltaTokens;
+            runtimeTelemetryRuntimeRef.current.set(streamEvent.messageId, runtime);
+            setRuntimeTelemetry((current) =>
+              current.map((entry) =>
+                entry.id === streamEvent.messageId
+                  ? {
+                      ...entry,
+                      firstTokenMs: entry.firstTokenMs ?? Math.max(0, Math.round(nowMs - runtime.startedMs)),
+                      outputTokens: runtime.outputTokens,
+                      totalTokens: entry.inputTokens + runtime.outputTokens
+                    }
+                  : entry
+              )
+            );
+          }
+        }
+        if (streamEvent.type === "assistant_done") {
+          const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.message.id);
+          const finishedMs = performance.now();
+          const outputTokens = estimateTokenCount(streamEvent.message.content);
+          setRuntimeTelemetry((current) =>
+            current.map((entry) =>
+              entry.id === streamEvent.message.id
+                ? {
+                    ...entry,
+                    completedAt: new Date().toISOString(),
+                    durationMs: runtime ? Math.max(0, Math.round(finishedMs - runtime.startedMs)) : entry.durationMs,
+                    outputTokens,
+                    totalTokens: entry.inputTokens + outputTokens,
+                    status: "completed"
+                  }
+                : entry
+            )
+          );
+          runtimeTelemetryRuntimeRef.current.delete(streamEvent.message.id);
+        }
         if (streamEvent.type === "error") {
           setError(streamEvent.message);
+          const failedMessageId = streamEvent.messageId ?? activeTelemetryMessageId;
+          if (failedMessageId) {
+            const runtime = runtimeTelemetryRuntimeRef.current.get(failedMessageId);
+            setRuntimeTelemetry((current) =>
+              current.map((entry) =>
+                entry.id === failedMessageId
+                  ? {
+                      ...entry,
+                      completedAt: new Date().toISOString(),
+                      durationMs: runtime ? Math.max(0, Math.round(performance.now() - runtime.startedMs)) : entry.durationMs,
+                      status: "failed"
+                    }
+                  : entry
+              )
+            );
+            runtimeTelemetryRuntimeRef.current.delete(failedMessageId);
+          }
         }
         setSnapshot((current) => (current ? applyChatStreamEvent(current, streamEvent) : current));
       });
@@ -1015,6 +1171,58 @@ export function App() {
     await handleSaveSettings(nextSettings);
   }
 
+  async function handleImportSkillPackage(raw: string, fileName = "skill-package.json") {
+    if (!settings) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      const importedSkills = sanitizeImportedSkills(parsed, fileName);
+      if (importedSkills.length === 0) {
+        setSettingsStatus("技能包没有可导入的技能。");
+        return;
+      }
+      const mergedSkills = mergeImportedSkills(settings.assistant.skills, importedSkills);
+      await handleSaveSettings({
+        ...settings,
+        assistant: {
+          ...settings.assistant,
+          skills: mergedSkills
+        }
+      });
+      setSettingsStatus(`已导入 ${importedSkills.length} 个技能：${importedSkills.map((skill) => skill.name).join("、")}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "技能包导入失败。");
+    }
+  }
+
+  async function handleImportPluginDirectory() {
+    if (!settings) {
+      return;
+    }
+    if (!window.nexadeskDesktop?.selectDirectory) {
+      setSettingsStatus("当前环境没有桌面目录选择器，启动桌面应用后可导入本地插件目录。");
+      return;
+    }
+    const directory = await window.nexadeskDesktop.selectDirectory({
+      title: "选择本地技能或插件目录",
+      defaultPath: runtimeSettings.workspace.defaultWorkspace || runtimeSettings.workspace.exportDirectory
+    });
+    if (!directory) {
+      return;
+    }
+    const importedSkill = createSkillFromPluginDirectory(directory);
+    const mergedSkills = mergeImportedSkills(settings.assistant.skills, [importedSkill]);
+    await handleSaveSettings({
+      ...settings,
+      assistant: {
+        ...settings.assistant,
+        skills: mergedSkills
+      }
+    });
+    setSettingsStatus(`已接入本地插件目录：${importedSkill.name}`);
+  }
+
   async function handleSaveMcpServer(server: McpServerSettings) {
     if (!settings) {
       return;
@@ -1136,6 +1344,16 @@ export function App() {
     if (mode === "demo") {
       setSettings(updatedSettings);
       setSettingsStatus("Saved in demo state. Start the API server for disk persistence.");
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              providers: updatedSettings.providers,
+              agents: updatedSettings.assistant.agents,
+              skills: updatedSettings.assistant.skills
+            }
+          : current
+      );
       return updatedSettings;
     }
 
@@ -1485,12 +1703,15 @@ export function App() {
             activeApprovals={activeApprovals}
             configuredProviders={configuredProviders}
             enabledSkills={enabledSkills.length}
+            runtimeStats={runtimeStats}
             runningAgents={runningAgents.length}
             totalAgents={snapshot.agents.length}
           />
         ) : activeView === "skills" ? (
           <SkillsHubView
             skills={snapshot.skills}
+            onImportPluginDirectory={() => void handleImportPluginDirectory()}
+            onImportSkillPackage={(raw, fileName) => void handleImportSkillPackage(raw, fileName)}
             onOpenSettings={() => handleOpenSettings("skills")}
             onToggleSkill={(skillId, enabled) => void handleToggleSkillFromHub(skillId, enabled)}
           />
@@ -2903,6 +3124,7 @@ function RuntimeDashboardView({
   activeRuntimeProvider,
   configuredProviders,
   enabledSkills,
+  runtimeStats,
   runningAgents,
   totalAgents
 }: {
@@ -2911,14 +3133,10 @@ function RuntimeDashboardView({
   activeRuntimeProvider?: ProviderSettings;
   configuredProviders: number;
   enabledSkills: number;
+  runtimeStats: RuntimeDashboardStats;
   runningAgents: number;
   totalAgents: number;
 }) {
-  const totalRuntimeSurfaces = Math.max(1, configuredProviders + runningAgents + enabledSkills + activeApprovals);
-  const successRate = activeApprovals > 0 ? "待确认" : "100%";
-  const avgCompletion = runningAgents > 0 ? "运行中" : "空闲";
-  const trendBars = [28, 42, 36, 58, 52, 68, 61, 74, 66, 82, 76, 88];
-
   return (
     <section className="workspace module-workspace runtime-dashboard-workspace">
       <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。" />
@@ -2933,14 +3151,14 @@ function RuntimeDashboardView({
           </div>
 
           <div className="runtime-metric-grid runtime-dashboard-metrics">
-            <Metric label="总调用" value={String(totalRuntimeSurfaces)} hint="本地运行面统计" />
-            <Metric label="成功率" value={successRate} hint={activeApprovals > 0 ? "审批未完成" : "无失败事件"} />
-            <Metric label="平均完成时间" value={avgCompletion} hint="待接真实遥测" />
-            <Metric label="平均首字" value={activeRuntimeModel ? "可用" : "-"} hint="TTFT 预留位" />
-            <Metric label="输出 TPS" value={runningAgents > 0 ? "实时" : "-"} hint="输出阶段 TPS" />
-            <Metric label="Model TPS" value={configuredProviders > 0 ? "可测" : "-"} hint="模型吞吐预留" />
-            <Metric label="Token 总量" value={enabledSkills > 0 ? `${enabledSkills} 技能` : "-"} hint="待接 Token 统计" />
-            <Metric label="上下文 Token" value={String(activeApprovals)} hint="审批/上下文压力" />
+            <Metric label="总调用" value={String(runtimeStats.totalCalls)} hint={runtimeStats.telemetrySourceLabel} />
+            <Metric label="成功率" value={runtimeStats.successRateLabel} hint="按模型流工具状态统计" />
+            <Metric label="平均完成时间" value={runtimeStats.averageCompletionLabel} hint="用户消息到助手完成" />
+            <Metric label="平均首字" value={runtimeStats.averageFirstTokenLabel} hint="流式首个 delta" />
+            <Metric label="输出 TPS" value={runtimeStats.outputTpsLabel} hint="输出 token / 生成耗时" />
+            <Metric label="Model TPS" value={runtimeStats.modelTpsLabel} hint="输入+输出 token / 总耗时" />
+            <Metric label="Token 总量" value={formatCompactNumber(runtimeStats.totalTokens)} hint="按真实消息内容估算" />
+            <Metric label="上下文 Token" value={formatCompactNumber(runtimeStats.contextTokens)} hint="当前会话上下文估算" />
           </div>
 
           <section className="runtime-chart panel-block runtime-chart-card">
@@ -2952,7 +3170,7 @@ function RuntimeDashboardView({
               <span className="status ready">{activeRuntimeProvider?.connected ? "在线" : "未连接"}</span>
             </div>
             <div className="runtime-chart-visual" aria-label="调用趋势图">
-              {trendBars.map((height, index) => (
+              {runtimeStats.trendBars.map((height, index) => (
                 <span key={index} style={{ "--bar-height": `${height}%` } as CSSProperties} />
               ))}
             </div>
@@ -3009,16 +3227,21 @@ function RuntimeDashboardView({
 
 function SkillsHubView({
   skills,
+  onImportPluginDirectory,
+  onImportSkillPackage,
   onOpenSettings,
   onToggleSkill
 }: {
   skills: SkillProfile[];
+  onImportPluginDirectory: () => void;
+  onImportSkillPackage: (raw: string, fileName: string) => void;
   onOpenSettings: () => void;
   onToggleSkill: (skillId: string, enabled: boolean) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"installed" | "market">("installed");
   const [activeCategory, setActiveCategory] = useState("全部");
   const [query, setQuery] = useState("");
+  const skillPackageInputRef = useRef<HTMLInputElement | null>(null);
   const categories = ["全部", "推荐", "编程开发", "办公文档", "数据分析", "自动化", "研究写作"];
   const enabledSkills = skills.filter((skill) => skill.enabled);
   const visibleSkills = skills.filter((skill) => {
@@ -3043,9 +3266,31 @@ function SkillsHubView({
             <h3>给智能体装上可复用能力</h3>
             <span>{enabledSkills.length} 个技能已启用 · {skills.length} 个技能可配置</span>
           </div>
-          <button className="primary-button" onClick={onOpenSettings} type="button">
-            添加自定义技能
-          </button>
+          <div className="skills-hero-actions">
+            <button className="primary-button" onClick={() => skillPackageInputRef.current?.click()} type="button">
+              导入技能包
+            </button>
+            <button className="secondary-button" onClick={onImportPluginDirectory} type="button">
+              接入本地目录
+            </button>
+            <button className="secondary-button" onClick={onOpenSettings} type="button">
+              添加自定义技能
+            </button>
+            <input
+              ref={skillPackageInputRef}
+              accept="application/json,.json"
+              hidden
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                  return;
+                }
+                file.text().then((text) => onImportSkillPackage(text, file.name));
+                event.currentTarget.value = "";
+              }}
+            />
+          </div>
         </section>
 
         <div className="skills-tabs" aria-label="技能视图">
@@ -3145,6 +3390,80 @@ function skillSourceLabel(source: SkillProfile["source"]) {
     extension: "扩展技能"
   };
   return labels[source];
+}
+
+function sanitizeImportedSkills(value: unknown, fileName: string): SkillProfile[] {
+  const candidates = Array.isArray(value)
+    ? value
+    : Array.isArray((value as { skills?: unknown })?.skills)
+      ? (value as { skills: unknown[] }).skills
+      : (value as { skill?: unknown })?.skill
+        ? [(value as { skill: unknown }).skill]
+        : [value];
+  return candidates
+    .map((item, index) => sanitizeImportedSkill(item, fileName, index))
+    .filter((skill): skill is SkillProfile => Boolean(skill));
+}
+
+function sanitizeImportedSkill(value: unknown, fileName: string, index: number): SkillProfile | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Partial<SkillProfile> & { path?: string; prompt?: string };
+  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : "";
+  const instructions =
+    typeof record.instructions === "string" && record.instructions.trim()
+      ? record.instructions.trim()
+      : typeof record.prompt === "string" && record.prompt.trim()
+        ? record.prompt.trim()
+        : "";
+  if (!name || !instructions) {
+    return null;
+  }
+  const baseId =
+    typeof record.id === "string" && record.id.trim()
+      ? record.id.trim()
+      : `${fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]+/g, "-")}-${index + 1}`;
+  const source: SkillProfile["source"] = record.source === "extension" ? "extension" : "custom";
+  return {
+    id: `custom-${baseId}`.replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase(),
+    name,
+    description:
+      typeof record.description === "string" && record.description.trim()
+        ? record.description.trim()
+        : `Imported from ${fileName}`,
+    enabled: typeof record.enabled === "boolean" ? record.enabled : true,
+    source,
+    instructions
+  };
+}
+
+function createSkillFromPluginDirectory(directory: string): SkillProfile {
+  const normalized = directory.replace(/[\\/]+$/, "");
+  const name = normalized.split(/[\\/]/).filter(Boolean).pop() ?? "Local plugin skill";
+  return {
+    id: `local-plugin-${hashShort(normalized)}`,
+    name,
+    description: `本地插件目录：${normalized}`,
+    enabled: true,
+    source: "extension",
+    instructions: `使用本地插件目录中的技能说明和工具资源。目录路径：${normalized}。执行前先确认目录内容和高风险动作审批。`
+  };
+}
+
+function mergeImportedSkills(existing: SkillProfile[], imported: SkillProfile[]) {
+  const importedById = new Map(imported.map((skill) => [skill.id, skill]));
+  const merged = existing.map((skill) => importedById.get(skill.id) ?? skill);
+  const existingIds = new Set(existing.map((skill) => skill.id));
+  return [...merged, ...imported.filter((skill) => !existingIds.has(skill.id))];
+}
+
+function hashShort(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
 }
 
 function McpHubView({
@@ -6427,6 +6746,149 @@ function formatRelativeTime(value: string) {
     return `${Math.floor(diffMs / hour)}小时前`;
   }
   return `${Math.floor(diffMs / day)}天前`;
+}
+
+function estimateTokenCount(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const cjk = trimmed.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const words = trimmed.replace(/[\u3400-\u9fff]/g, " ").split(/\s+/).filter(Boolean).length;
+  const otherChars = Math.max(0, trimmed.length - cjk);
+  return Math.max(1, Math.ceil(cjk * 0.75 + words * 1.3 + otherChars / 5));
+}
+
+function buildRuntimeDashboardStats(
+  messages: ChatMessage[],
+  telemetry: RuntimeTelemetryEntry[],
+  activeSessionId: string | null
+): RuntimeDashboardStats {
+  const modelMessages = messages.filter((message) =>
+    message.toolCalls?.some((tool) => tool.name === "model.stream")
+  );
+  const modelTools = modelMessages.flatMap((message) => message.toolCalls?.filter((tool) => tool.name === "model.stream") ?? []);
+  const totalCalls = Math.max(modelTools.length, telemetry.length);
+  const completedCalls =
+    telemetry.length > 0
+      ? telemetry.filter((entry) => entry.status === "completed").length
+      : modelTools.filter((tool) => tool.status === "completed" || tool.status === "approved").length;
+  const failedCalls =
+    telemetry.length > 0
+      ? telemetry.filter((entry) => entry.status === "failed").length
+      : modelTools.filter((tool) => tool.status === "failed" || tool.status === "rejected").length;
+  const successBase = Math.max(1, telemetry.length || modelTools.length || totalCalls);
+  const successRateLabel = totalCalls === 0 ? "-" : `${Math.round((Math.max(0, completedCalls - failedCalls) / successBase) * 100)}%`;
+
+  const sortedMessages = [...messages].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  const completionDurations: number[] = [];
+  const lastUserBySession = new Map<string, ChatMessage>();
+  for (const message of sortedMessages) {
+    if (message.role === "user") {
+      lastUserBySession.set(message.sessionId, message);
+      continue;
+    }
+    if (message.role === "assistant") {
+      const userMessage = lastUserBySession.get(message.sessionId);
+      if (userMessage) {
+        const duration = new Date(message.createdAt).getTime() - new Date(userMessage.createdAt).getTime();
+        if (duration >= 0 && duration < 60 * 60 * 1000) {
+          completionDurations.push(duration);
+        }
+        lastUserBySession.delete(message.sessionId);
+      }
+    }
+  }
+
+  const completedTelemetry = telemetry.filter((entry) => entry.status === "completed" && entry.durationMs && entry.durationMs > 0);
+  const firstTokenValues = telemetry
+    .map((entry) => entry.firstTokenMs)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const totalTokens = Math.max(
+    telemetry.reduce((sum, entry) => sum + entry.totalTokens, 0),
+    messages.reduce((sum, message) => sum + estimateTokenCount(message.content), 0)
+  );
+  const activeSessionMessages = activeSessionId ? messages.filter((message) => message.sessionId === activeSessionId) : messages;
+  const contextTokens = activeSessionMessages.reduce((sum, message) => sum + estimateTokenCount(message.content), 0);
+  const outputTpsValues = completedTelemetry
+    .map((entry) => {
+      const durationSeconds = Math.max(0.1, ((entry.durationMs ?? 0) - (entry.firstTokenMs ?? 0)) / 1000);
+      return entry.outputTokens / durationSeconds;
+    })
+    .filter((value) => Number.isFinite(value));
+  const modelTpsValues = completedTelemetry
+    .map((entry) => entry.totalTokens / Math.max(0.1, (entry.durationMs ?? 0) / 1000))
+    .filter((value) => Number.isFinite(value));
+  const trendBars = bucketRuntimeTrend([
+    ...modelMessages.map((message) => ({ createdAt: message.createdAt })),
+    ...telemetry.map((entry) => ({ createdAt: entry.startedAt }))
+  ]);
+
+  return {
+    totalCalls,
+    successRateLabel,
+    averageCompletionLabel: formatAverageMs([...completionDurations, ...completedTelemetry.map((entry) => entry.durationMs ?? 0)]),
+    averageFirstTokenLabel: formatAverageMs(firstTokenValues),
+    outputTpsLabel: formatTps(outputTpsValues),
+    modelTpsLabel: formatTps(modelTpsValues),
+    totalTokens,
+    contextTokens,
+    telemetrySourceLabel: telemetry.length > 0 ? "真实流式 telemetry + 历史消息" : "历史消息派生",
+    trendBars
+  };
+}
+
+function bucketRuntimeTrend(items: Array<{ createdAt: string }>) {
+  const bucketCount = 12;
+  const now = Date.now();
+  const windowMs = 24 * 60 * 60 * 1000;
+  const bucketMs = windowMs / bucketCount;
+  const buckets = Array.from({ length: bucketCount }, () => 0);
+  for (const item of items) {
+    const time = new Date(item.createdAt).getTime();
+    if (!Number.isFinite(time)) {
+      continue;
+    }
+    const age = now - time;
+    if (age < 0 || age > windowMs) {
+      continue;
+    }
+    const index = Math.min(bucketCount - 1, Math.max(0, bucketCount - 1 - Math.floor(age / bucketMs)));
+    buckets[index] = (buckets[index] ?? 0) + 1;
+  }
+  const max = Math.max(1, ...buckets);
+  return buckets.map((count) => (count === 0 ? 8 : Math.max(18, Math.round((count / max) * 88))));
+}
+
+function formatAverageMs(values: number[]) {
+  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (valid.length === 0) {
+    return "-";
+  }
+  const average = valid.reduce((sum, value) => sum + value, 0) / valid.length;
+  return average < 1000 ? `${Math.round(average)}ms` : `${(average / 1000).toFixed(1)}s`;
+}
+
+function formatTps(values: number[]) {
+  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (valid.length === 0) {
+    return "-";
+  }
+  const average = valid.reduce((sum, value) => sum + value, 0) / valid.length;
+  return average >= 100 ? average.toFixed(0) : average.toFixed(1);
+}
+
+function formatCompactNumber(value: number) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
+  }
+  return String(value);
 }
 
 function Metric({ hint, label, value }: { hint?: string; label: string; value: string }) {
