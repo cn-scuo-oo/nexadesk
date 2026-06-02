@@ -1,6 +1,6 @@
 :root {
-  color: #1f241f;
-  background: #f3efe6;
+  color: #231f18;
+  background: #fff3bf;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -62,31 +62,28 @@ h4 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr) minmax(288px, 320px);
+  grid-template-columns: minmax(216px, 240px) minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(46, 111, 92, 0.12), transparent 32%),
-    radial-gradient(circle at 86% 12%, rgba(208, 171, 98, 0.14), transparent 28%),
-    linear-gradient(180deg, #faf7ef 0%, #f1ede4 100%);
+  background: #fff3bf;
 }
 
 .app-shell.context-collapsed {
-  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr) 52px;
+  grid-template-columns: minmax(216px, 240px) minmax(0, 1fr);
 }
 
 .app-shell.settings-mode {
-  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(216px, 240px) minmax(0, 1fr);
 }
 
 .app-shell.no-context {
-  grid-template-columns: 56px minmax(224px, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(216px, 240px) minmax(0, 1fr);
 }
 
 .rail {
-  display: flex;
+  display: none;
   align-items: center;
   flex-direction: column;
   gap: 14px;
@@ -144,15 +141,14 @@ h4 {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid #ded6c7;
-  background: rgba(255, 252, 246, 0.86);
-  backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(222, 177, 71, 0.28);
+  background: #fff3bf;
 }
 
 .sidebar {
-  gap: 18px;
+  gap: 14px;
   overflow: hidden;
-  padding: 20px 12px;
+  padding: 18px 12px 14px;
 }
 
 .right-dock {
@@ -172,19 +168,26 @@ h4 {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: 8px 8px 8px 0;
+  background: #fff3bf;
 }
 
 .product-title {
   display: grid;
   gap: 4px;
-  padding: 2px 4px 6px;
+  padding: 10px 10px 8px;
 }
 
 .product-title span {
-  color: #786f61;
+  color: #756342;
   font-size: 12px;
   font-weight: 800;
+}
+
+.product-title h1 {
+  color: #221d15;
+  font-size: 24px;
+  line-height: 1.05;
 }
 
 .eyebrow {
@@ -266,7 +269,7 @@ h4 {
 }
 
 .section-heading {
-  color: #60756d;
+  color: #806536;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -282,9 +285,9 @@ h4 {
 .mini-button {
   min-height: 24px;
   border-radius: 7px;
-  padding: 0 9px;
-  color: #255646;
-  background: #e2eee8;
+  padding: 0 10px;
+  color: #8a4d00;
+  background: #ffe3a2;
   font-size: 12px;
   font-weight: 800;
 }
@@ -299,7 +302,7 @@ h4 {
 }
 
 .nav-list {
-  gap: 7px;
+  gap: 5px;
 }
 
 .nav-item {
@@ -307,10 +310,10 @@ h4 {
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  min-height: 46px;
-  border-radius: 8px;
+  min-height: 42px;
+  border-radius: 9px;
   padding: 8px 10px;
-  color: #342f28;
+  color: #4a3b24;
   text-decoration: none;
   font-weight: 700;
 }
@@ -324,16 +327,16 @@ h4 {
 
 .nav-item.active,
 .nav-item:hover {
-  color: #102f28;
-  background: #efe7d7;
+  color: #c66b00;
+  background: #ffe5a7;
 }
 
 .nav-item b {
   min-width: 22px;
   border-radius: 999px;
   padding: 2px 7px;
-  color: #2c5b4c;
-  background: #d8e6dc;
+  color: #7d4d00;
+  background: #fff2c8;
   font-size: 11px;
   text-align: center;
 }
@@ -422,17 +425,17 @@ h4 {
   align-items: center;
   gap: 10px;
   width: 100%;
-  border: 1px solid #d8d0c1;
+  border: 1px solid rgba(199, 150, 55, 0.36);
   border-radius: 10px;
   padding: 10px;
   color: #2d281f;
-  background: #fffaf2;
+  background: #fff9df;
   text-align: left;
 }
 
 .run-target-card:hover {
-  border-color: #bfd2c5;
-  background: #f5f0e6;
+  border-color: #e9b864;
+  background: #ffeab5;
 }
 
 .run-target-avatar {
@@ -477,19 +480,19 @@ h4 {
 
 .target-chip {
   min-height: 26px;
-  border: 1px solid #ded7ca;
+  border: 1px solid rgba(199, 150, 55, 0.36);
   border-radius: 999px;
   padding: 0 9px;
   color: #51483b;
-  background: #fffdf8;
+  background: #fff9df;
   font-size: 11px;
   font-weight: 900;
 }
 
 .target-chip.active {
-  color: #1e5b45;
-  border-color: #bfd9cb;
-  background: #e2f0e8;
+  color: #8a4d00;
+  border-color: #e7b75d;
+  background: #ffe5a7;
 }
 
 .session-history-list {
@@ -506,8 +509,8 @@ h4 {
   gap: 9px;
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 9px;
+  padding: 9px 10px;
   color: #2f2a23;
   background: transparent;
   text-align: left;
@@ -515,19 +518,19 @@ h4 {
 
 .session-batch-bar {
   justify-content: space-between;
-  border: 1px solid #ded7ca;
+  border: 1px solid rgba(199, 150, 55, 0.36);
   border-radius: 8px;
   padding: 7px 8px;
   color: #62584b;
-  background: #fffaf2;
+  background: #fff9df;
   font-size: 12px;
   font-weight: 900;
 }
 
 .session-history-card:hover,
 .session-history-card.active {
-  border-color: #ded7ca;
-  background: #efe7d7;
+  border-color: #e7b75d;
+  background: #ffe5a7;
 }
 
 .session-history-card span:not(.history-status-dot) {
@@ -551,8 +554,8 @@ h4 {
 .session-history-card b {
   border-radius: 999px;
   padding: 3px 7px;
-  color: #31584a;
-  background: #dce8df;
+  color: #7d4d00;
+  background: #fff2c8;
   font-size: 10px;
 }
 
@@ -573,8 +576,8 @@ h4 {
 }
 
 .muted-history-card {
-  border: 1px dashed #d8cfbf;
-  background: rgba(255, 250, 242, 0.52);
+  border: 1px dashed rgba(199, 150, 55, 0.4);
+  background: rgba(255, 249, 223, 0.62);
 }
 
 .session-card-actions {
@@ -708,8 +711,8 @@ h4 {
   gap: 10px;
   border-radius: 8px;
   padding: 12px;
-  color: #254a40;
-  background: #e6f2ed;
+  color: #6d4c14;
+  background: #fff9df;
 }
 
 .connection-card.demo {
@@ -728,10 +731,10 @@ h4 {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  border: 1px solid rgba(222, 215, 202, 0.86);
-  border-radius: 12px;
+  border: 1px solid rgba(225, 194, 122, 0.72);
+  border-radius: 10px;
   padding: 16px;
-  background: rgba(250, 247, 239, 0.76);
+  background: #fffaf0;
 }
 
 .topbar {
@@ -1093,7 +1096,7 @@ h4 {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fff9e9;
+  background: #fffaf0;
 }
 
 .minimal-topbar,
@@ -1162,7 +1165,7 @@ h4 {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 28px 20px 72px;
+  padding: 24px 20px 70px;
   text-align: center;
 }
 
@@ -1191,10 +1194,10 @@ h4 {
   width: min(760px, 100%);
   min-height: 126px;
   overflow: hidden;
-  border: 1px solid #d8d0c1;
+  border: 1px solid #d8caa9;
   border-radius: 14px;
   background: #fffdf8;
-  box-shadow: 0 10px 28px rgba(76, 59, 34, 0.12);
+  box-shadow: 0 12px 26px rgba(145, 105, 33, 0.12);
 }
 
 .new-task-composer textarea {
@@ -1251,7 +1254,7 @@ h4 {
 
 .quick-prompt-row button {
   min-height: 38px;
-  border: 1px solid #ded7ca;
+  border: 1px solid #ded1b5;
   border-radius: 8px;
   padding: 0 14px;
   color: #413a30;
@@ -1264,12 +1267,12 @@ h4 {
   flex-direction: column;
   overflow: hidden;
   padding: 0;
-  background: #fff9e9;
+  background: #fffaf0;
 }
 
 .task-command-bar {
   padding: 10px 14px;
-  background: rgba(255, 253, 248, 0.88);
+  background: #fffaf0;
 }
 
 .task-command-left,
@@ -1396,7 +1399,7 @@ h4 {
   min-height: 0;
   flex: 1;
   place-items: stretch center;
-  padding: 14px;
+  padding: 12px;
 }
 
 .task-workbench-stage {
@@ -1406,10 +1409,10 @@ h4 {
   width: min(1180px, 100%);
   min-height: 0;
   overflow: hidden;
-  border: 1px solid #eadfca;
+  border: 1px solid #e2c98f;
   border-radius: 14px;
   background: #fffdf8;
-  box-shadow: 0 14px 34px rgba(77, 60, 32, 0.1);
+  box-shadow: 0 16px 36px rgba(145, 105, 33, 0.1);
 }
 
 .task-status-ribbon {
@@ -1419,7 +1422,7 @@ h4 {
   align-items: start;
   border-bottom: 1px solid #eadfca;
   padding: 18px 20px 14px;
-  background: linear-gradient(180deg, #fff9ea 0%, #fffdf8 100%);
+  background: linear-gradient(180deg, #fff4cf 0%, #fffdf8 100%);
 }
 
 .task-status-ribbon h2 {
@@ -1569,7 +1572,7 @@ h4 {
   gap: 10px;
   overflow: auto;
   padding: 12px;
-  background: #fff9ec;
+  background: #fff6dc;
 }
 
 .task-run-tabs {
@@ -1698,7 +1701,7 @@ h4 {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: #fff9e9;
+  background: #fffaf0;
 }
 
 .module-header {
@@ -1724,7 +1727,7 @@ h4 {
   align-items: center;
   gap: 10px;
   width: min(720px, 100%);
-  border: 1px solid #ded7ca;
+  border: 1px solid #ded1b5;
   border-radius: 10px;
   padding: 0 12px;
   background: #fffdf8;
@@ -4340,19 +4343,19 @@ h4 {
 
 @media (max-width: 1320px) {
   .app-shell {
-    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr) minmax(260px, 292px);
+    grid-template-columns: minmax(208px, 228px) minmax(0, 1fr);
   }
 
   .app-shell.context-collapsed {
-    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr) 48px;
+    grid-template-columns: minmax(208px, 228px) minmax(0, 1fr);
   }
 
   .app-shell.settings-mode {
-    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr);
+    grid-template-columns: minmax(208px, 228px) minmax(0, 1fr);
   }
 
   .app-shell.no-context {
-    grid-template-columns: 52px minmax(210px, 232px) minmax(0, 1fr);
+    grid-template-columns: minmax(208px, 228px) minmax(0, 1fr);
   }
 
   .rail {
@@ -4389,8 +4392,10 @@ h4 {
   }
 
   .rail {
+    display: flex;
     border-right: 1px solid #dbe5df;
     border-bottom: 0;
+    background: #fff3bf;
   }
 
   .sidebar {
@@ -4399,6 +4404,7 @@ h4 {
 
   .main-stage {
     grid-column: 2;
+    padding-left: 8px;
   }
 
   .right-dock {

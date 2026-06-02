@@ -1413,7 +1413,7 @@ export function App() {
                 ) : (
                   <span>
                     <strong>{session.title}</strong>
-                    <small>{runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
+                    <small>{formatRelativeTime(session.updatedAt)} · {runtimeSettings.workspace.defaultWorkspace || session.workspace}</small>
                   </span>
                 )}
                 <span className="session-card-actions" onClick={(event) => event.stopPropagation()}>
@@ -6105,6 +6105,27 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
 
 function formatTime(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function formatRelativeTime(value: string) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return "未知时间";
+  }
+  const diffMs = Date.now() - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) {
+    return "刚刚";
+  }
+  if (diffMs < hour) {
+    return `${Math.floor(diffMs / minute)}分钟前`;
+  }
+  if (diffMs < day) {
+    return `${Math.floor(diffMs / hour)}小时前`;
+  }
+  return `${Math.floor(diffMs / day)}天前`;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

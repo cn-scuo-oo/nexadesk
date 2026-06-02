@@ -269,13 +269,16 @@ async function runRendererSmokeTest(apiPort) {
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
-    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')) }))()"
+    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasRightDock: Boolean(document.querySelector('.right-dock')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
   );
   if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas) {
     throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
   }
   if (workbenchLayout.hasRightDock) {
     throw new Error("Renderer smoke test failed: new task home should not render the live context dock.");
+  }
+  if (workbenchLayout.railDisplay !== "none" || String(workbenchLayout.shellColumns).split(" ").length !== 2) {
+    throw new Error("Renderer smoke test failed: workbench shell did not use the WeSight-style two-column layout.");
   }
   if (workbenchLayout.documentWidth > workbenchLayout.viewportWidth + 2) {
     throw new Error(
