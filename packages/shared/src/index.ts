@@ -212,6 +212,7 @@ export type ChatStreamEvent =
     }
   | { type: "assistant_delta"; messageId: string; delta: string }
   | { type: "tool_call"; messageId: string; toolCall: ToolCall }
+  | { type: "tool_message"; message: ChatMessage }
   | { type: "approval_queued"; approval: PermissionRequest }
   | { type: "assistant_done"; message: ChatMessage; activity: ActivityEvent }
   | { type: "error"; message: string; messageId?: string };
@@ -758,8 +759,24 @@ export function createDemoSnapshot(now = new Date().toISOString()): AppSnapshot 
             status: "queued",
             risk: "high",
             summary: "Run typecheck and production build for the updated workbench."
+          },
+          {
+            id: "tool-2",
+            name: "read_file",
+            status: "completed",
+            risk: "low",
+            summary: "读取文件：docs/roadmap.md"
           }
         ]
+      },
+      {
+        id: "msg-tool-1",
+        sessionId: "session-1",
+        role: "tool",
+        author: "read_file",
+        content:
+          "Phase 1 - Model Center\nPhase 2 - Cowork Agent\nPhase 3 - Assistants and Skills\nPhase 4 - Desktop Packaging",
+        createdAt: now
       },
       {
         id: "msg-3",

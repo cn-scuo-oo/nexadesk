@@ -513,7 +513,8 @@ async function handleAgentToolRequests({
     }
 
     const toolMessage = appendToolMessage(assistantMessage.sessionId, execution.toolCall.name, execution.result ?? "");
-    resultLines.push(`工具 ${execution.toolCall.name} 已完成：\n${toolMessage.content.slice(0, 1800)}`);
+    onEvent?.({ type: "tool_message", message: toolMessage });
+    resultLines.push(`工具 ${execution.toolCall.name} 已完成，结果已追加为工具消息。`);
   }
 
   return [...resultLines, ...approvalLines].length

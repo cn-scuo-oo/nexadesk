@@ -979,6 +979,16 @@ function applyChatStreamEvent(snapshot: AppSnapshot, event: ChatStreamEvent): Ap
     };
   }
 
+  if (event.type === "tool_message") {
+    if (snapshot.messages.some((message) => message.id === event.message.id)) {
+      return snapshot;
+    }
+    return {
+      ...snapshot,
+      messages: [...snapshot.messages, event.message]
+    };
+  }
+
   if (event.type === "approval_queued") {
     if (snapshot.approvals.some((approval) => approval.id === event.approval.id)) {
       return snapshot;
@@ -2963,25 +2973,71 @@ function TeamNode({ agent, index }: { agent: AgentProfile; index: number }) {
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
+  const isToolMessage = message.role === "tool";
   return (
     <article className={`message ${message.role}`}>
       <div className="message-meta">
         <span className="avatar small">{message.author.slice(0, 1)}</span>
-        <strong>{message.author}</strong>
+        <strong>{isToolMessage ? toolNameLabel(message.author) : message.author}</strong>
         <time>{new Date(message.createdAt).toLocaleTimeString()}</time>
       </div>
-      <p>{message.content}</p>
+      {isToolMessage ? (
+        <pre className="tool-result-body">{message.content}</pre>
+      ) : (
+        <p>{message.content}</p>
+      )}
       {message.toolCalls?.length ? (
-        <div className="tool-call-list">
-          {message.toolCalls.map((tool) => (
-            <span className="tool-call" key={tool.id}>
-              {tool.name} - {tool.status}
-            </span>
-          ))}
-        </div>
+        <ToolCallTimeline tools={message.toolCalls} />
       ) : null}
     </article>
   );
+}
+
+function ToolCallTimeline({ tools }: { tools: ToolCall[] }) {
+  return (
+    <div className="tool-call-list" aria-label="Tool calls">
+      {tools.map((tool) => (
+        <article className={`tool-call-card ${tool.status}`} key={tool.id}>
+          <div className="tool-call-topline">
+            <span className={`tool-call-dot ${tool.status}`} />
+            <strong>{toolNameLabel(tool.name)}</strong>
+            <span className={`tool-call-status ${tool.status}`}>{toolStatusLabel(tool.status)}</span>
+          </div>
+          <p>{tool.summary}</p>
+          <div className="tool-call-meta">
+            <span className={`risk ${tool.risk}`}>{tool.risk}</span>
+            <span>{tool.name}</span>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function toolNameLabel(name: ToolCall["name"] | string) {
+  const labels: Record<string, string> = {
+    "model.stream": "模型流式输出",
+    list_dir: "列目录",
+    read_file: "读文件",
+    write_file: "写文件",
+    run_command: "执行命令",
+    search: "工作区搜索",
+    browser: "浏览器",
+    image_generate: "图片生成"
+  };
+  return labels[name] ?? name;
+}
+
+function toolStatusLabel(status: ToolCall["status"]) {
+  const labels: Record<ToolCall["status"], string> = {
+    queued: "待审批",
+    running: "执行中",
+    approved: "已批准",
+    rejected: "已拒绝",
+    completed: "已完成",
+    failed: "失败"
+  };
+  return labels[status];
 }
 
 function TaskCard({

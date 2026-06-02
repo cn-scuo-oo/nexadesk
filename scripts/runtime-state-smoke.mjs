@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ const runtimeStatePath = join(dataDir, "runtime-state.json");
 const secretKey = randomBytes(32).toString("base64");
 const fakeReply = "runtime persistence reply";
 const userPrompt = "verify this message is persisted";
+const toolPrompt = "please list the workspace";
 const approvalReason = "not allowed in smoke test";
 const toolReply = [
   "need approval before writing",
@@ -55,6 +56,12 @@ try {
           activeProviderId: providerId,
           activeModel: model
         },
+        workspace: {
+          ...initial.workspace,
+          defaultWorkspace: dataDir,
+          exportDirectory: dataDir,
+          allowedRoots: [dataDir]
+        },
         providers: initial.providers.map((item) =>
           item.id === providerId
             ? configuredProvider
@@ -64,6 +71,7 @@ try {
       providerSecrets: [{ providerId, apiKey: "sk-runtime-smoke" }]
     })
   });
+  await writeFile(join(dataDir, "workspace-smoke.txt"), "workspace tool smoke", "utf8");
 
   const refreshedModels = await requestJson(firstPort, "/api/providers/models", {
     method: "POST",
@@ -101,6 +109,10 @@ try {
     method: "POST",
     body: JSON.stringify({ content: userPrompt, providerId, model, agentId: "cowork" })
   });
+  await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
+    method: "POST",
+    body: JSON.stringify({ content: toolPrompt, providerId, model, agentId: "cowork" })
+  });
 
   const savedState = JSON.parse(await readFile(runtimeStatePath, "utf8"));
   assert(
@@ -110,6 +122,12 @@ try {
   assert(
     savedState.messages.some((message) => message.role === "assistant" && message.content.includes(fakeReply)),
     "assistant reply was not written to runtime state"
+  );
+  assert(
+    savedState.messages.some(
+      (message) => message.role === "tool" && message.author === "list_dir" && message.content.includes("workspace-smoke.txt")
+    ),
+    "low-risk tool result message was not written to runtime state"
   );
 
   await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
@@ -157,6 +175,12 @@ try {
   assert(
     restored.messages.some((message) => message.role === "assistant" && message.content.includes(fakeReply)),
     "assistant reply did not survive server restart"
+  );
+  assert(
+    restored.messages.some(
+      (message) => message.role === "tool" && message.author === "list_dir" && message.content.includes("workspace-smoke.txt")
+    ),
+    "low-risk tool result message did not survive server restart"
   );
   assert(
     restored.approvalHistory.some((item) => item.id === approval.id && item.reason === approvalReason),
@@ -213,7 +237,26 @@ async function startFakeModelServer(port) {
       request.on("data", (chunk) => chunks.push(chunk));
       request.on("end", () => {
         const body = Buffer.concat(chunks).toString("utf8");
-        const content = body.includes("please request a write approval") ? toolReply : fakeReply;
+        let latestUserContent = body;
+        try {
+          const payload = JSON.parse(body);
+          const messages = Array.isArray(payload.messages) ? payload.messages : [];
+          const latestUser = messages.findLast((message) => message?.role === "user");
+          latestUserContent = typeof latestUser?.content === "string" ? latestUser.content : "";
+        } catch {
+          latestUserContent = body;
+        }
+
+        const content = latestUserContent.includes(toolPrompt)
+          ? [
+              "I will inspect the workspace.",
+              "```nexadesk-tool",
+              JSON.stringify({ tool: "list_dir", path: "." }),
+              "```"
+            ].join("\n")
+          : latestUserContent.includes("please request a write approval")
+            ? toolReply
+            : fakeReply;
         response.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
         response.write("data: [DONE]\n\n");
         response.end();

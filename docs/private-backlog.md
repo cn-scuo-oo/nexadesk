@@ -27,7 +27,7 @@ This backlog is for the private GitHub incubation stage. It is intentionally pra
 
 ## Agent Runtime
 
-- Make tool result messages clearer in the chat stream.
+- Make tool result messages clearer in the chat stream. Done in Phase 6 thirteenth pass.
 - Persist sessions and messages beyond in-memory demo state. Done in Phase 6 third pass.
 - Add per-agent model override tests.
 - Add approval history and rejected-action explanations. Done in Phase 6 sixth pass.
