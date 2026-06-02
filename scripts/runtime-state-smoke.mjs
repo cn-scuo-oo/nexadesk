@@ -14,6 +14,8 @@ const secretKey = randomBytes(32).toString("base64");
 const fakeReply = "runtime persistence reply";
 const userPrompt = "verify this message is persisted";
 const toolPrompt = "please list the workspace";
+const agentOverridePrompt = "verify the report agent provider override";
+const agentOverrideReply = "agent provider override reply";
 const approvalReason = "not allowed in smoke test";
 const toolReply = [
   "need approval before writing",
@@ -21,6 +23,7 @@ const toolReply = [
   JSON.stringify({ tool: "write_file", path: "approval-smoke.txt", content: "hello" }),
   "```"
 ].join("\n");
+const seenModels = [];
 
 let fakeModelServer;
 let firstApi;
@@ -37,14 +40,25 @@ try {
   const initial = await requestJson(firstPort, "/api/settings");
   const providerId = "openai-compatible";
   const model = "fake-runtime-model";
+  const agentProviderId = "newapi";
+  const agentModel = "agent-runtime-model";
   const provider = initial.providers.find((item) => item.id === providerId);
+  const agentProvider = initial.providers.find((item) => item.id === agentProviderId);
   assert(provider, "openai-compatible provider was not found");
+  assert(agentProvider, "newapi provider was not found");
   const configuredProvider = {
     ...provider,
     connected: true,
     baseUrl: `http://127.0.0.1:${modelPort}/v1`,
     models: [model],
     defaultModel: model
+  };
+  const configuredAgentProvider = {
+    ...agentProvider,
+    connected: true,
+    baseUrl: `http://127.0.0.1:${modelPort}/v1`,
+    models: [agentModel],
+    defaultModel: agentModel
   };
 
   await requestJson(firstPort, "/api/settings", {
@@ -65,10 +79,21 @@ try {
         providers: initial.providers.map((item) =>
           item.id === providerId
             ? configuredProvider
+            : item.id === agentProviderId
+              ? configuredAgentProvider
             : item
-        )
+        ),
+        assistant: {
+          ...initial.assistant,
+          agents: initial.assistant.agents.map((agent) =>
+            agent.id === "report" ? { ...agent, providerId: agentProviderId } : agent
+          )
+        }
       },
-      providerSecrets: [{ providerId, apiKey: "sk-runtime-smoke" }]
+      providerSecrets: [
+        { providerId, apiKey: "sk-runtime-smoke" },
+        { providerId: agentProviderId, apiKey: "sk-agent-runtime-smoke" }
+      ]
     })
   });
   await writeFile(join(dataDir, "workspace-smoke.txt"), "workspace tool smoke", "utf8");
@@ -113,6 +138,10 @@ try {
     method: "POST",
     body: JSON.stringify({ content: toolPrompt, providerId, model, agentId: "cowork" })
   });
+  await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
+    method: "POST",
+    body: JSON.stringify({ content: agentOverridePrompt, agentId: "report" })
+  });
 
   const savedState = JSON.parse(await readFile(runtimeStatePath, "utf8"));
   assert(
@@ -128,6 +157,16 @@ try {
       (message) => message.role === "tool" && message.author === "list_dir" && message.content.includes("workspace-smoke.txt")
     ),
     "low-risk tool result message was not written to runtime state"
+  );
+  assert(
+    seenModels.includes(agentModel),
+    "agent provider override did not send the agent provider model to the fake runtime"
+  );
+  assert(
+    savedState.messages.some(
+      (message) => message.role === "assistant" && message.content.includes(agentOverrideReply)
+    ),
+    "agent provider override reply was not written to runtime state"
   );
 
   await requestText(firstPort, `/api/sessions/${sessionId}/messages/stream`, {
@@ -181,6 +220,12 @@ try {
       (message) => message.role === "tool" && message.author === "list_dir" && message.content.includes("workspace-smoke.txt")
     ),
     "low-risk tool result message did not survive server restart"
+  );
+  assert(
+    restored.messages.some(
+      (message) => message.role === "assistant" && message.content.includes(agentOverrideReply)
+    ),
+    "agent provider override reply did not survive server restart"
   );
   assert(
     restored.approvalHistory.some((item) => item.id === approval.id && item.reason === approvalReason),
@@ -240,6 +285,9 @@ async function startFakeModelServer(port) {
         let latestUserContent = body;
         try {
           const payload = JSON.parse(body);
+          if (typeof payload.model === "string") {
+            seenModels.push(payload.model);
+          }
           const messages = Array.isArray(payload.messages) ? payload.messages : [];
           const latestUser = messages.findLast((message) => message?.role === "user");
           latestUserContent = typeof latestUser?.content === "string" ? latestUser.content : "";
@@ -254,6 +302,8 @@ async function startFakeModelServer(port) {
               JSON.stringify({ tool: "list_dir", path: "." }),
               "```"
             ].join("\n")
+          : latestUserContent.includes(agentOverridePrompt)
+            ? agentOverrideReply
           : latestUserContent.includes("please request a write approval")
             ? toolReply
             : fakeReply;
@@ -266,7 +316,7 @@ async function startFakeModelServer(port) {
 
     if (request.url === "/v1/models") {
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ data: [{ id: "fake-runtime-model" }] }));
+      response.end(JSON.stringify({ data: [{ id: "fake-runtime-model" }, { id: "agent-runtime-model" }] }));
       return;
     }
 

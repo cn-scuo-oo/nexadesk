@@ -422,8 +422,8 @@ async function resolveRuntime(
 ) {
   const provider =
     settings.providers.find((item) => item.id === requestedProviderId) ??
-    settings.providers.find((item) => item.id === settings.model.activeProviderId) ??
     settings.providers.find((item) => item.id === agentProviderId && item.connected) ??
+    settings.providers.find((item) => item.id === settings.model.activeProviderId) ??
     settings.providers.find((item) => item.connected);
 
   if (!provider) {

@@ -40,7 +40,7 @@
 
 ## Phase 6 - Product Usability Hardening
 
-- Status: in progress
+- Status: complete
 - Provider management supports copying providers, deleting custom providers, clearing saved API keys, and importing/exporting non-secret settings JSON.
 - Settings save prunes orphaned provider secrets so deleted custom providers do not leave stale key records.
 - Settings smoke tests cover API key persistence, clearing, and deleted-provider secret pruning.
@@ -69,6 +69,7 @@
 - The workbench workspace file tree and search are grouped into a compact context panel with switchable views.
 - The workspace context panel can be collapsed, and its collapsed/view state is remembered locally.
 - Recently opened workspace files are remembered locally and surfaced in the context panel for quick preview.
+- Agent-bound Provider overrides take priority over the global default Provider when no explicit runtime override is requested, with runtime smoke coverage.
 
 ## Later Phases
 
