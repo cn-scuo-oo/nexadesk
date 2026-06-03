@@ -1,17 +1,29 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type {
-  AgentSession,
-  ApprovalHistoryEntry,
-  AppSnapshot,
-  ChatMessage,
   ActivityEvent,
+  AgentSession,
+  AppSnapshot,
+  ApprovalHistoryEntry,
   AutomationJob,
   AutomationRun,
+  ChatMessage,
   PermissionRequest,
   RuntimeTelemetryEntry
 } from "@nexadesk/shared";
 import type { AgentToolRequest } from "./agent-tools.js";
+import { getEnv } from "./server-utils.js";
+import {
+  getAllMessages,
+  getAllSessions,
+  getAllTelemetry,
+  initDatabase,
+  insertTelemetry,
+  replaceMessages,
+  replaceSessions,
+  upsertMessage,
+  upsertSession
+} from "./sqlite-store.js";
 
 export type PendingToolApprovalRecord = {
   approvalId: string;
@@ -41,19 +53,44 @@ const dataDir = getEnv("NEXADESK_DATA_DIR", "AION_LITE_DATA_DIR") ?? join(repoRo
 export const runtimeStatePath =
   getEnv("NEXADESK_RUNTIME_STATE_PATH", "AION_LITE_RUNTIME_STATE_PATH") ?? join(dataDir, "runtime-state.json");
 
+let sqliteReady = false;
+
+function ensureSqliteReady() {
+  if (!sqliteReady) {
+    initDatabase(dataDir);
+    sqliteReady = true;
+  }
+}
+
 export async function loadRuntimeState(snapshot: AppSnapshot): Promise<PendingToolApprovalRecord[]> {
+  ensureSqliteReady();
   const saved = await readRuntimeState();
+  const persistedSessions = getAllSessions();
+  const persistedMessages = getAllMessages();
+
+  if (persistedSessions.length) {
+    snapshot.sessions = persistedSessions;
+  } else if (saved?.sessions.length) {
+    snapshot.sessions = saved.sessions;
+    replaceSessions(snapshot.sessions);
+  } else {
+    replaceSessions(snapshot.sessions);
+  }
+
+  if (persistedMessages.length) {
+    snapshot.messages = persistedMessages;
+  } else if (saved?.messages.length) {
+    snapshot.messages = saved.messages;
+    replaceMessages(snapshot.messages);
+  } else {
+    replaceMessages(snapshot.messages);
+  }
+
   if (!saved) {
     await saveRuntimeState(snapshot);
     return [];
   }
 
-  if (saved.sessions.length) {
-    snapshot.sessions = saved.sessions;
-  }
-  if (saved.messages.length) {
-    snapshot.messages = saved.messages;
-  }
   snapshot.approvals = saved.approvals ?? snapshot.approvals;
   snapshot.approvalHistory = saved.approvalHistory ?? snapshot.approvalHistory;
   snapshot.activity = saved.activity.length ? saved.activity.slice(0, 50) : snapshot.activity;
@@ -67,6 +104,13 @@ export async function saveRuntimeState(
   pendingToolApprovals: PendingToolApprovalRecord[] = [],
   runtimeTelemetry: RuntimeTelemetryEntry[] = []
 ): Promise<void> {
+  ensureSqliteReady();
+  replaceSessions(snapshot.sessions);
+  replaceMessages(snapshot.messages);
+  for (const entry of runtimeTelemetry.slice(0, 100)) {
+    insertTelemetry(entry);
+  }
+
   const state: RuntimeStateFile = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -88,8 +132,32 @@ export async function saveRuntimeState(
 }
 
 export async function loadRuntimeTelemetry(): Promise<RuntimeTelemetryEntry[]> {
+  ensureSqliteReady();
+  const persisted = getAllTelemetry(100);
+  if (persisted.length) {
+    return persisted;
+  }
   const saved = await readRuntimeState();
-  return saved?.runtimeTelemetry?.slice(0, 100) ?? [];
+  const entries = saved?.runtimeTelemetry?.slice(0, 100) ?? [];
+  for (const entry of entries) {
+    insertTelemetry(entry);
+  }
+  return entries;
+}
+
+export function persistSession(session: AgentSession): void {
+  ensureSqliteReady();
+  upsertSession(session);
+}
+
+export function persistMessage(message: ChatMessage): void {
+  ensureSqliteReady();
+  upsertMessage(message);
+}
+
+export function persistTelemetryEntry(entry: RuntimeTelemetryEntry): void {
+  ensureSqliteReady();
+  insertTelemetry(entry);
 }
 
 async function readRuntimeState(): Promise<RuntimeStateFile | null> {
@@ -115,8 +183,4 @@ function isRuntimeStateFile(value: Partial<RuntimeStateFile>): value is RuntimeS
     Array.isArray(value.activity) &&
     Array.isArray(value.automations)
   );
-}
-
-function getEnv(name: string, legacyName: string) {
-  return process.env[name] ?? process.env[legacyName];
 }

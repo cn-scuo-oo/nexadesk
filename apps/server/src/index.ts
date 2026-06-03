@@ -1,5 +1,5 @@
 // @ts-nocheck
-﻿import cors from "cors";
+import cors from "cors";
 import express from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -30,9 +30,7 @@ import {
   type PermissionRequest,
   type ProviderModelsRequest,
   type ProviderModelsResult,
-  type ProviderSettings,
-  type ProviderStatusRecord,
-  type ProviderModelsStatusRecord,
+    type ProviderSettings,
   type ProviderTestRequest,
   type ProviderTestResult,
   type RecoverSettingsRequest,
@@ -65,11 +63,19 @@ import {
 import {
   loadRuntimeTelemetry,
   loadRuntimeState,
+  persistTelemetryEntry,
   runtimeStatePath,
   saveRuntimeState,
   type PendingToolApprovalRecord
 } from "./runtime-state-store.js";
 import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "./settings-store.js";
+import {
+  automationScheduleLabel,
+  computeNextAutomationRun,
+  inferAutomationScheduleKind
+} from "./automation-scheduler.js";
+import { estimateTokenCount, formatRuntimeError, getEnv } from "./server-utils.js";
+import { buildSkillHub, buildWorkspaceArtifacts, createDefaultImChannels } from "./wesight-capabilities.js";
 
 const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
 const port = Number(getEnv("NEXADESK_PORT", "AION_LITE_PORT") ?? 3939);
@@ -78,14 +84,10 @@ let runtimeTelemetry: RuntimeTelemetryEntry[] = [];
 const runningAutomationJobs = new Set<string>();
 let automationScheduler: ReturnType<typeof setInterval> | null = null;
 const app = express();
-const pendingToolApprovals = new Map<
-  string,
-  Omit<PendingToolApprovalRecord, "approvalId">
->();
+const pendingToolApprovals = new Map<string, Omit<PendingToolApprovalRecord, "approvalId">>();
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
-
 
 // ── Additional server helpers ──
 function buildProviderModelHeaders(apiKey?: string): Record<string, string> {
@@ -101,7 +103,7 @@ function extractModelNames(data: unknown): string[] {
     return obj.data.map((m: any) => m.id).filter(Boolean);
   }
   if (Array.isArray(obj.models)) {
-    return obj.models.map((m: any) => typeof m === "string" ? m : m.name).filter(Boolean);
+    return obj.models.map((m: any) => (typeof m === "string" ? m : m.name)).filter(Boolean);
   }
   return [];
 }
@@ -110,7 +112,9 @@ async function readCommandVersion(command: string): Promise<string | undefined> 
   try {
     const result = await runProcess(command, ["--version"], 3000);
     return result.code === 0 ? result.stdout.trim().split("\n")[0] : undefined;
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 async function findAgentEngineConfigPath(engineId: string): Promise<string | undefined> {
@@ -126,7 +130,10 @@ async function findAgentEngineConfigPath(engineId: string): Promise<string | und
   };
   const candidates = paths[engineId] ?? [];
   for (const p of candidates) {
-    try { await access(p); return p; } catch {}
+    try {
+      await access(p);
+      return p;
+    } catch {}
   }
   return undefined;
 }
@@ -146,8 +153,6 @@ async function persistProviderStatus(): Promise<void> {
   await saveSettings(currentSettings);
 }
 
-
-
 app.get("/health", (_req, res) => {
   res.json({ ok: true, name: "nexadesk-server", time: new Date().toISOString() });
 });
@@ -159,6 +164,9 @@ app.get("/api/snapshot", async (_req, res, next) => {
     snapshot.agents = settings.assistant.agents;
     snapshot.skills = settings.assistant.skills;
     syncSessionAgents();
+    snapshot.skillHub = buildSkillHub(snapshot.skills);
+    snapshot.imChannels = createDefaultImChannels(snapshot.agents);
+    snapshot.artifacts = buildWorkspaceArtifacts(snapshot.messages);
     res.json(snapshot);
   } catch (error) {
     next(error);
@@ -191,6 +199,24 @@ app.get("/api/skills", async (_req, res, next) => {
 
 app.get("/api/sessions", (_req, res) => {
   res.json(snapshot.sessions);
+});
+
+app.get("/api/skills/hub", async (_req, res, next) => {
+  try {
+    const settings = await loadSettings(snapshot.providers);
+    snapshot.skills = settings.assistant.skills;
+    res.json({ listings: buildSkillHub(snapshot.skills) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/im/channels", (_req, res) => {
+  res.json({ channels: createDefaultImChannels(snapshot.agents) });
+});
+
+app.get("/api/workspace/artifacts", (_req, res) => {
+  res.json({ artifacts: buildWorkspaceArtifacts(snapshot.messages) });
 });
 
 const sessionPatchSchema = z.object({
@@ -287,7 +313,9 @@ app.delete("/api/sessions/:sessionId", async (req, res, next) => {
     const [removed] = snapshot.sessions.splice(sessionIndex, 1);
     snapshot.messages = snapshot.messages.filter((message) => message.sessionId !== req.params.sessionId);
     snapshot.approvals = snapshot.approvals.filter((approval) => approval.sessionId !== req.params.sessionId);
-    snapshot.approvalHistory = snapshot.approvalHistory.filter((approval) => approval.sessionId !== req.params.sessionId);
+    snapshot.approvalHistory = snapshot.approvalHistory.filter(
+      (approval) => approval.sessionId !== req.params.sessionId
+    );
     const activity = publishActivity({
       level: "warning",
       title: "Session deleted",
@@ -469,7 +497,9 @@ app.post("/api/agent-engines/detect", async (_req, res, next) => {
   try {
     const settings = await loadSettings(snapshot.providers);
     const checkedAt = new Date().toISOString();
-    const detections = await Promise.all(settings.assistant.engines.map((engine) => detectAgentEngine(engine, checkedAt)));
+    const detections = await Promise.all(
+      settings.assistant.engines.map((engine) => detectAgentEngine(engine, checkedAt))
+    );
     const detectionsById = new Map(detections.map((detection) => [detection.engineId, detection]));
     const nextEngines = settings.assistant.engines.map((engine) => {
       const detection = detectionsById.get(engine.id);
@@ -607,11 +637,9 @@ app.post("/api/providers/test", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = withCheckedAt(await testProviderConnection(
-      body.provider,
-      body.apiKey?.trim() || storedKey,
-      body.timeoutMs ?? 8000
-    ));
+    const result = withCheckedAt(
+      await testProviderConnection(body.provider, body.apiKey?.trim() || storedKey, body.timeoutMs ?? 8000)
+    );
     await persistProviderStatus(body.provider.id, { test: result });
     res.json(result);
   } catch (error) {
@@ -628,11 +656,9 @@ app.post("/api/providers/models", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = withCheckedAt(await fetchProviderModels(
-      body.provider,
-      body.apiKey?.trim() || storedKey,
-      body.timeoutMs ?? 10000
-    ));
+    const result = withCheckedAt(
+      await fetchProviderModels(body.provider, body.apiKey?.trim() || storedKey, body.timeoutMs ?? 10000)
+    );
     await persistProviderStatus(body.provider.id, { modelRefresh: result });
     res.json(result);
   } catch (error) {
@@ -724,7 +750,7 @@ async function runModelExchange(
   }
   const activeEngine = resolveAgentEngine(settings, activeAgent);
   const externalEngine = canRunExternalAgentEngine(activeEngine) ? activeEngine : undefined;
-  let runtime: ResolvedModelRuntime | undefined = externalEngine
+  const runtime: ResolvedModelRuntime | undefined = externalEngine
     ? undefined
     : await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
   let activityDetail = externalEngine
@@ -776,8 +802,8 @@ async function runModelExchange(
   const telemetryBase: RuntimeTelemetryEntry = {
     id: assistantMessage.id,
     sessionId: session.id,
-    providerName: externalEngine ? externalEngine.name : runtime?.provider.name ?? "Unknown Provider",
-    model: externalEngine ? "codex exec" : runtime?.model ?? "unknown",
+    providerName: externalEngine ? externalEngine.name : (runtime?.provider.name ?? "Unknown Provider"),
+    model: externalEngine ? "codex exec" : (runtime?.model ?? "unknown"),
     startedAt: assistantMessage.createdAt,
     inputTokens: estimateTokenCount(input.content),
     outputTokens: 0,
@@ -792,48 +818,63 @@ async function runModelExchange(
   };
 
   try {
-  const history = buildRuntimeMessages(session.id, activeAgent, settings);
-  let assistantContent = "";
+    const history = buildRuntimeMessages(session.id, activeAgent, settings);
+    let assistantContent = "";
 
-  const nativeToolRequests: AgentToolRequest[] = [];
-  if (externalEngine) {
-    try {
-      const result = await collectRuntimeEvents(
-        streamExternalAgentEvents({
-          engine: externalEngine,
-          messages: history,
-          cwd: resolveExternalRuntimeCwd(settings)
-        }),
-        assistantMessage,
-        onEvent,
-        { onText: markFirstToken }
-      );
-      assistantContent += result.content;
-      nativeToolRequests.push(...result.toolRequests);
-    } catch (error) {
-      let fallbackRuntime: ResolvedModelRuntime;
+    const nativeToolRequests: AgentToolRequest[] = [];
+    if (externalEngine) {
       try {
-        fallbackRuntime = await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
-      } catch (fallbackError) {
-        throw new ProviderRuntimeError(
-          `${externalEngine.name} 暂不可用，且模型中心回退也失败：${formatRuntimeError(fallbackError)}`
+        const result = await collectRuntimeEvents(
+          streamExternalAgentEvents({
+            engine: externalEngine,
+            messages: history,
+            cwd: resolveExternalRuntimeCwd(settings)
+          }),
+          assistantMessage,
+          onEvent,
+          { onText: markFirstToken }
         );
+        assistantContent += result.content;
+        nativeToolRequests.push(...result.toolRequests);
+      } catch (error) {
+        let fallbackRuntime: ResolvedModelRuntime;
+        try {
+          fallbackRuntime = await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
+        } catch (fallbackError) {
+          throw new ProviderRuntimeError(
+            `${externalEngine.name} 暂不可用，且模型中心回退也失败：${formatRuntimeError(fallbackError)}`
+          );
+        }
+
+        const fallbackDelta = formatExternalFallbackNotice(externalEngine, fallbackRuntime, error);
+        assistantContent += fallbackDelta;
+        onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: fallbackDelta });
+        updateModelStreamSummary(
+          assistantMessage,
+          `${externalEngine.name} failed; fallback ${modelRuntimeLabel(fallbackRuntime)}`
+        );
+        activityDetail = `${externalEngine.name} failed and NexaDesk fell back to ${fallbackRuntime.provider.name} / ${fallbackRuntime.model}.`;
+
+        const result = await collectRuntimeEvents(
+          streamProviderEvents({
+            provider: fallbackRuntime.provider,
+            model: fallbackRuntime.model,
+            apiKey: fallbackRuntime.apiKey,
+            messages: history
+          }),
+          assistantMessage,
+          onEvent,
+          { onText: markFirstToken }
+        );
+        assistantContent += result.content;
+        nativeToolRequests.push(...result.toolRequests);
       }
-
-      const fallbackDelta = formatExternalFallbackNotice(externalEngine, fallbackRuntime, error);
-      assistantContent += fallbackDelta;
-      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: fallbackDelta });
-      updateModelStreamSummary(
-        assistantMessage,
-        `${externalEngine.name} failed; fallback ${modelRuntimeLabel(fallbackRuntime)}`
-      );
-      activityDetail = `${externalEngine.name} failed and NexaDesk fell back to ${fallbackRuntime.provider.name} / ${fallbackRuntime.model}.`;
-
+    } else if (runtime) {
       const result = await collectRuntimeEvents(
         streamProviderEvents({
-          provider: fallbackRuntime.provider,
-          model: fallbackRuntime.model,
-          apiKey: fallbackRuntime.apiKey,
+          provider: runtime.provider,
+          model: runtime.model,
+          apiKey: runtime.apiKey,
           messages: history
         }),
         assistantMessage,
@@ -843,65 +884,50 @@ async function runModelExchange(
       assistantContent += result.content;
       nativeToolRequests.push(...result.toolRequests);
     }
-  } else if (runtime) {
-    const result = await collectRuntimeEvents(
-      streamProviderEvents({
-        provider: runtime.provider,
-        model: runtime.model,
-        apiKey: runtime.apiKey,
-        messages: history
-      }),
-      assistantMessage,
-      onEvent,
-      { onText: markFirstToken }
-    );
-    assistantContent += result.content;
-    nativeToolRequests.push(...result.toolRequests);
-  }
 
-  const toolRequests = [...nativeToolRequests, ...parseToolRequests(assistantContent)];
-  assistantContent = stripToolBlocks(assistantContent).trim() || "模型没有返回文本内容。";
-  assistantMessage.content = assistantContent;
+    const toolRequests = [...nativeToolRequests, ...parseToolRequests(assistantContent)];
+    assistantContent = stripToolBlocks(assistantContent).trim() || "模型没有返回文本内容。";
+    assistantMessage.content = assistantContent;
 
-  if (toolRequests.length > 0) {
-    const toolSummary = await handleAgentToolRequests({
-      toolRequests,
-      assistantMessage,
-      activeAgentId: activeAgent?.id ?? session.activeAgentId,
-      context: await createToolContext(settings),
-      onEvent
-    });
-    if (toolSummary) {
-      assistantMessage.content = `${assistantMessage.content}\n\n${toolSummary}`.trim();
-      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: `\n\n${toolSummary}` });
+    if (toolRequests.length > 0) {
+      const toolSummary = await handleAgentToolRequests({
+        toolRequests,
+        assistantMessage,
+        activeAgentId: activeAgent?.id ?? session.activeAgentId,
+        context: await createToolContext(settings),
+        onEvent
+      });
+      if (toolSummary) {
+        assistantMessage.content = `${assistantMessage.content}\n\n${toolSummary}`.trim();
+        onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: `\n\n${toolSummary}` });
+      }
     }
-  }
 
-  assistantMessage.createdAt = new Date().toISOString();
-  assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
-    tool.name === "model.stream" ? { ...tool, status: "completed" } : tool
-  );
-  session.updatedAt = assistantMessage.createdAt;
-  const activity = publishActivity({
-    level: "info",
-    title: "模型回答完成",
-    detail: activityDetail
-  });
-  const outputTokens = estimateTokenCount(assistantMessage.content);
-  upsertRuntimeTelemetry({
-    ...telemetryBase,
-    completedAt: assistantMessage.createdAt,
-    firstTokenMs,
-    durationMs: Math.max(0, Date.now() - runtimeStartedMs),
-    outputTokens,
-    totalTokens: telemetryBase.inputTokens + outputTokens,
-    status: "completed"
-  });
-  snapshot.activity.unshift(activity);
-  await persistRuntimeState();
-  onEvent?.({ type: "assistant_done", message: assistantMessage, activity });
+    assistantMessage.createdAt = new Date().toISOString();
+    assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
+      tool.name === "model.stream" ? { ...tool, status: "completed" } : tool
+    );
+    session.updatedAt = assistantMessage.createdAt;
+    const activity = publishActivity({
+      level: "info",
+      title: "模型回答完成",
+      detail: activityDetail
+    });
+    const outputTokens = estimateTokenCount(assistantMessage.content);
+    upsertRuntimeTelemetry({
+      ...telemetryBase,
+      completedAt: assistantMessage.createdAt,
+      firstTokenMs,
+      durationMs: Math.max(0, Date.now() - runtimeStartedMs),
+      outputTokens,
+      totalTokens: telemetryBase.inputTokens + outputTokens,
+      status: "completed"
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    onEvent?.({ type: "assistant_done", message: assistantMessage, activity });
 
-  return { messages: [userMessage, assistantMessage], activity };
+    return { messages: [userMessage, assistantMessage], activity };
   } catch (error) {
     const message = formatRuntimeError(error);
     assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
@@ -1002,24 +1028,9 @@ function formatExternalFallbackNotice(
   return `\n\n（${engine.name} 暂不可用，已回退到 ${fallbackRuntime.provider.name} / ${fallbackRuntime.model}。原因：${formatRuntimeError(error)}）\n\n`;
 }
 
-function formatRuntimeError(error: unknown) {
-  const message = error instanceof Error ? error.message : "未知错误";
-  return message.length > 240 ? `${message.slice(0, 240)}...` : message;
-}
-
-function estimateTokenCount(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return 0;
-  }
-  const cjk = trimmed.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-  const words = trimmed.replace(/[\u3400-\u9fff]/g, " ").split(/\s+/).filter(Boolean).length;
-  const otherChars = Math.max(0, trimmed.length - cjk);
-  return Math.max(1, Math.ceil(cjk * 0.75 + words * 1.3 + otherChars / 5));
-}
-
 function upsertRuntimeTelemetry(entry: RuntimeTelemetryEntry) {
   runtimeTelemetry = [entry, ...runtimeTelemetry.filter((item) => item.id !== entry.id)].slice(0, 100);
+  persistTelemetryEntry(entry);
 }
 
 function updateModelStreamSummary(assistantMessage: ChatMessage, summary: string) {
@@ -1048,37 +1059,38 @@ function buildRuntimeMessages(
     if (!server.enabled) {
       return false;
     }
-    return boundMcpToolIds.includes(`${server.id}:*`) || boundMcpToolIds.some((toolId) => toolId.startsWith(`${server.id}:`));
+    return (
+      boundMcpToolIds.includes(`${server.id}:*`) || boundMcpToolIds.some((toolId) => toolId.startsWith(`${server.id}:`))
+    );
   });
 
   return [
     {
       role: "system",
-      content:
-        [
-          `You are NexaDesk ${activeAgent ? `"${activeAgent.name}"` : "Cowork Agent"}. Reply in Chinese and help the user directly.`,
-          activeAgent?.instructions ??
-            "Understand the goal, break it into steps, request tools when needed, and wait for approval before high-risk actions.",
-          enabledSkills.length
-            ? `Enabled skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.instructions}`).join("\n")}`
-            : "No enabled skills are bound to this assistant.",
-          boundMcpToolIds.length
-            ? [
-                "Bound MCP tools:",
-                ...boundMcpToolIds.map((toolId) => `- ${toolId}`),
-                boundMcpServers.length
-                  ? `Enabled MCP servers: ${boundMcpServers.map((server) => `${server.name} (${server.transport})`).join(", ")}`
-                  : "No enabled MCP servers currently match these bindings."
-              ].join("\n")
-            : "No MCP tools are bound to this assistant.",
-          "When you need a tool, output a fenced block at the end:",
-          "```nexadesk-tool",
-          "{\"tool\":\"list_dir\",\"path\":\".\"}",
-          "```",
-          "Available tools: list_dir, read_file, write_file, run_command, search, browser, image_generate.",
-          "Reading files, listing folders, and searching are low risk. Writing files, running commands, browser, and image generation require approval.",
-          "The browser tool reads a page title and summary. The image_generate tool uses the configured image API and saves the generated file."
-        ].join("\n")
+      content: [
+        `You are NexaDesk ${activeAgent ? `"${activeAgent.name}"` : "Cowork Agent"}. Reply in Chinese and help the user directly.`,
+        activeAgent?.instructions ??
+          "Understand the goal, break it into steps, request tools when needed, and wait for approval before high-risk actions.",
+        enabledSkills.length
+          ? `Enabled skills:\n${enabledSkills.map((skill) => `- ${skill.name}: ${skill.instructions}`).join("\n")}`
+          : "No enabled skills are bound to this assistant.",
+        boundMcpToolIds.length
+          ? [
+              "Bound MCP tools:",
+              ...boundMcpToolIds.map((toolId) => `- ${toolId}`),
+              boundMcpServers.length
+                ? `Enabled MCP servers: ${boundMcpServers.map((server) => `${server.name} (${server.transport})`).join(", ")}`
+                : "No enabled MCP servers currently match these bindings."
+            ].join("\n")
+          : "No MCP tools are bound to this assistant.",
+        "When you need a tool, output a fenced block at the end:",
+        "```nexadesk-tool",
+        '{"tool":"list_dir","path":"."}',
+        "```",
+        "Available tools: list_dir, read_file, write_file, run_command, search, browser, image_generate.",
+        "Reading files, listing folders, and searching are low risk. Writing files, running commands, browser, and image generation require approval.",
+        "The browser tool reads a page title and summary. The image_generate tool uses the configured image API and saves the generated file."
+      ].join("\n")
     },
     ...recentMessages
   ];
@@ -1106,7 +1118,12 @@ function normalizeAutomationJob(job: Partial<AutomationJob> & Pick<AutomationJob
     name: job.name,
     schedule: job.schedule ?? automationScheduleLabel(scheduleKind),
     enabled,
-    nextRun: enabled && scheduleKind !== "manual" ? (hasValidFutureRun ? job.nextRun ?? "" : computeNextAutomationRun(scheduleKind, now)) : "Not scheduled",
+    nextRun:
+      enabled && scheduleKind !== "manual"
+        ? hasValidFutureRun
+          ? (job.nextRun ?? "")
+          : computeNextAutomationRun(scheduleKind, now)
+        : "Not scheduled",
     prompt: job.prompt ?? `执行自动化任务：${job.name}。请总结目标、检查当前上下文并给出结果。`,
     agentId: job.agentId,
     scheduleKind,
@@ -1116,48 +1133,6 @@ function normalizeAutomationJob(job: Partial<AutomationJob> & Pick<AutomationJob
     lastStatus: job.lastStatus,
     failureReason: job.failureReason
   };
-}
-
-function inferAutomationScheduleKind(schedule?: string): AutomationJob["scheduleKind"] {
-  const text = (schedule ?? "").toLowerCase();
-  if (text.includes("week")) {
-    return "weekly";
-  }
-  if (text.includes("hour")) {
-    return "hourly";
-  }
-  if (text.includes("once")) {
-    return "once";
-  }
-  if (text.includes("manual")) {
-    return "manual";
-  }
-  return "daily";
-}
-
-function automationScheduleLabel(kind: AutomationJob["scheduleKind"]) {
-  const labels: Record<AutomationJob["scheduleKind"], string> = {
-    manual: "Manual only",
-    once: "Run once in 1 minute",
-    hourly: "Every hour",
-    daily: "Every day",
-    weekly: "Every week"
-  };
-  return labels[kind];
-}
-
-function computeNextAutomationRun(kind: AutomationJob["scheduleKind"], from = new Date()) {
-  const offsetMs: Record<AutomationJob["scheduleKind"], number> = {
-    manual: 0,
-    once: 60 * 1000,
-    hourly: 60 * 60 * 1000,
-    daily: 24 * 60 * 60 * 1000,
-    weekly: 7 * 24 * 60 * 60 * 1000
-  };
-  if (kind === "manual") {
-    return "Not scheduled";
-  }
-  return new Date(from.getTime() + offsetMs[kind]).toISOString();
 }
 
 function startAutomationScheduler() {
@@ -1349,14 +1324,15 @@ async function createToolContext(settings: AppSettings): Promise<AgentToolContex
 
   return {
     workspace: settings.workspace,
-    image: apiKey || imageBaseUrl
-      ? {
-          baseUrl,
-          apiKey,
-          model,
-          outputDirectory: settings.workspace.exportDirectory || settings.workspace.defaultWorkspace
-        }
-      : undefined
+    image:
+      apiKey || imageBaseUrl
+        ? {
+            baseUrl,
+            apiKey,
+            model,
+            outputDirectory: settings.workspace.exportDirectory || settings.workspace.defaultWorkspace
+          }
+        : undefined
   };
 }
 
@@ -1385,13 +1361,10 @@ function createDesktopStatus(): DesktopStatus {
     nodeVersion: process.versions.node,
     electronVersion: process.versions.electron,
     uptimeSeconds: Math.round(process.uptime()),
-    safeStorage: (getEnv("NEXADESK_SAFE_STORAGE", "AION_LITE_SAFE_STORAGE") as DesktopStatus["safeStorage"]) ?? "unavailable",
+    safeStorage:
+      (getEnv("NEXADESK_SAFE_STORAGE", "AION_LITE_SAFE_STORAGE") as DesktopStatus["safeStorage"]) ?? "unavailable",
     secretsEncrypted: Boolean(getEnv("NEXADESK_SECRET_KEY", "AION_LITE_SECRET_KEY"))
   };
-}
-
-function getEnv(name: string, legacyName: string) {
-  return process.env[name] ?? process.env[legacyName];
 }
 
 async function persistRuntimeState() {
@@ -1525,7 +1498,11 @@ function pushApprovalHistory(
   return history;
 }
 
-function updateToolCall(messageId: string, toolCallId: string, status: NonNullable<ChatMessage["toolCalls"]>[number]["status"]) {
+function updateToolCall(
+  messageId: string,
+  toolCallId: string,
+  status: NonNullable<ChatMessage["toolCalls"]>[number]["status"]
+) {
   const message = snapshot.messages.find((item) => item.id === messageId);
   if (!message?.toolCalls) {
     return;
@@ -1571,7 +1548,11 @@ async function startServer() {
   /* ── MCP Bridge: callback endpoint for external MCP tools ── */
   app.post("/api/mcp-bridge/execute", async (req, res, next) => {
     try {
-      const { toolName, arguments: toolArgs, serverId } = req.body as { toolName: string; arguments: Record<string, unknown>; serverId: string };
+      const {
+        toolName,
+        arguments: toolArgs,
+        serverId
+      } = req.body as { toolName: string; arguments: Record<string, unknown>; serverId: string };
       if (!toolName || !serverId) {
         res.status(400).json({ ok: false, message: "Missing toolName or serverId" });
         return;
@@ -1600,11 +1581,31 @@ async function startServer() {
       }
       const instr = skill.instructions.toLowerCase();
       const findings = [];
-      findings.push({ dimension: "文件系统", status: instr.includes("file") || instr.includes("write") ? "warning" : "safe", detail: instr.includes("file") ? "包含文件操作" : "无文件操作" });
-      findings.push({ dimension: "命令执行", status: instr.includes("command") || instr.includes("exec") ? "risk" : "safe", detail: instr.includes("command") ? "包含命令执行" : "无命令执行" });
-      findings.push({ dimension: "网络请求", status: instr.includes("http") || instr.includes("api") ? "warning" : "safe", detail: instr.includes("http") ? "包含网络请求" : "无网络请求" });
-      findings.push({ dimension: "数据收集", status: instr.includes("collect") ? "risk" : "safe", detail: instr.includes("collect") ? "可能收集数据" : "无数据收集" });
-      findings.push({ dimension: "代码注入", status: instr.includes("eval") ? "risk" : "safe", detail: instr.includes("eval") ? "包含动态代码" : "无动态代码" });
+      findings.push({
+        dimension: "文件系统",
+        status: instr.includes("file") || instr.includes("write") ? "warning" : "safe",
+        detail: instr.includes("file") ? "包含文件操作" : "无文件操作"
+      });
+      findings.push({
+        dimension: "命令执行",
+        status: instr.includes("command") || instr.includes("exec") ? "risk" : "safe",
+        detail: instr.includes("command") ? "包含命令执行" : "无命令执行"
+      });
+      findings.push({
+        dimension: "网络请求",
+        status: instr.includes("http") || instr.includes("api") ? "warning" : "safe",
+        detail: instr.includes("http") ? "包含网络请求" : "无网络请求"
+      });
+      findings.push({
+        dimension: "数据收集",
+        status: instr.includes("collect") ? "risk" : "safe",
+        detail: instr.includes("collect") ? "可能收集数据" : "无数据收集"
+      });
+      findings.push({
+        dimension: "代码注入",
+        status: instr.includes("eval") ? "risk" : "safe",
+        detail: instr.includes("eval") ? "包含动态代码" : "无动态代码"
+      });
       const riskCount = findings.filter((f) => f.status === "risk").length;
       const warnCount = findings.filter((f) => f.status === "warning").length;
       const score = Math.max(0, 100 - riskCount * 25 - warnCount * 10);
@@ -1627,7 +1628,15 @@ async function startServer() {
   app.post("/api/memory/entries", async (req, res, next) => {
     try {
       const entry = req.body;
-      const entries = [...(currentSettings.memoryEntries ?? []), { ...entry, id: entry.id || `mem-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+      const entries = [
+        ...(currentSettings.memoryEntries ?? []),
+        {
+          ...entry,
+          id: entry.id || `mem-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ];
       currentSettings = { ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
       await saveCurrentSettings();
       res.json({ ok: true, entry });
@@ -1698,10 +1707,7 @@ async function startServer() {
   startAutomationScheduler();
 }
 
-async function testMcpServer(
-  server: McpServerTestRequest["server"],
-  timeoutMs: number
-): Promise<McpServerTestResult> {
+async function testMcpServer(server: McpServerTestRequest["server"], timeoutMs: number): Promise<McpServerTestResult> {
   const checkedAt = new Date().toISOString();
   if (server.transport === "http") {
     const url = server.url?.trim();
@@ -1752,7 +1758,10 @@ async function testMcpServer(
   };
 }
 
-function resolveLocalCommand(command: string, timeoutMs: number): Promise<{ ok: boolean; message: string; resolvedPath?: string }> {
+function resolveLocalCommand(
+  command: string,
+  timeoutMs: number
+): Promise<{ ok: boolean; message: string; resolvedPath?: string }> {
   return new Promise((resolve) => {
     const lookupCommand = process.platform === "win32" ? "where" : "which";
     const child = spawn(lookupCommand, [command], {
@@ -1778,11 +1787,14 @@ function resolveLocalCommand(command: string, timeoutMs: number): Promise<{ ok: 
     });
     child.on("exit", (code) => {
       clearTimeout(timeout);
-      const resolvedPath = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0];
+      const resolvedPath = output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)[0];
       resolve(
         code === 0 && resolvedPath
           ? { ok: true, message: "Command found.", resolvedPath }
-      : { ok: false, message: errorOutput.trim() || `Command not found: ${command}` }
+          : { ok: false, message: errorOutput.trim() || `Command not found: ${command}` }
       );
     });
   });
@@ -1849,7 +1861,7 @@ async function postMcpJsonRpc(url: string, id: number, method: string, params: u
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -2042,7 +2054,10 @@ function normalizeMcpTools(server: McpServerToolsRequest["server"], result: unkn
     return [];
   }
   return result.tools
-    .filter((tool): tool is Record<string, unknown> => isRecord(tool) && typeof tool.name === "string" && Boolean(tool.name.trim()))
+    .filter(
+      (tool): tool is Record<string, unknown> =>
+        isRecord(tool) && typeof tool.name === "string" && Boolean(tool.name.trim())
+    )
     .map((tool) => {
       const name = typeof tool.name === "string" ? tool.name : String(tool.name);
       return {
@@ -2188,7 +2203,9 @@ async function fetchProviderModels(
       status: response.status,
       checkedUrl,
       models,
-      message: models.length ? `Fetched ${models.length} model(s).` : "Provider responded but did not return model names."
+      message: models.length
+        ? `Fetched ${models.length} model(s).`
+        : "Provider responded but did not return model names."
     };
   } catch (error) {
     return {
@@ -2222,10 +2239,7 @@ const agentEngineCommandAliases: Record<AgentEngineId, string[]> = {
   deepseek_tui: ["deepseek", "deepseek-tui"]
 };
 
-async function detectAgentEngine(
-  engine: AgentEngineSettings,
-  checkedAt: string
-): Promise<AgentEngineDetectionRecord> {
+async function detectAgentEngine(engine: AgentEngineSettings, checkedAt: string): Promise<AgentEngineDetectionRecord> {
   if (engine.kind === "builtin") {
     return {
       engineId: engine.id,

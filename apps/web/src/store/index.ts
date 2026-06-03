@@ -1,4 +1,4 @@
-// @ts-nocheck - Requires @reduxjs/toolkit to be installed
+// Redux store for the upcoming centralized state migration.
 import { createSlice, createAsyncThunk, configureStore, type PayloadAction } from "@reduxjs/toolkit";
 import type {
   AppSettings,
@@ -9,8 +9,7 @@ import type {
   AgentProfile,
   RuntimeTelemetryEntry,
   MemoryEntry,
-  SessionSummary,
-  McpToolPolicy
+  SessionSummary
 } from "@nexadesk/shared";
 
 /* ── API helpers ── */
@@ -47,12 +46,27 @@ const api = {
 /* ── Async Thunks ── */
 export const fetchSnapshot = createAsyncThunk("app/fetchSnapshot", () => api.get<AppSnapshot>("/api/snapshot"));
 export const fetchSettings = createAsyncThunk("app/fetchSettings", () => api.get<AppSettings>("/api/settings"));
-export const saveSettings = createAsyncThunk("app/saveSettings", (settings: AppSettings) => api.put<{ settings: AppSettings }>("/api/settings", { settings }));
-export const testMcpServer = createAsyncThunk("mcp/testServer", (server: McpServerSettings) => api.post<McpServerTestResult>("/api/mcp/test", { server }));
-export const discoverMcpTools = createAsyncThunk("mcp/discoverTools", (server: McpServerSettings) => api.post<McpServerToolsResult>("/api/mcp/tools", { server }));
-export const fetchMemory = createAsyncThunk("memory/fetch", () => api.get<{ entries: MemoryEntry[]; summaries: SessionSummary[] }>("/api/memory"));
-export const deleteMemoryEntry = createAsyncThunk("memory/deleteEntry", (entryId: string) => api.del(`/api/memory/entries/${entryId}`));
-export const scanSkillSecurity = createAsyncThunk("skills/scan", (skillId: string) => api.post<{ score: number; level: string; findings: Array<{ dimension: string; status: string; detail: string }> }>("/api/skills/scan", { skillId }));
+export const saveSettings = createAsyncThunk("app/saveSettings", (settings: AppSettings) =>
+  api.put<{ settings: AppSettings }>("/api/settings", { settings })
+);
+export const testMcpServer = createAsyncThunk("mcp/testServer", (server: McpServerSettings) =>
+  api.post<McpServerTestResult>("/api/mcp/test", { server })
+);
+export const discoverMcpTools = createAsyncThunk("mcp/discoverTools", (server: McpServerSettings) =>
+  api.post<McpServerToolsResult>("/api/mcp/tools", { server })
+);
+export const fetchMemory = createAsyncThunk("memory/fetch", () =>
+  api.get<{ entries: MemoryEntry[]; summaries: SessionSummary[] }>("/api/memory")
+);
+export const deleteMemoryEntry = createAsyncThunk("memory/deleteEntry", (entryId: string) =>
+  api.del(`/api/memory/entries/${entryId}`)
+);
+export const scanSkillSecurity = createAsyncThunk("skills/scan", (skillId: string) =>
+  api.post<{ score: number; level: string; findings: Array<{ dimension: string; status: string; detail: string }> }>(
+    "/api/skills/scan",
+    { skillId }
+  )
+);
 
 /* ── App Slice ── */
 interface AppState {
@@ -67,16 +81,34 @@ const appSlice = createSlice({
   name: "app",
   initialState: { snapshot: null, settings: null, loading: true, error: null, mode: "demo" } as AppState,
   reducers: {
-    setMode(state, action: PayloadAction<"live" | "demo">) { state.mode = action.payload; },
-    clearError(state) { state.error = null; }
+    setMode(state, action: PayloadAction<"live" | "demo">) {
+      state.mode = action.payload;
+    },
+    clearError(state) {
+      state.error = null;
+    }
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchSnapshot.pending, (state) => { state.loading = true; })
-      .addCase(fetchSnapshot.fulfilled, (state, action) => { state.snapshot = action.payload; state.mode = "live"; state.loading = false; state.error = null; })
-      .addCase(fetchSnapshot.rejected, (state, action) => { state.loading = false; state.error = action.error.message ?? "Failed to load"; })
-      .addCase(fetchSettings.fulfilled, (state, action) => { state.settings = action.payload; })
-      .addCase(saveSettings.fulfilled, (state, action) => { state.settings = action.payload.settings; });
+      .addCase(fetchSnapshot.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchSnapshot.fulfilled, (state, action) => {
+        state.snapshot = action.payload;
+        state.mode = "live";
+        state.loading = false;
+        state.error = null;
+      })
+      .addCase(fetchSnapshot.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message ?? "Failed to load";
+      })
+      .addCase(fetchSettings.fulfilled, (state, action) => {
+        state.settings = action.payload;
+      })
+      .addCase(saveSettings.fulfilled, (state, action) => {
+        state.settings = action.payload.settings;
+      });
   }
 });
 
@@ -94,18 +126,26 @@ const mcpSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(testMcpServer.pending, (state, action) => { state.testingId = action.meta.arg.id; })
+      .addCase(testMcpServer.pending, (state, action) => {
+        state.testingId = action.meta.arg.id;
+      })
       .addCase(testMcpServer.fulfilled, (state, action) => {
         state.testResults[action.meta.arg.id] = action.payload;
         state.testingId = null;
       })
-      .addCase(testMcpServer.rejected, (state) => { state.testingId = null; })
-      .addCase(discoverMcpTools.pending, (state, action) => { state.refreshingId = action.meta.arg.id; })
+      .addCase(testMcpServer.rejected, (state) => {
+        state.testingId = null;
+      })
+      .addCase(discoverMcpTools.pending, (state, action) => {
+        state.refreshingId = action.meta.arg.id;
+      })
       .addCase(discoverMcpTools.fulfilled, (state, action) => {
         state.toolResults[action.meta.arg.id] = action.payload;
         state.refreshingId = null;
       })
-      .addCase(discoverMcpTools.rejected, (state) => { state.refreshingId = null; });
+      .addCase(discoverMcpTools.rejected, (state) => {
+        state.refreshingId = null;
+      });
   }
 });
 
@@ -120,10 +160,14 @@ const memorySlice = createSlice({
   name: "memory",
   initialState: { entries: [], summaries: [], loading: false } as MemoryState,
   reducers: {
-    addEntry(state, action: PayloadAction<MemoryEntry>) { state.entries.push(action.payload); },
+    addEntry(state, action: PayloadAction<MemoryEntry>) {
+      state.entries.push(action.payload);
+    },
     updateEntry(state, action: PayloadAction<{ id: string; patch: Partial<MemoryEntry> }>) {
-      const idx = state.entries.findIndex((e) => e.id === action.payload.id);
-      if (idx >= 0) state.entries[idx] = { ...state.entries[idx], ...action.payload.patch };
+      const entry = state.entries.find((item) => item.id === action.payload.id);
+      if (entry) {
+        Object.assign(entry, action.payload.patch);
+      }
     },
     removeEntry(state, action: PayloadAction<string>) {
       state.entries = state.entries.filter((e) => e.id !== action.payload);
@@ -131,10 +175,20 @@ const memorySlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchMemory.pending, (state) => { state.loading = true; })
-      .addCase(fetchMemory.fulfilled, (state, action) => { state.entries = action.payload.entries; state.summaries = action.payload.summaries; state.loading = false; })
-      .addCase(fetchMemory.rejected, (state) => { state.loading = false; })
-      .addCase(deleteMemoryEntry.fulfilled, (state, action) => { state.entries = state.entries.filter((e) => e.id !== action.meta.arg); });
+      .addCase(fetchMemory.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchMemory.fulfilled, (state, action) => {
+        state.entries = action.payload.entries;
+        state.summaries = action.payload.summaries;
+        state.loading = false;
+      })
+      .addCase(fetchMemory.rejected, (state) => {
+        state.loading = false;
+      })
+      .addCase(deleteMemoryEntry.fulfilled, (state, action) => {
+        state.entries = state.entries.filter((e) => e.id !== action.meta.arg);
+      });
   }
 });
 
@@ -148,7 +202,9 @@ const agentsSlice = createSlice({
   name: "agents",
   initialState: { agents: [], activeAgentId: null } as AgentsState,
   reducers: {
-    setActiveAgent(state, action: PayloadAction<string>) { state.activeAgentId = action.payload; },
+    setActiveAgent(state, action: PayloadAction<string>) {
+      state.activeAgentId = action.payload;
+    },
     toggleAgentEnabled(state, action: PayloadAction<string>) {
       const agent = state.agents.find((a) => a.id === action.payload);
       if (agent) agent.enabled = !agent.enabled;
@@ -197,5 +253,9 @@ export type AppDispatch = typeof store.dispatch;
 
 export const { setMode, clearError } = appSlice.actions;
 export const { addEntry: addTelemetryEntry } = telemetrySlice.actions;
-export const { addEntry: addMemoryEntry, updateEntry: updateMemoryEntry, removeEntry: removeMemoryEntry } = memorySlice.actions;
+export const {
+  addEntry: addMemoryEntry,
+  updateEntry: updateMemoryEntry,
+  removeEntry: removeMemoryEntry
+} = memorySlice.actions;
 export const { setActiveAgent, toggleAgentEnabled } = agentsSlice.actions;

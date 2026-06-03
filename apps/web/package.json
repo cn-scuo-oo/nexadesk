@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@nexadesk/shared": "file:../../packages/shared",
+    "@reduxjs/toolkit": "^2.12.0",
     "@vitejs/plugin-react": "^5.1.1",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-redux": "^9.3.0",
     "vite": "^6.4.1"
   },
   "devDependencies": {
@@ -22,4 +24,3 @@
     "typescript": "^5.8.3"
   }
 }
-

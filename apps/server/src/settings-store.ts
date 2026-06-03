@@ -36,7 +36,7 @@ export type SettingsRecoveryResult = {
   warning?: string;
 };
 
-export async function loadSettings(providers: ModelProvider[]): Promise<AppSettings> {
+export async function loadSettings(_providers: ModelProvider[]): Promise<AppSettings> {
   const defaults = createDefaultSettings(createDefaultProviders());
   const saved = await readJson<AppSettings>(settingsPath);
   const secrets = await loadSecrets();

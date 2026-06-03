@@ -225,14 +225,13 @@ export async function readWorkspaceFilePreview(
   inputPath: string
 ): Promise<WorkspaceFilePreviewResult> {
   const root = getWorkspaceRoot(workspace);
-  let target = root;
   let currentPath = inputPath || "";
 
   try {
     if (!inputPath) {
       throw new Error("需要提供文件路径。");
     }
-    target = resolveWorkspacePath(workspace, inputPath);
+    const target = resolveWorkspacePath(workspace, inputPath);
     currentPath = toWorkspacePath(relative(root, target)) || basename(target);
     const info = await stat(target);
     if (!info.isFile()) {
@@ -293,14 +292,13 @@ export async function searchWorkspaceFiles({
 }): Promise<WorkspaceSearchResult> {
   const root = getWorkspaceRoot(workspace);
   const normalizedQuery = query.trim();
-  let target = root;
   let currentPath = inputPath || ".";
   const matches: WorkspaceSearchMatch[] = [];
   let searchedEntries = 0;
   let truncated = false;
 
   try {
-    target = resolveWorkspacePath(workspace, inputPath || ".");
+    const target = resolveWorkspacePath(workspace, inputPath || ".");
     currentPath = toWorkspacePath(relative(root, target)) || ".";
     if (!normalizedQuery) {
       return { root, path: currentPath, query: normalizedQuery, mode, matches, searchedEntries };

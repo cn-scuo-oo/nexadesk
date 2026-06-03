@@ -1,17 +1,8 @@
 ﻿export type AgentStatus = "idle" | "running" | "waiting_approval" | "failed";
 
-export type ProviderKind =
-  | "local"
-  | "openai_compatible"
-  | "anthropic"
-  | "google"
-  | "custom";
+export type ProviderKind = "local" | "openai_compatible" | "anthropic" | "google" | "custom";
 
-export type ProviderApiMode =
-  | "responses"
-  | "chat_completions"
-  | "anthropic_messages"
-  | "ollama_generate";
+export type ProviderApiMode = "responses" | "chat_completions" | "anthropic_messages" | "ollama_generate";
 
 export type ProviderCapability =
   | "streaming"
@@ -421,6 +412,44 @@ export interface SkillProfile {
   instructions: string;
 }
 
+export type SkillHubCategory = "productivity" | "engineering" | "office" | "research" | "integration";
+
+export interface SkillHubListing {
+  id: string;
+  name: string;
+  description: string;
+  category: SkillHubCategory;
+  source: SkillProfile["source"];
+  installed: boolean;
+  enabled: boolean;
+  riskLevel: PermissionRisk;
+  tags: string[];
+}
+
+export type ImChannelKind = "feishu" | "dingtalk" | "telegram" | "wecom" | "slack";
+
+export interface ImAgentChannel {
+  id: string;
+  name: string;
+  kind: ImChannelKind;
+  enabled: boolean;
+  agentId?: string;
+  webhookConfigured: boolean;
+  lastEventAt?: string;
+  status: "ready" | "needs_setup" | "disabled";
+}
+
+export interface WorkspaceArtifact {
+  id: string;
+  sessionId: string;
+  title: string;
+  kind: "diff" | "file" | "report" | "command";
+  path?: string;
+  summary: string;
+  createdAt: string;
+  status: "draft" | "ready" | "applied";
+}
+
 export interface ToolCall {
   id: string;
   name: AgentToolName | "model.stream";
@@ -615,138 +644,134 @@ export interface AppSnapshot {
   automations: AutomationJob[];
   automationRuns: AutomationRun[];
   activity: ActivityEvent[];
+  skillHub?: SkillHubListing[];
+  imChannels?: ImAgentChannel[];
+  artifacts?: WorkspaceArtifact[];
 }
 
 export function createDefaultProviders(): ModelProvider[] {
   return [
-      {
-        id: "ollama",
-        name: "Ollama Local",
-        kind: "local",
-        apiMode: "ollama_generate",
-        connected: true,
-        baseUrl: "http://127.0.0.1:11434",
-        models: ["qwen2.5-coder", "llama3.1", "deepseek-r1"],
-        capabilities: ["streaming", "function_calling"]
-      },
-      {
-        id: "lm-studio",
-        name: "LM Studio",
-        kind: "local",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "http://127.0.0.1:1234/v1",
-        models: ["local-model"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
-      },
-      {
-        id: "openai-compatible",
-        name: "OpenAI Compatible / Custom",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://api.example.com/v1",
-        models: ["model-name"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
-      },
-      {
-        id: "openai-official",
-        name: "OpenAI Official",
-        kind: "openai_compatible",
-        apiMode: "responses",
-        connected: false,
-        baseUrl: "https://api.openai.com/v1",
-        models: ["gpt-5", "gpt-5-mini", "gpt-4.1"],
-        capabilities: [
-          "streaming",
-          "function_calling",
-          "vision",
-          "web_search",
-          "file_search",
-          "structured_output"
-        ]
-      },
-      {
-        id: "deepseek",
-        name: "DeepSeek",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://api.deepseek.com",
-        models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
-      },
-      {
-        id: "dashscope-qwen",
-        name: "阿里云百炼 / 通义千问",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        models: ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-vl-plus"],
-        capabilities: ["streaming", "function_calling", "vision", "structured_output"]
-      },
-      {
-        id: "siliconflow-cn",
-        name: "硅基流动 SiliconFlow",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://api.siliconflow.cn/v1",
-        models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
-      },
-      {
-        id: "moonshot",
-        name: "月之暗面 Kimi",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://api.moonshot.cn/v1",
-        models: ["kimi-k2.6", "kimi-k2.5", "moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
-        capabilities: ["streaming", "function_calling", "vision", "structured_output"]
-      },
-      {
-        id: "zhipu",
-        name: "智谱 GLM",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-        models: ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash"],
-        capabilities: ["streaming", "function_calling", "web_search", "structured_output"]
-      },
-      {
-        id: "openrouter",
-        name: "OpenRouter",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "https://openrouter.ai/api/v1",
-        models: ["openai/gpt-4.1", "anthropic/claude-sonnet-4.5", "deepseek/deepseek-chat"],
-        capabilities: ["streaming", "function_calling", "structured_output"]
-      },
-      {
-        id: "newapi",
-        name: "NewAPI / OneAPI 网关",
-        kind: "openai_compatible",
-        apiMode: "chat_completions",
-        connected: false,
-        baseUrl: "http://127.0.0.1:3000/v1",
-        models: ["gpt-4.1", "deepseek-chat", "qwen-plus"],
-        capabilities: ["streaming", "function_calling", "vision", "structured_output"]
-      },
-      {
-        id: "anthropic",
-        name: "Anthropic",
-        kind: "anthropic",
-        apiMode: "anthropic_messages",
-        connected: false,
-        baseUrl: "https://api.anthropic.com",
-        models: ["claude-sonnet-4.5"],
-        capabilities: ["streaming", "function_calling", "vision"]
-      }
-    ];
+    {
+      id: "ollama",
+      name: "Ollama Local",
+      kind: "local",
+      apiMode: "ollama_generate",
+      connected: true,
+      baseUrl: "http://127.0.0.1:11434",
+      models: ["qwen2.5-coder", "llama3.1", "deepseek-r1"],
+      capabilities: ["streaming", "function_calling"]
+    },
+    {
+      id: "lm-studio",
+      name: "LM Studio",
+      kind: "local",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "http://127.0.0.1:1234/v1",
+      models: ["local-model"],
+      capabilities: ["streaming", "function_calling", "structured_output"]
+    },
+    {
+      id: "openai-compatible",
+      name: "OpenAI Compatible / Custom",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://api.example.com/v1",
+      models: ["model-name"],
+      capabilities: ["streaming", "function_calling", "structured_output"]
+    },
+    {
+      id: "openai-official",
+      name: "OpenAI Official",
+      kind: "openai_compatible",
+      apiMode: "responses",
+      connected: false,
+      baseUrl: "https://api.openai.com/v1",
+      models: ["gpt-5", "gpt-5-mini", "gpt-4.1"],
+      capabilities: ["streaming", "function_calling", "vision", "web_search", "file_search", "structured_output"]
+    },
+    {
+      id: "deepseek",
+      name: "DeepSeek",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://api.deepseek.com",
+      models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+      capabilities: ["streaming", "function_calling", "structured_output"]
+    },
+    {
+      id: "dashscope-qwen",
+      name: "阿里云百炼 / 通义千问",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      models: ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-vl-plus"],
+      capabilities: ["streaming", "function_calling", "vision", "structured_output"]
+    },
+    {
+      id: "siliconflow-cn",
+      name: "硅基流动 SiliconFlow",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://api.siliconflow.cn/v1",
+      models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"],
+      capabilities: ["streaming", "function_calling", "structured_output"]
+    },
+    {
+      id: "moonshot",
+      name: "月之暗面 Kimi",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://api.moonshot.cn/v1",
+      models: ["kimi-k2.6", "kimi-k2.5", "moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
+      capabilities: ["streaming", "function_calling", "vision", "structured_output"]
+    },
+    {
+      id: "zhipu",
+      name: "智谱 GLM",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+      models: ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash"],
+      capabilities: ["streaming", "function_calling", "web_search", "structured_output"]
+    },
+    {
+      id: "openrouter",
+      name: "OpenRouter",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "https://openrouter.ai/api/v1",
+      models: ["openai/gpt-4.1", "anthropic/claude-sonnet-4.5", "deepseek/deepseek-chat"],
+      capabilities: ["streaming", "function_calling", "structured_output"]
+    },
+    {
+      id: "newapi",
+      name: "NewAPI / OneAPI 网关",
+      kind: "openai_compatible",
+      apiMode: "chat_completions",
+      connected: false,
+      baseUrl: "http://127.0.0.1:3000/v1",
+      models: ["gpt-4.1", "deepseek-chat", "qwen-plus"],
+      capabilities: ["streaming", "function_calling", "vision", "structured_output"]
+    },
+    {
+      id: "anthropic",
+      name: "Anthropic",
+      kind: "anthropic",
+      apiMode: "anthropic_messages",
+      connected: false,
+      baseUrl: "https://api.anthropic.com",
+      models: ["claude-sonnet-4.5"],
+      capabilities: ["streaming", "function_calling", "vision"]
+    }
+  ];
 }
 
 export function createDefaultAgents(): AgentProfile[] {
@@ -778,8 +803,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["filesystem-mcp:*"],
       enabled: true,
       category: "code",
-      instructions:
-        "你是代码助手。优先阅读现有代码和项目约定，保持改动小而可靠；运行必要检查；指出风险和测试缺口。"
+      instructions: "你是代码助手。优先阅读现有代码和项目约定，保持改动小而可靠；运行必要检查；指出风险和测试缺口。"
     },
     {
       id: "word",
@@ -793,8 +817,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
-      instructions:
-        "你是 Word 助手。输出结构化文档大纲和正文，注意标题层级、正式语气、可编辑性和交付格式。"
+      instructions: "你是 Word 助手。输出结构化文档大纲和正文，注意标题层级、正式语气、可编辑性和交付格式。"
     },
     {
       id: "excel",
@@ -808,8 +831,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
-      instructions:
-        "你是 Excel 助手。关注数据结构、公式正确性、汇总逻辑和图表表达，必要时说明计算口径。"
+      instructions: "你是 Excel 助手。关注数据结构、公式正确性、汇总逻辑和图表表达，必要时说明计算口径。"
     },
     {
       id: "ppt",
@@ -823,8 +845,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "office",
-      instructions:
-        "你是 PPT 助手。先确定受众和目标，再生成页面结构、每页标题、要点、讲稿和视觉建议。"
+      instructions: "你是 PPT 助手。先确定受众和目标，再生成页面结构、每页标题、要点、讲稿和视觉建议。"
     },
     {
       id: "file-organizer",
@@ -838,8 +859,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["filesystem-mcp:*"],
       enabled: true,
       category: "file",
-      instructions:
-        "你是文件整理助手。先列出目录结构和整理方案；涉及移动、重命名、删除或写入时必须进入审批。"
+      instructions: "你是文件整理助手。先列出目录结构和整理方案；涉及移动、重命名、删除或写入时必须进入审批。"
     },
     {
       id: "report",
@@ -853,8 +873,7 @@ export function createDefaultAgents(): AgentProfile[] {
       mcpToolIds: ["office-mcp:*", "filesystem-mcp:*"],
       enabled: true,
       category: "report",
-      instructions:
-        "你是报告助手。输出应正式、清楚、有依据；先搭结构，再写结论、依据、问题和建议。"
+      instructions: "你是报告助手。输出应正式、清楚、有依据；先搭结构，再写结论、依据、问题和建议。"
     }
   ];
 }
@@ -1197,7 +1216,8 @@ export function createDefaultSettings(
         id: "mem-demo-3",
         kind: "long_term",
         title: "技术栈偏好",
-        content: "前端使用 React + TypeScript，样式用纯 CSS。Electron 桌面端，Express 后端。Monorepo 结构用 npm workspaces。",
+        content:
+          "前端使用 React + TypeScript，样式用纯 CSS。Electron 桌面端，Express 后端。Monorepo 结构用 npm workspaces。",
         tags: ["技术栈", "架构"],
         createdAt: now,
         updatedAt: now,

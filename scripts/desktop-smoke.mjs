@@ -54,6 +54,8 @@ const pollInterval = 1_000;
 const pollTimeout = 90_000;
 const pollStart = Date.now();
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function pollHealthCheck() {
   while (!finished && Date.now() - pollStart < pollTimeout) {
     try {
@@ -61,9 +63,36 @@ async function pollHealthCheck() {
       if (res.ok) {
         console.log(`NexaDesk desktop smoke test passed on port ${healthCheckPort}.`);
         child.kill();
-        void finish(0);
+        await finish(0);
         return;
       }
     } catch {
-      // server not ready yet
-  
+      // Server is not ready yet.
+    }
+
+    await delay(pollInterval);
+  }
+
+  if (!finished) {
+    child.kill();
+    console.error(`Desktop smoke test failed: health endpoint did not respond at ${healthCheckUrl}.\n${output}`);
+    await finish(1);
+  }
+}
+
+async function finish(exitCode) {
+  if (finished) {
+    return;
+  }
+
+  finished = true;
+  clearTimeout(timeout);
+  try {
+    await rm(userDataDir, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`Failed to remove smoke test user data directory: ${error instanceof Error ? error.message : error}`);
+  }
+  process.exitCode = exitCode;
+}
+
+void pollHealthCheck();

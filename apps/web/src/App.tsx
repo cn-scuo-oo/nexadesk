@@ -1,5 +1,5 @@
 // @ts-nocheck
-﻿import {
+import {
   Bot,
   Brain,
   Check,
@@ -39,7 +39,6 @@ import {
   type AgentProfile,
   type AppSnapshot,
   type ChatMessage,
-  type ChatStreamEvent,
   type DesktopStatus,
   type McpServerSettings,
   type McpServerToolsResult,
@@ -67,9 +66,6 @@ import {
   type WorkspaceFilePreviewResult,
   type WorkspaceFile,
   type WorkspaceListResult,
-  type WorkspaceSearchMatch,
-  type WorkspaceSearchMode,
-  type WorkspaceSearchResult,
   type WorkspaceTreeEntry
 } from "@nexadesk/shared";
 import {
@@ -83,7 +79,6 @@ import {
   fetchSnapshot,
   fetchWorkspaceFile,
   fetchWorkspaceList,
-  fetchWorkspaceSearch,
   recoverSettings as recoverAppSettings,
   resolveApproval,
   runAutomation,
@@ -97,6 +92,26 @@ import {
   updateAutomation,
   updateSession
 } from "./api";
+import {
+  readInitialAppView,
+  readStoredBoolean,
+  settingsTabGroups,
+  settingsTabs,
+  writeStoredBoolean,
+  type AppView,
+  type SettingsTab
+} from "./lib/app-shell";
+import { applyChatStreamEvent } from "./lib/chat-stream";
+import type { RuntimeDashboardStats } from "./lib/runtime-metrics";
+import {
+  automationRunStatusLabel,
+  automationScheduleKindLabel,
+  policyLabel,
+  runtimeStatusLabel,
+  toolNameLabel,
+  toolStatusLabel
+} from "./lib/labels";
+import { buildRuntimeDashboardStats, estimateTokenCount } from "./lib/runtime-metrics";
 
 declare global {
   interface Window {
@@ -107,22 +122,6 @@ declare global {
 }
 
 type DataMode = "live" | "demo";
-type AppView = "new" | "thread" | "search" | "scheduled" | "runtime" | "skills" | "mcp" | "agents" | "memory" | "settings";
-type SettingsTab =
-  | "providers"
-  | "model"
-  | "engines"
-  | "assistants"
-  | "skills"
-  | "appearance"
-  | "workspace"
-  | "permissions"
-  | "memory"
-  | "im"
-  | "email"
-  | "shortcuts"
-  | "about"
-  | "desktop";
 
 type ProviderDraft = {
   id: string;
@@ -149,23 +148,7 @@ type ProviderMatrixItem = {
   officialUrl: string;
 };
 
-type WorkspaceContextView = "files" | "search";
-
-type RuntimeDashboardStats = {
-  totalCalls: number;
-  successRateLabel: string;
-  averageCompletionLabel: string;
-  averageFirstTokenLabel: string;
-  outputTpsLabel: string;
-  modelTpsLabel: string;
-  totalTokens: number;
-  contextTokens: number;
-  telemetrySourceLabel: string;
-  trendBars: number[];
-};
-
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
-const workspaceContextViewStorageKey = "nexadesk.workspaceContext.view";
 const workspaceRecentFilesStorageKey = "nexadesk.workspaceContext.recentFiles";
 const runtimeTelemetryStorageKey = "nexadesk.runtime.telemetry";
 const maxWorkspaceRecentFiles = 8;
@@ -202,30 +185,138 @@ const fontOptions = [
 
 /* ── Theme System ── */
 type ThemeAppearance = "light" | "dark";
-type ThemeId = "honey-warm" | "classic-dark" | "midnight" | "nord" | "emerald" | "sakura" | "rose" | "cyber" | "paper" | "mocha" | "ocean" | "dawn" | "sunset" | "daylight";
+type ThemeId =
+  | "honey-warm"
+  | "classic-dark"
+  | "midnight"
+  | "nord"
+  | "emerald"
+  | "sakura"
+  | "rose"
+  | "cyber"
+  | "paper"
+  | "mocha"
+  | "ocean"
+  | "dawn"
+  | "sunset"
+  | "daylight";
 type ThemeMode = "light" | "dark" | "system";
-interface ThemeMeta { id: ThemeId; name: string; description: string; appearance: ThemeAppearance; preview: string[] }
+interface ThemeMeta {
+  id: ThemeId;
+  name: string;
+  description: string;
+  appearance: ThemeAppearance;
+  preview: string[];
+}
 const THEMES: ThemeMeta[] = [
-  { id: "honey-warm", name: "蜂蜜暖光", description: "NexaDesk 默认暖色主题", appearance: "light", preview: ["#fff4c8", "#1f6b50", "#d97800", "#2e6f55"] },
-  { id: "daylight", name: "日光清透", description: "清爽蓝调浅色主题", appearance: "light", preview: ["#f0f4f8", "#1f6b50", "#0ea5e9", "#2e6f55"] },
-  { id: "paper", name: "纸墨淡雅", description: "仿纸质感温暖浅色", appearance: "light", preview: ["#f5f0e8", "#1f6b50", "#b8860b", "#2e6f55"] },
-  { id: "sakura", name: "樱花粉白", description: "柔和粉色主题", appearance: "light", preview: ["#fdf2f8", "#ec4899", "#a855f7", "#10b981"] },
-  { id: "classic-dark", name: "经典深色", description: "纯净近黑暗色主题", appearance: "dark", preview: ["#0f1117", "#1f6b50", "#d97800", "#3daa7a"] },
-  { id: "midnight", name: "午夜深蓝", description: "深邃冷调暗色主题", appearance: "dark", preview: ["#0f172a", "#14b8a6", "#d97800", "#14b8a6"] },
-  { id: "nord", name: "Nord 极光", description: "受 Nord 配色启发", appearance: "dark", preview: ["#2e3440", "#88c0d0", "#ebcb8b", "#a3be8c"] },
-  { id: "emerald", name: "翡翠暗绿", description: "自然灵动翡翠绿", appearance: "dark", preview: ["#0a1a14", "#10b981", "#67e8f9", "#10b981"] },
-  { id: "rose", name: "暗夜玫红", description: "深邃浪漫玫红", appearance: "dark", preview: ["#1a0f14", "#f472b6", "#c084fc", "#34d399"] },
-  { id: "cyber", name: "赛博霓虹", description: "科技感霓虹暗色", appearance: "dark", preview: ["#0a0a14", "#818cf8", "#22d3ee", "#34d399"] },
-  { id: "mocha", name: "摩卡棕韵", description: "温暖棕调暗色主题", appearance: "dark", preview: ["#1a1410", "#d97800", "#c084fc", "#8fbc6a"] },
-  { id: "ocean", name: "深海蔚蓝", description: "深邃海洋蓝调", appearance: "dark", preview: ["#0a1628", "#38bdf8", "#f59e0b", "#34d399"] },
-  { id: "dawn", name: "黎明暖橙", description: "破晓暖橙暗色", appearance: "dark", preview: ["#1a1018", "#f97316", "#e879f9", "#4ade80"] },
-  { id: "sunset", name: "落日余晖", description: "夕阳暖金色调", appearance: "dark", preview: ["#1a1008", "#f59e0b", "#ef4444", "#84cc16"] },
+  {
+    id: "honey-warm",
+    name: "蜂蜜暖光",
+    description: "NexaDesk 默认暖色主题",
+    appearance: "light",
+    preview: ["#fff4c8", "#1f6b50", "#d97800", "#2e6f55"]
+  },
+  {
+    id: "daylight",
+    name: "日光清透",
+    description: "清爽蓝调浅色主题",
+    appearance: "light",
+    preview: ["#f0f4f8", "#1f6b50", "#0ea5e9", "#2e6f55"]
+  },
+  {
+    id: "paper",
+    name: "纸墨淡雅",
+    description: "仿纸质感温暖浅色",
+    appearance: "light",
+    preview: ["#f5f0e8", "#1f6b50", "#b8860b", "#2e6f55"]
+  },
+  {
+    id: "sakura",
+    name: "樱花粉白",
+    description: "柔和粉色主题",
+    appearance: "light",
+    preview: ["#fdf2f8", "#ec4899", "#a855f7", "#10b981"]
+  },
+  {
+    id: "classic-dark",
+    name: "经典深色",
+    description: "纯净近黑暗色主题",
+    appearance: "dark",
+    preview: ["#0f1117", "#1f6b50", "#d97800", "#3daa7a"]
+  },
+  {
+    id: "midnight",
+    name: "午夜深蓝",
+    description: "深邃冷调暗色主题",
+    appearance: "dark",
+    preview: ["#0f172a", "#14b8a6", "#d97800", "#14b8a6"]
+  },
+  {
+    id: "nord",
+    name: "Nord 极光",
+    description: "受 Nord 配色启发",
+    appearance: "dark",
+    preview: ["#2e3440", "#88c0d0", "#ebcb8b", "#a3be8c"]
+  },
+  {
+    id: "emerald",
+    name: "翡翠暗绿",
+    description: "自然灵动翡翠绿",
+    appearance: "dark",
+    preview: ["#0a1a14", "#10b981", "#67e8f9", "#10b981"]
+  },
+  {
+    id: "rose",
+    name: "暗夜玫红",
+    description: "深邃浪漫玫红",
+    appearance: "dark",
+    preview: ["#1a0f14", "#f472b6", "#c084fc", "#34d399"]
+  },
+  {
+    id: "cyber",
+    name: "赛博霓虹",
+    description: "科技感霓虹暗色",
+    appearance: "dark",
+    preview: ["#0a0a14", "#818cf8", "#22d3ee", "#34d399"]
+  },
+  {
+    id: "mocha",
+    name: "摩卡棕韵",
+    description: "温暖棕调暗色主题",
+    appearance: "dark",
+    preview: ["#1a1410", "#d97800", "#c084fc", "#8fbc6a"]
+  },
+  {
+    id: "ocean",
+    name: "深海蔚蓝",
+    description: "深邃海洋蓝调",
+    appearance: "dark",
+    preview: ["#0a1628", "#38bdf8", "#f59e0b", "#34d399"]
+  },
+  {
+    id: "dawn",
+    name: "黎明暖橙",
+    description: "破晓暖橙暗色",
+    appearance: "dark",
+    preview: ["#1a1018", "#f97316", "#e879f9", "#4ade80"]
+  },
+  {
+    id: "sunset",
+    name: "落日余晖",
+    description: "夕阳暖金色调",
+    appearance: "dark",
+    preview: ["#1a1008", "#f59e0b", "#ef4444", "#84cc16"]
+  }
 ];
 const themeStorageKey = "nexadesk.theme.id";
 const themeModeStorageKey = "nexadesk.theme.mode";
 
 /* ── Toast ── */
-interface ToastMessage { id: string; message: string; level: "info" | "success" | "error" }
+interface ToastMessage {
+  id: string;
+  message: string;
+  level: "info" | "success" | "error";
+}
 
 /* ── Slash Commands ── */
 const SLASH_COMMANDS = [
@@ -238,7 +329,7 @@ const SLASH_COMMANDS = [
   { cmd: "/agents", label: "Agent 列表", desc: "查看和管理 Agent" },
   { cmd: "/skills", label: "技能市场", desc: "查看可用技能" },
   { cmd: "/memory", label: "记忆管理", desc: "查看和管理记忆" },
-  { cmd: "/runtime", label: "运行监控", desc: "查看运行时指标" },
+  { cmd: "/runtime", label: "运行监控", desc: "查看运行时指标" }
 ];
 
 /* ── Quick Actions ── */
@@ -247,7 +338,7 @@ const QUICK_ACTIONS = [
   { id: "write-doc", label: "写文档", icon: "📄" },
   { id: "analyze", label: "数据分析", icon: "📊" },
   { id: "debug", label: "调试问题", icon: "🐛" },
-  { id: "refactor", label: "重构代码", icon: "♻️" },
+  { id: "refactor", label: "重构代码", icon: "♻️" }
 ];
 
 /* ── i18n ── */
@@ -361,11 +452,18 @@ const I18N: Record<string, Record<Lang, string>> = {
   "privacy.reject": { zh: "不同意", en: "Decline" },
   "pet.greeting": { zh: "你好！", en: "Hello!" },
   "pet.help": { zh: "需要帮忙吗？", en: "Need help?" },
-  "pet.working": { zh: "我在工作中~", en: "Working hard~" },
+  "pet.working": { zh: "我在工作中~", en: "Working hard~" }
 };
 
 /* ── Agent Teams ── */
-interface AgentTeam { id: string; name: string; emoji: string; description: string; agentIds: string[]; workflow: "sequential" | "parallel" | "round_robin" }
+interface AgentTeam {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  agentIds: string[];
+  workflow: "sequential" | "parallel" | "round_robin";
+}
 
 const defaultProviderIds = new Set(createDefaultProviders().map((provider) => provider.id));
 
@@ -422,92 +520,6 @@ const domesticProviderMatrix: ProviderMatrixItem[] = [
   }
 ];
 
-const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = [
-  { id: "providers", label: "模型服务", detail: "API、Key、Base URL" },
-  { id: "model", label: "默认模型", detail: "工作台模型切换" },
-  { id: "engines", label: "Agent 引擎", detail: "Codex、Claude、CLI" },
-  { id: "assistants", label: "内置助手", detail: "Cowork、Office、报告" },
-  { id: "skills", label: "技能系统", detail: "启用、禁用、自定义" },
-  { id: "appearance", label: "界面字体", detail: "主题、语言、字号" },
-  { id: "workspace", label: "工作区", detail: "目录、导出、访问范围" },
-  { id: "permissions", label: "权限审批", detail: "工具风险策略" },
-  { id: "memory", label: "记忆", detail: "项目、会话、长期记忆" },
-  { id: "im", label: "IM 集成", detail: "飞书、钉钉、Telegram" },
-  { id: "email", label: "邮件", detail: "IMAP/SMTP 配置" },
-  { id: "shortcuts", label: "快捷键", detail: "键盘操作与自定义" },
-  { id: "about", label: "关于", detail: "版本、许可证、仓库" },
-  { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
-];
-
-const settingsTabGroups: Array<{ title: string; tabs: SettingsTab[] }> = [
-  { title: "模型与运行", tabs: ["providers", "model", "engines"] },
-  { title: "助手与工具", tabs: ["assistants", "skills", "permissions", "memory"] },
-  { title: "通讯与集成", tabs: ["im", "email"] },
-  { title: "应用", tabs: ["appearance", "workspace", "shortcuts", "about", "desktop"] }
-];
-
-const appViews = new Set<AppView>([
-  "new",
-  "thread",
-  "search",
-  "scheduled",
-  "runtime",
-  "skills",
-  "mcp",
-  "agents",
-  "settings"
-]);
-
-function readInitialAppView(): AppView {
-  const hash = window.location.hash.replace(/^#/, "") as AppView;
-  if (hash === "settings") {
-    return "new";
-  }
-  return appViews.has(hash) ? hash : "new";
-}
-
-function readStoredBoolean(key: string, fallback: boolean) {
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
-  try {
-    const value = window.localStorage.getItem(key);
-    return value === null ? fallback : value === "true";
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStoredBoolean(key: string, value: boolean) {
-  try {
-    window.localStorage.setItem(key, value ? "true" : "false");
-  } catch {
-    // Local storage can be unavailable in hardened browser contexts.
-  }
-}
-
-function readStoredWorkspaceContextView(): WorkspaceContextView {
-  if (typeof window === "undefined") {
-    return "files";
-  }
-
-  try {
-    const value = window.localStorage.getItem(workspaceContextViewStorageKey);
-    return value === "search" ? "search" : "files";
-  } catch {
-    return "files";
-  }
-}
-
-function writeStoredWorkspaceContextView(view: WorkspaceContextView) {
-  try {
-    window.localStorage.setItem(workspaceContextViewStorageKey, view);
-  } catch {
-    // Local storage can be unavailable in hardened browser contexts.
-  }
-}
-
 function readStoredWorkspaceRecentFiles(): WorkspaceTreeEntry[] {
   if (typeof window === "undefined") {
     return [];
@@ -521,17 +533,17 @@ function readStoredWorkspaceRecentFiles(): WorkspaceTreeEntry[] {
     return parsed
       .filter(
         (item): item is WorkspaceTreeEntry =>
-          typeof item?.name === "string" &&
-          typeof item?.path === "string" &&
-          item.kind === "file"
+          typeof item?.name === "string" && typeof item?.path === "string" && item.kind === "file"
       )
-      .map((item): WorkspaceTreeEntry => ({
-        name: item.name,
-        path: item.path,
-        kind: "file",
-        size: typeof item.size === "number" ? item.size : undefined,
-        modifiedAt: typeof item.modifiedAt === "string" ? item.modifiedAt : undefined
-      }))
+      .map(
+        (item): WorkspaceTreeEntry => ({
+          name: item.name,
+          path: item.path,
+          kind: "file",
+          size: typeof item.size === "number" ? item.size : undefined,
+          modifiedAt: typeof item.modifiedAt === "string" ? item.modifiedAt : undefined
+        })
+      )
       .slice(0, maxWorkspaceRecentFiles);
   } catch {
     return [];
@@ -540,7 +552,10 @@ function readStoredWorkspaceRecentFiles(): WorkspaceTreeEntry[] {
 
 function writeStoredWorkspaceRecentFiles(entries: WorkspaceTreeEntry[]) {
   try {
-    window.localStorage.setItem(workspaceRecentFilesStorageKey, JSON.stringify(entries.slice(0, maxWorkspaceRecentFiles)));
+    window.localStorage.setItem(
+      workspaceRecentFilesStorageKey,
+      JSON.stringify(entries.slice(0, maxWorkspaceRecentFiles))
+    );
   } catch {
     // Local storage can be unavailable in hardened browser contexts.
   }
@@ -577,7 +592,10 @@ function readStoredRuntimeTelemetry(): RuntimeTelemetryEntry[] {
 
 function writeStoredRuntimeTelemetry(entries: RuntimeTelemetryEntry[]) {
   try {
-    window.localStorage.setItem(runtimeTelemetryStorageKey, JSON.stringify(entries.slice(0, maxRuntimeTelemetryEntries)));
+    window.localStorage.setItem(
+      runtimeTelemetryStorageKey,
+      JSON.stringify(entries.slice(0, maxRuntimeTelemetryEntries))
+    );
   } catch {
     // Local storage can be unavailable in hardened browser contexts.
   }
@@ -588,10 +606,7 @@ function rememberWorkspaceFile(current: WorkspaceTreeEntry[], entry: WorkspaceTr
     return current;
   }
 
-  return [
-    entry,
-    ...current.filter((item) => item.path !== entry.path)
-  ].slice(0, maxWorkspaceRecentFiles);
+  return [entry, ...current.filter((item) => item.path !== entry.path)].slice(0, maxWorkspaceRecentFiles);
 }
 
 const taskBoard = [
@@ -683,10 +698,18 @@ export function App() {
 
   /* ── Theme State ── */
   const [themeId, setThemeId] = useState<ThemeId>(() => {
-    try { return (localStorage.getItem(themeStorageKey) as ThemeId) || "honey-warm"; } catch { return "honey-warm"; }
+    try {
+      return (localStorage.getItem(themeStorageKey) as ThemeId) || "honey-warm";
+    } catch {
+      return "honey-warm";
+    }
   });
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    try { return (localStorage.getItem(themeModeStorageKey) as ThemeMode) || "light"; } catch { return "light"; }
+    try {
+      return (localStorage.getItem(themeModeStorageKey) as ThemeMode) || "light";
+    } catch {
+      return "light";
+    }
   });
 
   useEffect(() => {
@@ -704,8 +727,12 @@ export function App() {
     } else {
       root.classList.remove("dark");
     }
-    try { localStorage.setItem(themeStorageKey, themeId); } catch {}
-    try { localStorage.setItem(themeModeStorageKey, themeMode); } catch {}
+    try {
+      localStorage.setItem(themeStorageKey, themeId);
+    } catch {}
+    try {
+      localStorage.setItem(themeModeStorageKey, themeMode);
+    } catch {}
   }, [themeId, themeMode]);
 
   /* ── Toast State ── */
@@ -718,26 +745,48 @@ export function App() {
 
   /* ── Language State ── */
   const [lang, setLang] = useState<Lang>("zh");
-  function t(key: string): string { return I18N[key]?.[lang] ?? key; }
+  function t(key: string): string {
+    return I18N[key]?.[lang] ?? key;
+  }
 
   /* ── Slash Command State ── */
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashHighlight, setSlashHighlight] = useState(0);
-  const filteredSlashCommands = SLASH_COMMANDS.filter((c) => c.cmd.includes(slashFilter) || c.label.includes(slashFilter));
+  const filteredSlashCommands = SLASH_COMMANDS.filter(
+    (c) => c.cmd.includes(slashFilter) || c.label.includes(slashFilter)
+  );
 
   /* ── Image Attachments State ── */
   const [imageAttachments, setImageAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
 
   /* ── Teams State ── */
   const [teams, setTeams] = useState<AgentTeam[]>([
-    { id: "team-code", name: "代码团队", emoji: "💻", description: "代码助手 + 代码审查 + 终端", agentIds: ["code", "cowork"], workflow: "sequential" },
-    { id: "team-office", name: "办公团队", emoji: "📋", description: "Word + Excel + PPT + 报告", agentIds: ["word", "excel", "ppt", "report"], workflow: "parallel" },
+    {
+      id: "team-code",
+      name: "代码团队",
+      emoji: "💻",
+      description: "代码助手 + 代码审查 + 终端",
+      agentIds: ["code", "cowork"],
+      workflow: "sequential"
+    },
+    {
+      id: "team-office",
+      name: "办公团队",
+      emoji: "📋",
+      description: "Word + Excel + PPT + 报告",
+      agentIds: ["word", "excel", "ppt", "report"],
+      workflow: "parallel"
+    }
   ]);
 
   /* ── Privacy Dialog State ── */
   const [privacyAccepted, setPrivacyAccepted] = useState(() => {
-    try { return localStorage.getItem("nexadesk.privacy.accepted") === "true"; } catch { return true; }
+    try {
+      return localStorage.getItem("nexadesk.privacy.accepted") === "true";
+    } catch {
+      return true;
+    }
   });
 
   /* ── Activity Sidebar State ── */
@@ -1083,96 +1132,104 @@ export function App() {
     try {
       const streamStartedMs = performance.now();
       let activeTelemetryMessageId: string | null = null;
-      await streamMessage(activeSession.id, {
-        content: trimmedContent,
-        providerId: activeRuntimeProvider?.id,
-        model: activeRuntimeModel,
-        agentId: activeAgent?.id
-      }, (streamEvent) => {
-        if (streamEvent.type === "assistant_start") {
-          activeTelemetryMessageId = streamEvent.message.id;
-          runtimeTelemetryRuntimeRef.current.set(streamEvent.message.id, {
-            startedMs: streamStartedMs,
-            outputTokens: 0
-          });
-          const entry: RuntimeTelemetryEntry = {
-            id: streamEvent.message.id,
-            sessionId: activeSession.id,
-            providerName: streamEvent.provider.name,
-            model: streamEvent.provider.model,
-            startedAt: new Date().toISOString(),
-            inputTokens: estimateTokenCount(trimmedContent),
-            outputTokens: 0,
-            totalTokens: estimateTokenCount(trimmedContent),
-            status: "running",
-            messagePreview: trimmedContent.slice(0, 240)
-          };
-          setRuntimeTelemetry((current) => [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, maxRuntimeTelemetryEntries));
-        }
-        if (streamEvent.type === "assistant_delta") {
-          const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.messageId);
-          if (runtime) {
-            const nowMs = performance.now();
-            const deltaTokens = estimateTokenCount(streamEvent.delta);
-            runtime.outputTokens += deltaTokens;
-            runtimeTelemetryRuntimeRef.current.set(streamEvent.messageId, runtime);
+      await streamMessage(
+        activeSession.id,
+        {
+          content: trimmedContent,
+          providerId: activeRuntimeProvider?.id,
+          model: activeRuntimeModel,
+          agentId: activeAgent?.id
+        },
+        (streamEvent) => {
+          if (streamEvent.type === "assistant_start") {
+            activeTelemetryMessageId = streamEvent.message.id;
+            runtimeTelemetryRuntimeRef.current.set(streamEvent.message.id, {
+              startedMs: streamStartedMs,
+              outputTokens: 0
+            });
+            const entry: RuntimeTelemetryEntry = {
+              id: streamEvent.message.id,
+              sessionId: activeSession.id,
+              providerName: streamEvent.provider.name,
+              model: streamEvent.provider.model,
+              startedAt: new Date().toISOString(),
+              inputTokens: estimateTokenCount(trimmedContent),
+              outputTokens: 0,
+              totalTokens: estimateTokenCount(trimmedContent),
+              status: "running",
+              messagePreview: trimmedContent.slice(0, 240)
+            };
             setRuntimeTelemetry((current) =>
-              current.map((entry) =>
-                entry.id === streamEvent.messageId
-                  ? {
-                      ...entry,
-                      firstTokenMs: entry.firstTokenMs ?? Math.max(0, Math.round(nowMs - runtime.startedMs)),
-                      outputTokens: runtime.outputTokens,
-                      totalTokens: entry.inputTokens + runtime.outputTokens
-                    }
-                  : entry
-              )
+              [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, maxRuntimeTelemetryEntries)
             );
           }
-        }
-        if (streamEvent.type === "assistant_done") {
-          const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.message.id);
-          const finishedMs = performance.now();
-          const outputTokens = estimateTokenCount(streamEvent.message.content);
-          setRuntimeTelemetry((current) =>
-            current.map((entry) =>
-              entry.id === streamEvent.message.id
-                ? {
-                    ...entry,
-                    completedAt: new Date().toISOString(),
-                    durationMs: runtime ? Math.max(0, Math.round(finishedMs - runtime.startedMs)) : entry.durationMs,
-                    outputTokens,
-                    totalTokens: entry.inputTokens + outputTokens,
-                    status: "completed"
-                  }
-                : entry
-            )
-          );
-          runtimeTelemetryRuntimeRef.current.delete(streamEvent.message.id);
-        }
-        if (streamEvent.type === "error") {
-          setError(streamEvent.message);
-          const failedMessageId = streamEvent.messageId ?? activeTelemetryMessageId;
-          if (failedMessageId) {
-            const runtime = runtimeTelemetryRuntimeRef.current.get(failedMessageId);
+          if (streamEvent.type === "assistant_delta") {
+            const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.messageId);
+            if (runtime) {
+              const nowMs = performance.now();
+              const deltaTokens = estimateTokenCount(streamEvent.delta);
+              runtime.outputTokens += deltaTokens;
+              runtimeTelemetryRuntimeRef.current.set(streamEvent.messageId, runtime);
+              setRuntimeTelemetry((current) =>
+                current.map((entry) =>
+                  entry.id === streamEvent.messageId
+                    ? {
+                        ...entry,
+                        firstTokenMs: entry.firstTokenMs ?? Math.max(0, Math.round(nowMs - runtime.startedMs)),
+                        outputTokens: runtime.outputTokens,
+                        totalTokens: entry.inputTokens + runtime.outputTokens
+                      }
+                    : entry
+                )
+              );
+            }
+          }
+          if (streamEvent.type === "assistant_done") {
+            const runtime = runtimeTelemetryRuntimeRef.current.get(streamEvent.message.id);
+            const finishedMs = performance.now();
+            const outputTokens = estimateTokenCount(streamEvent.message.content);
             setRuntimeTelemetry((current) =>
               current.map((entry) =>
-                entry.id === failedMessageId
+                entry.id === streamEvent.message.id
                   ? {
                       ...entry,
                       completedAt: new Date().toISOString(),
-                      durationMs: runtime ? Math.max(0, Math.round(performance.now() - runtime.startedMs)) : entry.durationMs,
-                      status: "failed",
-                      error: streamEvent.message
+                      durationMs: runtime ? Math.max(0, Math.round(finishedMs - runtime.startedMs)) : entry.durationMs,
+                      outputTokens,
+                      totalTokens: entry.inputTokens + outputTokens,
+                      status: "completed"
                     }
                   : entry
               )
             );
-            runtimeTelemetryRuntimeRef.current.delete(failedMessageId);
+            runtimeTelemetryRuntimeRef.current.delete(streamEvent.message.id);
           }
+          if (streamEvent.type === "error") {
+            setError(streamEvent.message);
+            const failedMessageId = streamEvent.messageId ?? activeTelemetryMessageId;
+            if (failedMessageId) {
+              const runtime = runtimeTelemetryRuntimeRef.current.get(failedMessageId);
+              setRuntimeTelemetry((current) =>
+                current.map((entry) =>
+                  entry.id === failedMessageId
+                    ? {
+                        ...entry,
+                        completedAt: new Date().toISOString(),
+                        durationMs: runtime
+                          ? Math.max(0, Math.round(performance.now() - runtime.startedMs))
+                          : entry.durationMs,
+                        status: "failed",
+                        error: streamEvent.message
+                      }
+                    : entry
+                )
+              );
+              runtimeTelemetryRuntimeRef.current.delete(failedMessageId);
+            }
+          }
+          setSnapshot((current) => (current ? applyChatStreamEvent(current, streamEvent) : current));
         }
-        setSnapshot((current) => (current ? applyChatStreamEvent(current, streamEvent) : current));
-      });
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Failed to send message");
     } finally {
@@ -1181,7 +1238,9 @@ export function App() {
   }
 
   async function handleAskAgentToReadFile(path: string) {
-    await sendWorkbenchMessage(`请使用 read_file 工具读取工作区文件 "${path}"，然后总结关键内容、可能的问题和下一步建议。`);
+    await sendWorkbenchMessage(
+      `请使用 read_file 工具读取工作区文件 "${path}"，然后总结关键内容、可能的问题和下一步建议。`
+    );
   }
 
   async function handleWorkbenchRuntimeChange(providerId: string, model?: string) {
@@ -1246,10 +1305,10 @@ export function App() {
         return {
           ...current,
           approvals: current.approvals.filter((item) => item.id !== approval.id),
-          approvalHistory: [result.history, ...current.approvalHistory.filter((item) => item.id !== result.history.id)].slice(
-            0,
-            100
-          ),
+          approvalHistory: [
+            result.history,
+            ...current.approvalHistory.filter((item) => item.id !== result.history.id)
+          ].slice(0, 100),
           messages: [
             ...current.messages.map((message) =>
               message.id === approval.messageId
@@ -1332,7 +1391,9 @@ export function App() {
           }
         : current
     );
-    setSelectedSessionIds((current) => new Set([...current].filter((id) => sessions.some((session) => session.id === id))));
+    setSelectedSessionIds(
+      (current) => new Set([...current].filter((id) => sessions.some((session) => session.id === id)))
+    );
     if (!sessions.some((session) => session.id === activeSessionId)) {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -1374,7 +1435,10 @@ export function App() {
         scheduleKind: payload.scheduleKind,
         schedule: automationScheduleKindLabel(payload.scheduleKind),
         enabled: payload.enabled,
-        nextRun: payload.enabled && payload.scheduleKind !== "manual" ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : "Not scheduled",
+        nextRun:
+          payload.enabled && payload.scheduleKind !== "manual"
+            ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+            : "Not scheduled",
         agentId: payload.agentId,
         createdAt: now,
         updatedAt: now
@@ -1601,7 +1665,9 @@ export function App() {
           skills: mergedSkills
         }
       });
-      setSettingsStatus(`已导入 ${importedSkills.length} 个技能：${importedSkills.map((skill) => skill.name).join("、")}`);
+      setSettingsStatus(
+        `已导入 ${importedSkills.length} 个技能：${importedSkills.map((skill) => skill.name).join("、")}`
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "技能包导入失败。");
     }
@@ -1790,7 +1856,7 @@ export function App() {
             (agent) => agent.id === session.activeAgentId && agent.enabled
           )
             ? session.activeAgentId
-            : result.settings.assistant.agents.find((agent) => agent.enabled)?.id ?? session.activeAgentId
+            : (result.settings.assistant.agents.find((agent) => agent.enabled)?.id ?? session.activeAgentId)
         })),
         activity: [result.activity, ...current.activity].slice(0, 20)
       };
@@ -1807,9 +1873,7 @@ export function App() {
       setSettings(result.settings);
       setMode("live");
       setError(null);
-      setSettingsStatus(
-        result.warning ?? `设置已恢复，已备份 ${result.backupPaths.length} 个旧文件。`
-      );
+      setSettingsStatus(result.warning ?? `设置已恢复，已备份 ${result.backupPaths.length} 个旧文件。`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Failed to recover settings");
     } finally {
@@ -1824,16 +1888,19 @@ export function App() {
   if (!privacyAccepted) {
     return (
       <PrivacyDialog
-        onAccept={() => { setPrivacyAccepted(true); try { localStorage.setItem("nexadesk.privacy.accepted", "true"); } catch {} }}
+        onAccept={() => {
+          setPrivacyAccepted(true);
+          try {
+            localStorage.setItem("nexadesk.privacy.accepted", "true");
+          } catch {}
+        }}
         onReject={() => {}}
       />
     );
   }
 
   return (
-    <main
-      className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}`}
-    >
+    <main className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}`}>
       <WindowTitleBar title={`NexaDesk — ${activeAgent?.name ?? "Cowork 助手"}`} />
 
       <aside className="rail">
@@ -1851,10 +1918,20 @@ export function App() {
         >
           <Sparkles size={19} />
         </button>
-        <button className={activeView === "agents" ? "rail-button active" : "rail-button"} aria-label="Agents" onClick={() => handleOpenView("agents")} type="button">
+        <button
+          className={activeView === "agents" ? "rail-button active" : "rail-button"}
+          aria-label="Agents"
+          onClick={() => handleOpenView("agents")}
+          type="button"
+        >
           <Bot size={19} />
         </button>
-        <button className={activeView === "search" ? "rail-button active" : "rail-button"} aria-label="Workspace" onClick={() => handleOpenView("search")} type="button">
+        <button
+          className={activeView === "search" ? "rail-button active" : "rail-button"}
+          aria-label="Workspace"
+          onClick={() => handleOpenView("search")}
+          type="button"
+        >
           <Folder size={19} />
         </button>
         <button
@@ -1880,7 +1957,9 @@ export function App() {
           </div>
           <nav className="nav-list workspace-nav-list" aria-label="Workspace sections">
             <button
-              className={activeView === "new" || activeView === "thread" ? "nav-item nav-button active" : "nav-item nav-button"}
+              className={
+                activeView === "new" || activeView === "thread" ? "nav-item nav-button active" : "nav-item nav-button"
+              }
               onClick={() => handleOpenView("new")}
               type="button"
             >
@@ -1890,28 +1969,44 @@ export function App() {
                 <small>开始一次协作</small>
               </span>
             </button>
-            <button className={activeView === "search" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("search")} type="button">
+            <button
+              className={activeView === "search" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("search")}
+              type="button"
+            >
               <Search size={17} />
               <span>
                 <strong>搜索任务</strong>
                 <small>会话与文件</small>
               </span>
             </button>
-            <button className={activeView === "scheduled" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("scheduled")} type="button">
+            <button
+              className={activeView === "scheduled" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("scheduled")}
+              type="button"
+            >
               <CircleDot size={17} />
               <span>
                 <strong>定时任务</strong>
                 <small>计划与自动化</small>
               </span>
             </button>
-            <button className={activeView === "runtime" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("runtime")} type="button">
+            <button
+              className={activeView === "runtime" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("runtime")}
+              type="button"
+            >
               <Zap size={17} />
               <span>
                 <strong>运行监控</strong>
                 <small>调用与成本</small>
               </span>
             </button>
-            <button className={activeView === "skills" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("skills")} type="button">
+            <button
+              className={activeView === "skills" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("skills")}
+              type="button"
+            >
               <Workflow size={17} />
               <span>
                 <strong>技能</strong>
@@ -1919,14 +2014,22 @@ export function App() {
               </span>
               <b>{enabledSkills.length}</b>
             </button>
-            <button className={activeView === "mcp" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("mcp")} type="button">
+            <button
+              className={activeView === "mcp" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("mcp")}
+              type="button"
+            >
               <Terminal size={17} />
               <span>
                 <strong>MCP</strong>
                 <small>工具服务器</small>
               </span>
             </button>
-            <button className={activeView === "agents" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("agents")} type="button">
+            <button
+              className={activeView === "agents" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("agents")}
+              type="button"
+            >
               <Users size={17} />
               <span>
                 <strong>我的 Agent</strong>
@@ -1934,7 +2037,11 @@ export function App() {
               </span>
               <b>{snapshot.agents.filter((agent) => agent.enabled).length}</b>
             </button>
-            <button className={activeView === "memory" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("memory")} type="button">
+            <button
+              className={activeView === "memory" ? "nav-item nav-button active" : "nav-item nav-button"}
+              onClick={() => handleOpenView("memory")}
+              type="button"
+            >
               <Brain size={17} />
               <span>
                 <strong>记忆</strong>
@@ -1949,7 +2056,9 @@ export function App() {
           <span className="branch-icon">main</span>
           <span>
             <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
-            <small>{teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}</small>
+            <small>
+              {teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}
+            </small>
           </span>
         </button>
 
@@ -1981,9 +2090,15 @@ export function App() {
           <div className="session-history-list">
             {orderedSessions.map((session) => (
               <button
-                className={session.id === activeSession?.id && activeView === "thread" ? "session-history-card active" : "session-history-card"}
+                className={
+                  session.id === activeSession?.id && activeView === "thread"
+                    ? "session-history-card active"
+                    : "session-history-card"
+                }
                 key={session.id}
-                onClick={() => (sessionBatchMode ? handleToggleSessionSelection(session.id) : handleOpenSession(session.id))}
+                onClick={() =>
+                  sessionBatchMode ? handleToggleSessionSelection(session.id) : handleOpenSession(session.id)
+                }
                 type="button"
               >
                 {sessionBatchMode ? (
@@ -2013,7 +2128,11 @@ export function App() {
                       }}
                       autoFocus
                     />
-                    <button className="mini-button" onClick={() => void handleConfirmRenameSession(session.id)} type="button">
+                    <button
+                      className="mini-button"
+                      onClick={() => void handleConfirmRenameSession(session.id)}
+                      type="button"
+                    >
                       保存
                     </button>
                   </span>
@@ -2074,7 +2193,11 @@ export function App() {
               <small>{mode === "live" ? "本地 API 已连接" : "演示模式"}</small>
             </span>
           </button>
-          <button className={settingsOpen ? "sidebar-settings-button active" : "sidebar-settings-button"} onClick={() => handleOpenSettings("providers")} type="button">
+          <button
+            className={settingsOpen ? "sidebar-settings-button active" : "sidebar-settings-button"}
+            onClick={() => handleOpenSettings("providers")}
+            type="button"
+          >
             <Settings size={16} />
             设置
           </button>
@@ -2174,9 +2297,7 @@ export function App() {
             onUpdateToolPolicy={(policy) => {
               const existing = settings.permissions.mcpToolPolicies ?? [];
               const idx = existing.findIndex((p) => p.toolId === policy.toolId);
-              const updated = idx >= 0
-                ? existing.map((p, i) => i === idx ? policy : p)
-                : [...existing, policy];
+              const updated = idx >= 0 ? existing.map((p, i) => (i === idx ? policy : p)) : [...existing, policy];
               void handleSaveSettings({
                 ...settings,
                 permissions: { ...settings.permissions, mcpToolPolicies: updated }
@@ -2194,7 +2315,9 @@ export function App() {
               void handleSaveSettings({ ...settings, memoryEntries: updated });
             }}
             onUpdateEntry={(entryId, patch) => {
-              const updated = (settings.memoryEntries ?? []).map((e) => e.id === entryId ? { ...e, ...patch, updatedAt: new Date().toISOString() } : e);
+              const updated = (settings.memoryEntries ?? []).map((e) =>
+                e.id === entryId ? { ...e, ...patch, updatedAt: new Date().toISOString() } : e
+              );
               void handleSaveSettings({ ...settings, memoryEntries: updated });
             }}
             onDeleteEntry={(entryId) => {
@@ -2225,206 +2348,208 @@ export function App() {
             type="button"
           />
           <aside className="context-drawer" role="dialog" aria-modal="true" aria-label="实时工作区上下文">
-        <div className="right-dock-heading context-drawer-heading">
-          <div>
-            <p className="eyebrow">Live Context</p>
-            <h3>实时工作区</h3>
-          </div>
-          <div className="right-dock-heading-actions">
-            <span>{activeRuntimeModel || "未选择模型"}</span>
-            <button
-              aria-label="收起实时工作区"
-              className="icon-button"
-              onClick={() => setThreadContextOpen(false)}
-              type="button"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        </div>
-
-        <ProviderStatusPanel
-          providers={settings.providers}
-          onOpenSettings={() => handleOpenSettings("providers")}
-        />
-
-        <section className="panel-block">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">运行概览</p>
-              <h3>任务执行状态</h3>
-            </div>
-            <ListChecks size={18} />
-          </div>
-          <div className="task-list compact-task-list">
-            {taskBoard.map((task) => (
-              <TaskCard key={task.id} task={task} agents={snapshot.agents} />
-            ))}
-          </div>
-        </section>
-
-        <section className="panel-block" id="approvals">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">权限网关</p>
-              <h3>审批队列</h3>
-            </div>
-            <ShieldCheck size={18} />
-          </div>
-          {snapshot.approvals.length > 0 ? (
-            <div className="approval-bulk-panel">
-              <div className="approval-bulk-stats">
-                <span>
-                  待处理 <b>{snapshot.approvals.length}</b>
-                </span>
-                <span>
-                  可批量批准 <b>{batchApprovableApprovals.length}</b>
-                </span>
-                <span>
-                  高风险 <b>{highRiskApprovals}</b>
-                </span>
+            <div className="right-dock-heading context-drawer-heading">
+              <div>
+                <p className="eyebrow">Live Context</p>
+                <h3>实时工作区</h3>
               </div>
-              <p className="approval-bulk-note">高风险动作必须逐条确认；批量批准只处理低/中风险审批。</p>
-              <label className="approval-reason batch-reason">
-                <span>批量拒绝原因</span>
-                <input
-                  value={batchRejectReason}
-                  onChange={(event) => setBatchRejectReason(event.target.value)}
-                  placeholder="例如：目标目录不明确，先暂停执行"
-                />
-              </label>
-              <div className="approval-bulk-actions">
+              <div className="right-dock-heading-actions">
+                <span>{activeRuntimeModel || "未选择模型"}</span>
                 <button
-                  className="secondary-button"
-                  disabled={resolvingBatchApprovals || batchApprovableApprovals.length === 0}
-                  onClick={() => void handleResolveApprovalBatch(true)}
+                  aria-label="收起实时工作区"
+                  className="icon-button"
+                  onClick={() => setThreadContextOpen(false)}
                   type="button"
                 >
-                  批量批准低/中风险
-                </button>
-                <button
-                  className="secondary-button danger-button"
-                  disabled={resolvingBatchApprovals}
-                  onClick={() => void handleResolveApprovalBatch(false)}
-                  type="button"
-                >
-                  批量拒绝全部
+                  <X size={15} />
                 </button>
               </div>
             </div>
-          ) : null}
-          <div className="stack-list">
-            {snapshot.approvals.length === 0 ? (
-              <EmptyState title="No pending approvals" detail="High-risk actions will appear here." />
-            ) : (
-              snapshot.approvals.map((approval) => (
-                <ApprovalCard
-                  key={approval.id}
-                  approval={approval}
-                  agent={snapshot.agents.find((agent) => agent.id === approval.agentId)}
-                  onResolve={handleResolveApproval}
-                />
-              ))
-            )}
-          </div>
-        </section>
 
-        <section className="panel-block">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">审计记录</p>
-              <h3>审批历史</h3>
-            </div>
-            <ListChecks size={18} />
-          </div>
-          <div className="stack-list">
-            {snapshot.approvalHistory.length === 0 ? (
-              <EmptyState title="No approval history" detail="Resolved approvals will stay here." />
-            ) : (
-              snapshot.approvalHistory.slice(0, 6).map((history) => (
-                <ApprovalHistoryCard
-                  key={`${history.id}-${history.resolvedAt}`}
-                  history={history}
-                  agent={snapshot.agents.find((agent) => agent.id === history.agentId)}
-                />
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="panel-block">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">邮箱</p>
-              <h3>智能体消息</h3>
-            </div>
-            <Mail size={18} />
-          </div>
-          <div className="mail-list">
-            {mailbox.map((item) => (
-              <article className="mail-card" key={item.id}>
-                <strong>{item.from}</strong>
-                <span>to {item.to}</span>
-                <p>{item.subject}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section
-          className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}
-          id="workspace-context"
-        >
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">上下文</p>
-              <h3>工作区上下文</h3>
-            </div>
-            <div className="workspace-context-heading-actions">
-              <button
-                aria-expanded={!workspaceContextCollapsed}
-                className="mini-button workspace-context-toggle"
-                onClick={() => setWorkspaceContextCollapsed((current) => !current)}
-                type="button"
-              >
-                {workspaceContextCollapsed ? "展开" : "收起"}
-              </button>
-              <FileText size={18} />
-            </div>
-          </div>
-          {workspaceContextCollapsed ? null : (
-            <WorkspaceFilePanel
-              configuredWorkspace={runtimeSettings.workspace.defaultWorkspace}
-              currentPath={workspacePath}
-              error={workspaceError}
-              fallbackFiles={snapshot.files}
-              loading={workspaceLoading}
-              recentFiles={recentWorkspaceFiles}
-              result={workspaceList}
-              onClearRecentFiles={() => setRecentWorkspaceFiles([])}
-              onOpenFile={handleOpenWorkspaceFile}
-              onOpenPath={setWorkspacePath}
-              onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
-              onAskAgent={handleAskAgentToReadFile}
-              sending={sending}
+            <ProviderStatusPanel
+              providers={settings.providers}
+              onOpenSettings={() => handleOpenSettings("providers")}
             />
-          )}
-        </section>
 
-        <section className="panel-block">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">时间线</p>
-              <h3>活动记录</h3>
-            </div>
-            <CircleDot size={18} />
-          </div>
-          <div className="timeline">
-            {snapshot.activity.slice(0, 8).map((event) => (
-              <ActivityItem key={event.id} event={event} />
-            ))}
-          </div>
-        </section>
+            <section className="panel-block">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">运行概览</p>
+                  <h3>任务执行状态</h3>
+                </div>
+                <ListChecks size={18} />
+              </div>
+              <div className="task-list compact-task-list">
+                {taskBoard.map((task) => (
+                  <TaskCard key={task.id} task={task} agents={snapshot.agents} />
+                ))}
+              </div>
+            </section>
+
+            <section className="panel-block" id="approvals">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">权限网关</p>
+                  <h3>审批队列</h3>
+                </div>
+                <ShieldCheck size={18} />
+              </div>
+              {snapshot.approvals.length > 0 ? (
+                <div className="approval-bulk-panel">
+                  <div className="approval-bulk-stats">
+                    <span>
+                      待处理 <b>{snapshot.approvals.length}</b>
+                    </span>
+                    <span>
+                      可批量批准 <b>{batchApprovableApprovals.length}</b>
+                    </span>
+                    <span>
+                      高风险 <b>{highRiskApprovals}</b>
+                    </span>
+                  </div>
+                  <p className="approval-bulk-note">高风险动作必须逐条确认；批量批准只处理低/中风险审批。</p>
+                  <label className="approval-reason batch-reason">
+                    <span>批量拒绝原因</span>
+                    <input
+                      value={batchRejectReason}
+                      onChange={(event) => setBatchRejectReason(event.target.value)}
+                      placeholder="例如：目标目录不明确，先暂停执行"
+                    />
+                  </label>
+                  <div className="approval-bulk-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={resolvingBatchApprovals || batchApprovableApprovals.length === 0}
+                      onClick={() => void handleResolveApprovalBatch(true)}
+                      type="button"
+                    >
+                      批量批准低/中风险
+                    </button>
+                    <button
+                      className="secondary-button danger-button"
+                      disabled={resolvingBatchApprovals}
+                      onClick={() => void handleResolveApprovalBatch(false)}
+                      type="button"
+                    >
+                      批量拒绝全部
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="stack-list">
+                {snapshot.approvals.length === 0 ? (
+                  <EmptyState title="No pending approvals" detail="High-risk actions will appear here." />
+                ) : (
+                  snapshot.approvals.map((approval) => (
+                    <ApprovalCard
+                      key={approval.id}
+                      approval={approval}
+                      agent={snapshot.agents.find((agent) => agent.id === approval.agentId)}
+                      onResolve={handleResolveApproval}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="panel-block">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">审计记录</p>
+                  <h3>审批历史</h3>
+                </div>
+                <ListChecks size={18} />
+              </div>
+              <div className="stack-list">
+                {snapshot.approvalHistory.length === 0 ? (
+                  <EmptyState title="No approval history" detail="Resolved approvals will stay here." />
+                ) : (
+                  snapshot.approvalHistory
+                    .slice(0, 6)
+                    .map((history) => (
+                      <ApprovalHistoryCard
+                        key={`${history.id}-${history.resolvedAt}`}
+                        history={history}
+                        agent={snapshot.agents.find((agent) => agent.id === history.agentId)}
+                      />
+                    ))
+                )}
+              </div>
+            </section>
+
+            <section className="panel-block">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">邮箱</p>
+                  <h3>智能体消息</h3>
+                </div>
+                <Mail size={18} />
+              </div>
+              <div className="mail-list">
+                {mailbox.map((item) => (
+                  <article className="mail-card" key={item.id}>
+                    <strong>{item.from}</strong>
+                    <span>to {item.to}</span>
+                    <p>{item.subject}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section
+              className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}
+              id="workspace-context"
+            >
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">上下文</p>
+                  <h3>工作区上下文</h3>
+                </div>
+                <div className="workspace-context-heading-actions">
+                  <button
+                    aria-expanded={!workspaceContextCollapsed}
+                    className="mini-button workspace-context-toggle"
+                    onClick={() => setWorkspaceContextCollapsed((current) => !current)}
+                    type="button"
+                  >
+                    {workspaceContextCollapsed ? "展开" : "收起"}
+                  </button>
+                  <FileText size={18} />
+                </div>
+              </div>
+              {workspaceContextCollapsed ? null : (
+                <WorkspaceFilePanel
+                  configuredWorkspace={runtimeSettings.workspace.defaultWorkspace}
+                  currentPath={workspacePath}
+                  error={workspaceError}
+                  fallbackFiles={snapshot.files}
+                  loading={workspaceLoading}
+                  recentFiles={recentWorkspaceFiles}
+                  result={workspaceList}
+                  onClearRecentFiles={() => setRecentWorkspaceFiles([])}
+                  onOpenFile={handleOpenWorkspaceFile}
+                  onOpenPath={setWorkspacePath}
+                  onRefresh={() => setWorkspaceRefreshTick((current) => current + 1)}
+                  onAskAgent={handleAskAgentToReadFile}
+                  sending={sending}
+                />
+              )}
+            </section>
+
+            <section className="panel-block">
+              <div className="panel-heading compact">
+                <div>
+                  <p className="eyebrow">时间线</p>
+                  <h3>活动记录</h3>
+                </div>
+                <CircleDot size={18} />
+              </div>
+              <div className="timeline">
+                {snapshot.activity.slice(0, 8).map((event) => (
+                  <ActivityItem key={event.id} event={event} />
+                ))}
+              </div>
+            </section>
           </aside>
         </>
       ) : null}
@@ -2451,7 +2576,9 @@ export function App() {
       ) : null}
       {editingAgentId ? (
         <AgentEditorModal
-          agent={editingAgentId === "__new__" ? null : snapshot.agents.find((agent) => agent.id === editingAgentId) ?? null}
+          agent={
+            editingAgentId === "__new__" ? null : (snapshot.agents.find((agent) => agent.id === editingAgentId) ?? null)
+          }
           engines={runtimeSettings.assistant.engines}
           providers={runtimeSettings.providers}
           skills={runtimeSettings.assistant.skills}
@@ -2466,7 +2593,7 @@ export function App() {
           server={
             editingMcpServerId === "__new__"
               ? null
-              : runtimeSettings.mcp.servers.find((server) => server.id === editingMcpServerId) ?? null
+              : (runtimeSettings.mcp.servers.find((server) => server.id === editingMcpServerId) ?? null)
           }
           onClose={() => setEditingMcpServerId(null)}
           onSave={(server) => void handleSaveMcpServer(server)}
@@ -2474,13 +2601,27 @@ export function App() {
       ) : null}
 
       {toasts.map((toast) => (
-        <div className="toast-backdrop" key={toast.id} onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}>
+        <div
+          className="toast-backdrop"
+          key={toast.id}
+          onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+        >
           <div className="toast-card" onClick={(e) => e.stopPropagation()}>
             <div className="toast-icon">
-              {toast.level === "success" ? <Check size={16} /> : toast.level === "error" ? <X size={16} /> : <Sparkles size={16} />}
+              {toast.level === "success" ? (
+                <Check size={16} />
+              ) : toast.level === "error" ? (
+                <X size={16} />
+              ) : (
+                <Sparkles size={16} />
+              )}
             </div>
             <span className="toast-message">{toast.message}</span>
-            <button className="toast-close" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))} type="button">
+            <button
+              className="toast-close"
+              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              type="button"
+            >
               <X size={14} />
             </button>
           </div>
@@ -2492,13 +2633,22 @@ export function App() {
       ) : null}
 
       {petVisible ? (
-        <DesktopPet variant={petVariant} mood="idle" taskTitle={activeSession?.title} onClose={() => setPetVisible(false)} />
+        <DesktopPet
+          variant={petVariant}
+          mood="idle"
+          taskTitle={activeSession?.title}
+          onClose={() => setPetVisible(false)}
+        />
       ) : null}
 
       {updateModalOpen ? (
-        <UpdateModal state="info" onClose={() => setUpdateModalOpen(false)} onDownload={() => {}} onInstall={() => {}} />
+        <UpdateModal
+          state="info"
+          onClose={() => setUpdateModalOpen(false)}
+          onDownload={() => {}}
+          onInstall={() => {}}
+        />
       ) : null}
-
     </main>
   );
 }
@@ -2605,7 +2755,14 @@ function AgentEditorModal({
 
   return (
     <div className="agent-editor-backdrop" role="presentation" onMouseDown={onClose}>
-      <form className="agent-editor-modal" role="dialog" aria-modal="true" aria-label="Agent 编辑器" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAgent}>
+      <form
+        className="agent-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Agent 编辑器"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={submitAgent}
+      >
         <div className="agent-editor-header">
           <div>
             <p className="eyebrow">Agent Builder</p>
@@ -2627,7 +2784,10 @@ function AgentEditorModal({
             </label>
             <label>
               <span>类型</span>
-              <select value={category} onChange={(event) => setCategory(event.target.value as AgentProfile["category"])}>
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value as AgentProfile["category"])}
+              >
                 <option value="cowork">Cowork</option>
                 <option value="code">代码</option>
                 <option value="office">Office</option>
@@ -2638,7 +2798,10 @@ function AgentEditorModal({
             </label>
             <label>
               <span>Agent 引擎</span>
-              <select value={engineId} onChange={(event) => setEngineId(event.target.value as AgentEngineSettings["id"])}>
+              <select
+                value={engineId}
+                onChange={(event) => setEngineId(event.target.value as AgentEngineSettings["id"])}
+              >
                 {engines.map((engine) => (
                   <option key={engine.id} value={engine.id}>
                     {engine.name}
@@ -2716,11 +2879,7 @@ function AgentEditorModal({
   );
 }
 
-function buildMcpToolChoices(
-  servers: McpServerSettings[],
-  tools: McpToolDefinition[],
-  selectedIds: Set<string>
-) {
+function buildMcpToolChoices(servers: McpServerSettings[], tools: McpToolDefinition[], selectedIds: Set<string>) {
   const choices = servers.map((server) => ({
     id: `${server.id}:*`,
     label: `${server.name} · 全部工具`,
@@ -2824,7 +2983,10 @@ function McpServerEditorModal({
             </label>
             <label>
               <span>连接方式</span>
-              <select value={transport} onChange={(event) => setTransport(event.target.value as McpServerSettings["transport"])}>
+              <select
+                value={transport}
+                onChange={(event) => setTransport(event.target.value as McpServerSettings["transport"])}
+              >
                 <option value="stdio">stdio 本地命令</option>
                 <option value="http">HTTP 远程端点</option>
               </select>
@@ -2839,7 +3001,11 @@ function McpServerEditorModal({
               <>
                 <label>
                   <span>命令</span>
-                  <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="npx / node / uvx" />
+                  <input
+                    value={command}
+                    onChange={(event) => setCommand(event.target.value)}
+                    placeholder="npx / node / uvx"
+                  />
                 </label>
                 <label>
                   <span>参数（每行一个）</span>
@@ -2853,7 +3019,11 @@ function McpServerEditorModal({
             ) : (
               <label>
                 <span>HTTP URL</span>
-                <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="http://127.0.0.1:8787/mcp" />
+                <input
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="http://127.0.0.1:8787/mcp"
+                />
               </label>
             )}
             <div className="mcp-editor-note">
@@ -2890,10 +3060,7 @@ function RuntimePicker({
     <div className="compact-runtime-picker">
       <label>
         <span>模型服务</span>
-        <select
-          value={activeRuntimeProvider?.id ?? ""}
-          onChange={(event) => void onRuntimeChange(event.target.value)}
-        >
+        <select value={activeRuntimeProvider?.id ?? ""} onChange={(event) => void onRuntimeChange(event.target.value)}>
           {providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
               {provider.connected ? "已启用 - " : "未启用 - "}
@@ -3037,7 +3204,15 @@ function NewTaskView({
         <div className="quick-prompt-row assignment-quick-row">
           {quickTasks.map((task, index) => (
             <button key={task.label} onClick={() => onDraftChange(task.prompt)} type="button">
-              {index === 0 ? <FileText size={16} /> : index === 1 ? <Zap size={16} /> : index === 2 ? <Workflow size={16} /> : <Folder size={16} />}
+              {index === 0 ? (
+                <FileText size={16} />
+              ) : index === 1 ? (
+                <Zap size={16} />
+              ) : index === 2 ? (
+                <Workflow size={16} />
+              ) : (
+                <Folder size={16} />
+              )}
               <span>
                 <strong>{task.label}</strong>
                 <small>{task.detail}</small>
@@ -3175,7 +3350,12 @@ function TaskThreadView({
                     <button className="icon-button" type="button" aria-label="选择技能">
                       <Workflow size={15} />
                     </button>
-                    <button className="send-orb" disabled={sending || !draft.trim()} type="submit" aria-label="发送任务">
+                    <button
+                      className="send-orb"
+                      disabled={sending || !draft.trim()}
+                      type="submit"
+                      aria-label="发送任务"
+                    >
                       <Send size={20} />
                     </button>
                   </div>
@@ -3238,7 +3418,9 @@ function TaskRunPanel({
   const visibleChanges = fileChanges.slice(-4).reverse();
   const selectedChange = visibleChanges.find((tool) => tool.id === selectedChangeId) ?? visibleChanges[0] ?? null;
   const runningTools = toolActivity.filter((tool) => tool.status === "running" || tool.status === "queued").length;
-  const completedTools = toolActivity.filter((tool) => tool.status === "completed" || tool.status === "approved").length;
+  const completedTools = toolActivity.filter(
+    (tool) => tool.status === "completed" || tool.status === "approved"
+  ).length;
   const previewTools = selectedChange
     ? [selectedChange, ...visibleChanges.filter((tool) => tool.id !== selectedChange.id).slice(0, 2)]
     : [];
@@ -3261,7 +3443,9 @@ function TaskRunPanel({
         <div>
           <p className="eyebrow">Run Inspector</p>
           <h3>代码变更</h3>
-          <span>{activeAgent?.name ?? "Cowork 助手"} · {activeRuntimeModel || "未选择模型"}</span>
+          <span>
+            {activeAgent?.name ?? "Cowork 助手"} · {activeRuntimeModel || "未选择模型"}
+          </span>
         </div>
         <button className="secondary-button" onClick={onOpenContext} type="button">
           上下文
@@ -3269,13 +3453,25 @@ function TaskRunPanel({
       </div>
 
       <div className="task-run-tabs run-panel-tabs" aria-label="运行面板标签">
-        <button className={activePanel === "overview" ? "active" : ""} onClick={() => setActivePanel("overview")} type="button">
+        <button
+          className={activePanel === "overview" ? "active" : ""}
+          onClick={() => setActivePanel("overview")}
+          type="button"
+        >
           运行概览
         </button>
-        <button className={activePanel === "activity" ? "active" : ""} onClick={() => setActivePanel("activity")} type="button">
+        <button
+          className={activePanel === "activity" ? "active" : ""}
+          onClick={() => setActivePanel("activity")}
+          type="button"
+        >
           工具活动
         </button>
-        <button className={activePanel === "changes" ? "active" : ""} onClick={() => setActivePanel("changes")} type="button">
+        <button
+          className={activePanel === "changes" ? "active" : ""}
+          onClick={() => setActivePanel("changes")}
+          type="button"
+        >
           代码变更
         </button>
       </div>
@@ -3371,7 +3567,9 @@ function TaskRunPanel({
             </div>
             <span className={`agent-status ${activeAgent?.status ?? "idle"}`} />
           </div>
-          <p>{activeRuntimeProvider?.name ?? "未选择模型服务"} · {activeRuntimeModel || "未选择模型"}</p>
+          <p>
+            {activeRuntimeProvider?.name ?? "未选择模型服务"} · {activeRuntimeModel || "未选择模型"}
+          </p>
           <div className="run-metric-strip">
             <span>
               <b>{messageCount}</b>
@@ -3417,7 +3615,9 @@ function TaskRunPanel({
           </article>
           <article>
             <span className="status muted-status">Progress</span>
-            <strong>{pendingTasks} 个进行中 · {completedTasks} 个完成</strong>
+            <strong>
+              {pendingTasks} 个进行中 · {completedTasks} 个完成
+            </strong>
           </article>
           {taskBoard.slice(0, 3).map((task) => (
             <article key={task.id}>
@@ -3453,13 +3653,21 @@ function TaskSearchView({
   onOpenWorkspace: () => void;
 }) {
   const selectedSession = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
-  const selectedMessages = selectedSession ? messages.filter((message) => message.sessionId === selectedSession.id) : [];
+  const selectedMessages = selectedSession
+    ? messages.filter((message) => message.sessionId === selectedSession.id)
+    : [];
   const latestMessage = selectedMessages[selectedMessages.length - 1];
   const contextFiles = [...recentFiles, ...files.slice(0, 4)].slice(0, 6);
 
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Search" title="任务记录" detail="任务列表和任务详情联动，先查看上下文，再进入运行页继续协作。" actionLabel="新建任务" onAction={onNewTask} />
+      <ModuleHeader
+        eyebrow="Search"
+        title="任务记录"
+        detail="任务列表和任务详情联动，先查看上下文，再进入运行页继续协作。"
+        actionLabel="新建任务"
+        onAction={onNewTask}
+      />
       <div className="module-search-bar">
         <Search size={18} />
         <input placeholder="搜索任务、文件或上下文" />
@@ -3490,7 +3698,10 @@ function TaskSearchView({
                 <span className={session.pinned ? "history-status-dot pinned" : "history-status-dot"} />
                 <span>
                   <strong>{session.title}</strong>
-                  <small>{formatRelativeTime(session.updatedAt)} · {messages.filter((message) => message.sessionId === session.id).length} 条消息</small>
+                  <small>
+                    {formatRelativeTime(session.updatedAt)} ·{" "}
+                    {messages.filter((message) => message.sessionId === session.id).length} 条消息
+                  </small>
                 </span>
                 <b>{session.pinned ? "置顶" : "详情"}</b>
               </button>
@@ -3504,7 +3715,12 @@ function TaskSearchView({
               <p className="eyebrow">Task Detail</p>
               <h3>{selectedSession?.title ?? "未选择任务"}</h3>
             </div>
-            <button className="primary-button" disabled={!selectedSession} onClick={() => selectedSession && onOpenSession(selectedSession.id)} type="button">
+            <button
+              className="primary-button"
+              disabled={!selectedSession}
+              onClick={() => selectedSession && onOpenSession(selectedSession.id)}
+              type="button"
+            >
               进入任务
             </button>
           </div>
@@ -3527,7 +3743,11 @@ function TaskSearchView({
           <div className="task-detail-body">
             <article className="task-detail-card">
               <p className="eyebrow">Latest</p>
-              <strong>{latestMessage ? `${latestMessage.author} · ${formatRelativeTime(latestMessage.createdAt)}` : "暂无消息"}</strong>
+              <strong>
+                {latestMessage
+                  ? `${latestMessage.author} · ${formatRelativeTime(latestMessage.createdAt)}`
+                  : "暂无消息"}
+              </strong>
               <span>{latestMessage?.content || "从新建任务发起协作后，最近消息会显示在这里。"}</span>
             </article>
 
@@ -3583,7 +3803,16 @@ function ScheduledTasksView({
     agentId?: string;
   }) => Promise<void> | void;
   onRunAutomation: (jobId: string) => Promise<void> | void;
-  onUpdateAutomation: (jobId: string, patch: { enabled?: boolean; scheduleKind?: AutomationScheduleKind; name?: string; prompt?: string; agentId?: string }) => Promise<void> | void;
+  onUpdateAutomation: (
+    jobId: string,
+    patch: {
+      enabled?: boolean;
+      scheduleKind?: AutomationScheduleKind;
+      name?: string;
+      prompt?: string;
+      agentId?: string;
+    }
+  ) => Promise<void> | void;
 }) {
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(automations[0]?.id ?? null);
   const [draftName, setDraftName] = useState("每天整理工作区文件");
@@ -3601,7 +3830,9 @@ function ScheduledTasksView({
 
   const selectedAutomation = automations.find((job) => job.id === selectedAutomationId) ?? automations[0];
   const enabledAutomations = automations.filter((job) => job.enabled).length;
-  const runningTasks = automationRuns.filter((run) => run.status === "running").length || taskBoard.filter((task) => task.status === "Running").length;
+  const runningTasks =
+    automationRuns.filter((run) => run.status === "running").length ||
+    taskBoard.filter((task) => task.status === "Running").length;
   const nextRunLabel = selectedAutomation?.nextRun || "未计划";
   const selectedRuns = selectedAutomation
     ? automationRuns.filter((run) => run.jobId === selectedAutomation.id)
@@ -3649,7 +3880,11 @@ function ScheduledTasksView({
 
   return (
     <section className="workspace module-workspace automation-workspace">
-      <ModuleHeader eyebrow="Automation" title="定时任务" detail="计划任务、运行记录和执行助手分开管理，后续可接真实后台调度。" />
+      <ModuleHeader
+        eyebrow="Automation"
+        title="定时任务"
+        detail="计划任务、运行记录和执行助手分开管理，后续可接真实后台调度。"
+      />
       <div className="automation-dashboard">
         <section className="automation-summary-card">
           <span>
@@ -3713,7 +3948,9 @@ function ScheduledTasksView({
             <article>
               <p className="eyebrow">计划</p>
               <strong>{selectedAutomation?.schedule ?? "未设置"}</strong>
-              <span>{selectedAutomation ? automationScheduleKindLabel(selectedAutomation.scheduleKind) : "未选择任务"}</span>
+              <span>
+                {selectedAutomation ? automationScheduleKindLabel(selectedAutomation.scheduleKind) : "未选择任务"}
+              </span>
             </article>
             <article>
               <p className="eyebrow">下次运行</p>
@@ -3722,8 +3959,15 @@ function ScheduledTasksView({
             </article>
             <article>
               <p className="eyebrow">执行助手</p>
-              <strong>{agents.find((agent) => agent.id === selectedAutomation?.agentId)?.name ?? agents.find((agent) => agent.id === "cowork")?.name ?? agents[0]?.name ?? "未配置"}</strong>
-              <span>{selectedAutomation?.lastRunAt ? `上次运行：${formatTime(selectedAutomation.lastRunAt)}` : "尚未运行。"}</span>
+              <strong>
+                {agents.find((agent) => agent.id === selectedAutomation?.agentId)?.name ??
+                  agents.find((agent) => agent.id === "cowork")?.name ??
+                  agents[0]?.name ??
+                  "未配置"}
+              </strong>
+              <span>
+                {selectedAutomation?.lastRunAt ? `上次运行：${formatTime(selectedAutomation.lastRunAt)}` : "尚未运行。"}
+              </span>
             </article>
           </div>
           {selectedAutomation ? (
@@ -3744,26 +3988,39 @@ function ScheduledTasksView({
               >
                 {automationBusyId === selectedAutomation.id ? "执行中..." : "立即运行"}
               </button>
-              {selectedAutomation.failureReason ? <span className="automation-failure-reason">失败原因：{selectedAutomation.failureReason}</span> : null}
+              {selectedAutomation.failureReason ? (
+                <span className="automation-failure-reason">失败原因：{selectedAutomation.failureReason}</span>
+              ) : null}
             </div>
           ) : null}
           <form className="automation-composer-card" onSubmit={(event) => void submitAutomation(event)}>
             <strong>新建计划任务</strong>
             <div className="automation-create-inline">
-              <input placeholder="例如：每天整理工作区文件" value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+              <input
+                placeholder="例如：每天整理工作区文件"
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+              />
               <select value={draftAgentId} onChange={(event) => setDraftAgentId(event.target.value)}>
                 {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
                 ))}
               </select>
-              <select value={draftScheduleKind} onChange={(event) => setDraftScheduleKind(event.target.value as AutomationScheduleKind)}>
+              <select
+                value={draftScheduleKind}
+                onChange={(event) => setDraftScheduleKind(event.target.value as AutomationScheduleKind)}
+              >
                 <option value="daily">每天</option>
                 <option value="weekly">每周</option>
                 <option value="hourly">每小时</option>
                 <option value="once">仅一次</option>
                 <option value="manual">手动</option>
               </select>
-              <button className="primary-button" type="submit">创建</button>
+              <button className="primary-button" type="submit">
+                创建
+              </button>
             </div>
             <textarea
               rows={3}
@@ -3772,7 +4029,11 @@ function ScheduledTasksView({
               placeholder="写清楚这个计划任务要让 Agent 做什么。"
             />
             <label className="connection-toggle inline-check-row">
-              <input checked={draftEnabled} onChange={(event) => setDraftEnabled(event.target.checked)} type="checkbox" />
+              <input
+                checked={draftEnabled}
+                onChange={(event) => setDraftEnabled(event.target.checked)}
+                type="checkbox"
+              />
               <span>创建后立即启用</span>
             </label>
             {automationStatus ? <p className="automation-failure-reason">{automationStatus}</p> : null}
@@ -3798,8 +4059,13 @@ function ScheduledTasksView({
                   <span className={`tool-call-dot ${run.status}`} />
                   <div>
                     <strong>{run.jobName}</strong>
-                    <small>{owner?.name ?? "Unassigned"} · {formatRelativeTime(run.startedAt)} · {run.durationMs ? formatDuration(run.durationMs) : "运行中"}</small>
-                    {run.failureReason ? <small className="automation-run-error">失败原因：{run.failureReason}</small> : null}
+                    <small>
+                      {owner?.name ?? "Unassigned"} · {formatRelativeTime(run.startedAt)} ·{" "}
+                      {run.durationMs ? formatDuration(run.durationMs) : "运行中"}
+                    </small>
+                    {run.failureReason ? (
+                      <small className="automation-run-error">失败原因：{run.failureReason}</small>
+                    ) : null}
                     {run.resultSummary ? <small>{run.resultSummary}</small> : null}
                   </div>
                   <b>{automationRunStatusLabel(run.status)}</b>
@@ -3846,27 +4112,87 @@ function RuntimeDashboardView({
 
   return (
     <section className="workspace module-workspace runtime-dashboard-workspace">
-      <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。" />
+      <ModuleHeader
+        eyebrow="Runtime"
+        title="AI Runtime Dashboard"
+        detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。"
+      />
       <div className="runtime-dashboard-shell">
         <section className="runtime-dashboard-main">
           <div className="dashboard-filter-row">
-            <select><option>近 24 小时</option><option>近 7 天</option><option>近 30 天</option><option>全部</option></select>
-            <select><option>全部引擎</option><option>NexaDesk Built-in</option><option>Codex CLI</option><option>Claude Code</option></select>
-            <select><option>全部模型</option><option>{activeRuntimeModel || "未选择"}</option></select>
-            <select><option>全部状态</option><option>已完成</option><option>错误</option><option>运行中</option></select>
-            <button className="mini-button" onClick={onRefreshTelemetry} type="button">刷新</button>
+            <select>
+              <option>近 24 小时</option>
+              <option>近 7 天</option>
+              <option>近 30 天</option>
+              <option>全部</option>
+            </select>
+            <select>
+              <option>全部引擎</option>
+              <option>NexaDesk Built-in</option>
+              <option>Codex CLI</option>
+              <option>Claude Code</option>
+            </select>
+            <select>
+              <option>全部模型</option>
+              <option>{activeRuntimeModel || "未选择"}</option>
+            </select>
+            <select>
+              <option>全部状态</option>
+              <option>已完成</option>
+              <option>错误</option>
+              <option>运行中</option>
+            </select>
+            <button className="mini-button" onClick={onRefreshTelemetry} type="button">
+              刷新
+            </button>
           </div>
 
           <div className="dashboard-kpi-grid">
-            <div className="kpi-card"><strong>{runtimeStats.totalCalls}</strong><span>总调用</span><small>{runtimeStats.telemetrySourceLabel}</small></div>
-            <div className="kpi-card"><strong>{runtimeStats.successRateLabel}</strong><span>成功率</span><small>按模型流工具状态</small></div>
-            <div className="kpi-card"><strong>{runtimeStats.averageCompletionLabel}</strong><span>平均完成</span><small>P95 可能更高</small></div>
-            <div className="kpi-card"><strong>{runtimeStats.averageFirstTokenLabel}</strong><span>平均首字</span><small>TTFT</small></div>
-            <div className="kpi-card"><strong>{runtimeStats.outputTpsLabel}</strong><span>输出 TPS</span><small>token/s</small></div>
-            <div className="kpi-card"><strong>{runtimeStats.modelTpsLabel}</strong><span>Model TPS</span><small>总 token/s</small></div>
-            <div className="kpi-card"><strong>{formatCompactNumber(runtimeStats.totalTokens)}</strong><span>Token 总量</span><small>input + output</small></div>
-            <div className="kpi-card"><strong>{formatCompactNumber(runtimeStats.contextTokens)}</strong><span>上下文 Token</span><small>当前会话</small></div>
-            <div className="kpi-card"><strong>{activeRuntimeProvider?.connected ? "在线" : "离线"}</strong><span>Provider</span><small>{activeRuntimeProvider?.name ?? "未选择"}</small></div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.totalCalls}</strong>
+              <span>总调用</span>
+              <small>{runtimeStats.telemetrySourceLabel}</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.successRateLabel}</strong>
+              <span>成功率</span>
+              <small>按模型流工具状态</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.averageCompletionLabel}</strong>
+              <span>平均完成</span>
+              <small>P95 可能更高</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.averageFirstTokenLabel}</strong>
+              <span>平均首字</span>
+              <small>TTFT</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.outputTpsLabel}</strong>
+              <span>输出 TPS</span>
+              <small>token/s</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{runtimeStats.modelTpsLabel}</strong>
+              <span>Model TPS</span>
+              <small>总 token/s</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{formatCompactNumber(runtimeStats.totalTokens)}</strong>
+              <span>Token 总量</span>
+              <small>input + output</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{formatCompactNumber(runtimeStats.contextTokens)}</strong>
+              <span>上下文 Token</span>
+              <small>当前会话</small>
+            </div>
+            <div className="kpi-card">
+              <strong>{activeRuntimeProvider?.connected ? "在线" : "离线"}</strong>
+              <span>Provider</span>
+              <small>{activeRuntimeProvider?.name ?? "未选择"}</small>
+            </div>
           </div>
 
           <div className="dashboard-chart-grid">
@@ -3882,7 +4208,15 @@ function RuntimeDashboardView({
               <h4>Token 分布</h4>
               <div className="runtime-chart-visual" aria-label="Token 分布图">
                 {runtimeStats.trendBars.map((height, index) => (
-                  <span key={index} style={{ "--bar-height": `${Math.min(100, height * 1.2)}%`, background: "var(--theme-primary)" } as CSSProperties} />
+                  <span
+                    key={index}
+                    style={
+                      {
+                        "--bar-height": `${Math.min(100, height * 1.2)}%`,
+                        background: "var(--theme-primary)"
+                      } as CSSProperties
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -3890,7 +4224,15 @@ function RuntimeDashboardView({
               <h4>延迟趋势</h4>
               <div className="runtime-chart-visual" aria-label="延迟趋势图">
                 {runtimeStats.trendBars.map((height, index) => (
-                  <span key={index} style={{ "--bar-height": `${Math.max(10, 100 - height)}%`, background: "var(--theme-accent)" } as CSSProperties} />
+                  <span
+                    key={index}
+                    style={
+                      {
+                        "--bar-height": `${Math.max(10, 100 - height)}%`,
+                        background: "var(--theme-accent)"
+                      } as CSSProperties
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -3898,7 +4240,13 @@ function RuntimeDashboardView({
               <h4>引擎分布</h4>
               <div style={{ display: "flex", alignItems: "end", gap: 6, height: 100, padding: "10px 0" }}>
                 <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
-                  <div style={{ height: `${Math.max(20, (runningAgents / Math.max(totalAgents, 1)) * 100)}%`, background: "var(--green)", borderRadius: 4 }} />
+                  <div
+                    style={{
+                      height: `${Math.max(20, (runningAgents / Math.max(totalAgents, 1)) * 100)}%`,
+                      background: "var(--green)",
+                      borderRadius: 4
+                    }}
+                  />
                   <small style={{ fontSize: 10, color: "var(--muted-text)" }}>内置</small>
                 </div>
                 <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
@@ -3906,7 +4254,14 @@ function RuntimeDashboardView({
                   <small style={{ fontSize: 10, color: "var(--muted-text)" }}>CLI</small>
                 </div>
                 <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
-                  <div style={{ height: "25%", background: "var(--theme-primary-muted)", borderRadius: 4, border: "1px solid var(--green)" }} />
+                  <div
+                    style={{
+                      height: "25%",
+                      background: "var(--theme-primary-muted)",
+                      borderRadius: 4,
+                      border: "1px solid var(--green)"
+                    }}
+                  />
                   <small style={{ fontSize: 10, color: "var(--muted-text)" }}>Runtime</small>
                 </div>
               </div>
@@ -3936,7 +4291,9 @@ function RuntimeDashboardView({
                       <span className={`tool-call-dot ${entry.status}`} />
                       <span>
                         <strong>{entry.model}</strong>
-                        <small>{entry.providerName} · {formatRelativeTime(entry.startedAt)}</small>
+                        <small>
+                          {entry.providerName} · {formatRelativeTime(entry.startedAt)}
+                        </small>
                       </span>
                       <b>{runtimeStatusLabel(entry.status)}</b>
                     </button>
@@ -3965,9 +4322,16 @@ function RuntimeDashboardView({
                       <Metric label="TPS" value={formatRuntimeEntryTps(selectedTelemetry)} />
                     </div>
                     <div className="runtime-call-meta">
-                      <span>Started <b>{formatTime(selectedTelemetry.startedAt)}</b></span>
-                      <span>Completed <b>{selectedTelemetry.completedAt ? formatTime(selectedTelemetry.completedAt) : "未完成"}</b></span>
-                      <span>Session <b>{selectedTelemetry.sessionId}</b></span>
+                      <span>
+                        Started <b>{formatTime(selectedTelemetry.startedAt)}</b>
+                      </span>
+                      <span>
+                        Completed{" "}
+                        <b>{selectedTelemetry.completedAt ? formatTime(selectedTelemetry.completedAt) : "未完成"}</b>
+                      </span>
+                      <span>
+                        Session <b>{selectedTelemetry.sessionId}</b>
+                      </span>
                     </div>
                     {selectedTelemetry.messagePreview ? (
                       <p className="runtime-call-preview">{selectedTelemetry.messagePreview}</p>
@@ -4016,7 +4380,10 @@ function RuntimeDashboardView({
             </div>
             <div className="runtime-health-list">
               <span>
-                运行助手 <b>{runningAgents}/{totalAgents}</b>
+                运行助手{" "}
+                <b>
+                  {runningAgents}/{totalAgents}
+                </b>
               </span>
               <span>
                 启用技能 <b>{enabledSkills}</b>
@@ -4065,13 +4432,21 @@ function SkillsHubView({
 
   return (
     <section className="workspace module-workspace">
-      <ModuleHeader eyebrow="Skills" title="技能" detail="已安装技能和技能市场分开管理，用户自定义技能从设置入口维护。" actionLabel="管理技能" onAction={onOpenSettings} />
+      <ModuleHeader
+        eyebrow="Skills"
+        title="技能"
+        detail="已安装技能和技能市场分开管理，用户自定义技能从设置入口维护。"
+        actionLabel="管理技能"
+        onAction={onOpenSettings}
+      />
       <div className="skills-hub-shell">
         <section className="skills-hero-panel">
           <div>
             <p className="eyebrow">Skill System</p>
             <h3>给智能体装上可复用能力</h3>
-            <span>{enabledSkills.length} 个技能已启用 · {skills.length} 个技能可配置</span>
+            <span>
+              {enabledSkills.length} 个技能已启用 · {skills.length} 个技能可配置
+            </span>
           </div>
           <div className="skills-hero-actions">
             <button className="primary-button" onClick={() => skillPackageInputRef.current?.click()} type="button">
@@ -4101,10 +4476,18 @@ function SkillsHubView({
         </section>
 
         <div className="skills-tabs" aria-label="技能视图">
-          <button className={activeTab === "installed" ? "active" : ""} onClick={() => setActiveTab("installed")} type="button">
+          <button
+            className={activeTab === "installed" ? "active" : ""}
+            onClick={() => setActiveTab("installed")}
+            type="button"
+          >
             已安装 <b>{enabledSkills.length}</b>
           </button>
-          <button className={activeTab === "market" ? "active" : ""} onClick={() => setActiveTab("market")} type="button">
+          <button
+            className={activeTab === "market" ? "active" : ""}
+            onClick={() => setActiveTab("market")}
+            type="button"
+          >
             技能市场 <b>{skills.length}</b>
           </button>
         </div>
@@ -4116,7 +4499,12 @@ function SkillsHubView({
           </div>
           <div className="chip-tabs">
             {categories.map((category) => (
-              <button className={activeCategory === category ? "active" : ""} key={category} onClick={() => setActiveCategory(category)} type="button">
+              <button
+                className={activeCategory === category ? "active" : ""}
+                key={category}
+                onClick={() => setActiveCategory(category)}
+                type="button"
+              >
                 {category}
               </button>
             ))}
@@ -4137,7 +4525,10 @@ function SkillsHubView({
               <EmptyState title="没有匹配的技能" detail="换一个分类或搜索词，或者到设置里添加自定义技能。" />
             ) : (
               visibleSkills.map((skill) => (
-                <article className={skill.enabled ? "market-card skill-card enabled" : "market-card skill-card"} key={skill.id}>
+                <article
+                  className={skill.enabled ? "market-card skill-card enabled" : "market-card skill-card"}
+                  key={skill.id}
+                >
                   <div>
                     <Workflow size={17} />
                     <strong>{skill.name}</strong>
@@ -4175,7 +4566,13 @@ function skillCategoryLabel(skill: SkillProfile) {
   if (text.includes("code") || text.includes("代码") || text.includes("开发")) {
     return "编程开发";
   }
-  if (text.includes("word") || text.includes("ppt") || text.includes("excel") || text.includes("文档") || text.includes("office")) {
+  if (
+    text.includes("word") ||
+    text.includes("ppt") ||
+    text.includes("excel") ||
+    text.includes("文档") ||
+    text.includes("office")
+  ) {
     return "办公文档";
   }
   if (text.includes("data") || text.includes("数据") || text.includes("分析")) {
@@ -4308,16 +4705,53 @@ function McpHubView({
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [mcpMarketTab, setMcpMarketTab] = useState<"installed" | "marketplace" | "custom">("installed");
   const mcpRegistry = [
-    { id: "tavily", name: "Tavily Search", category: "搜索", description: "AI 优化的网页搜索 API，返回结构化结果。", command: "npx -y @anthropic/tavily-mcp" },
-    { id: "github-mcp", name: "GitHub MCP", category: "开发", description: "GitHub 仓库管理、Issue、PR 和代码搜索。", command: "npx -y @anthropic/github-mcp" },
-    { id: "context7", name: "Context7", category: "开发", description: "实时库文档查询，自动获取最新 API 文档。", command: "npx -y @anthropic/context7-mcp" },
-    { id: "gdrive", name: "Google Drive", category: "生产力", description: "Google Drive 文件搜索、读取和管理。", command: "npx -y @anthropic/gdrive-mcp" },
-    { id: "slack-mcp", name: "Slack MCP", category: "生产力", description: "Slack 频道消息读取和发送。", command: "npx -y @anthropic/slack-mcp" },
-    { id: "postgres-mcp", name: "PostgreSQL", category: "数据", description: "PostgreSQL 数据库查询和管理。", command: "npx -y @anthropic/postgres-mcp" },
+    {
+      id: "tavily",
+      name: "Tavily Search",
+      category: "搜索",
+      description: "AI 优化的网页搜索 API，返回结构化结果。",
+      command: "npx -y @anthropic/tavily-mcp"
+    },
+    {
+      id: "github-mcp",
+      name: "GitHub MCP",
+      category: "开发",
+      description: "GitHub 仓库管理、Issue、PR 和代码搜索。",
+      command: "npx -y @anthropic/github-mcp"
+    },
+    {
+      id: "context7",
+      name: "Context7",
+      category: "开发",
+      description: "实时库文档查询，自动获取最新 API 文档。",
+      command: "npx -y @anthropic/context7-mcp"
+    },
+    {
+      id: "gdrive",
+      name: "Google Drive",
+      category: "生产力",
+      description: "Google Drive 文件搜索、读取和管理。",
+      command: "npx -y @anthropic/gdrive-mcp"
+    },
+    {
+      id: "slack-mcp",
+      name: "Slack MCP",
+      category: "生产力",
+      description: "Slack 频道消息读取和发送。",
+      command: "npx -y @anthropic/slack-mcp"
+    },
+    {
+      id: "postgres-mcp",
+      name: "PostgreSQL",
+      category: "数据",
+      description: "PostgreSQL 数据库查询和管理。",
+      command: "npx -y @anthropic/postgres-mcp"
+    }
   ];
   const mcpCategories = ["全部", "搜索", "开发", "生产力", "数据"];
   const [mcpCategoryFilter, setMcpCategoryFilter] = useState("全部");
-  const filteredRegistry = mcpCategoryFilter === "全部" ? mcpRegistry : mcpRegistry.filter((r) => r.category === mcpCategoryFilter);
+  const filteredRegistry =
+    mcpCategoryFilter === "全部" ? mcpRegistry : mcpRegistry.filter((r) => r.category === mcpCategoryFilter);
   useEffect(() => {
     if (!selectedServerId || !servers.some((server) => server.id === selectedServerId)) {
       setSelectedServerId(servers[0]?.id ?? null);
@@ -4328,7 +4762,7 @@ function McpHubView({
   const discoveredTools = Object.values(toolResults).flatMap((result) => result.tools);
   const discoveredToolCount = discoveredTools.length;
   const selectedServer = servers.find((server) => server.id === selectedServerId) ?? servers[0];
-  const selectedTools = selectedServer ? toolResults[selectedServer.id]?.tools ?? [] : [];
+  const selectedTools = selectedServer ? (toolResults[selectedServer.id]?.tools ?? []) : [];
   const selectedResult = selectedServer ? testResults[selectedServer.id] : undefined;
   const selectedToolsResult = selectedServer ? toolResults[selectedServer.id] : undefined;
   const selectedTarget = selectedServer
@@ -4337,7 +4771,7 @@ function McpHubView({
       : [selectedServer.command, ...(selectedServer.args ?? [])].filter(Boolean).join(" ") || "未配置命令"
     : "未选择服务器";
 
-  const selectedTool = selectedToolId ? discoveredTools.find((t) => t.id === selectedToolId) ?? null : null;
+  const selectedTool = selectedToolId ? (discoveredTools.find((t) => t.id === selectedToolId) ?? null) : null;
   const toolPolicy = selectedTool ? toolPolicies.find((p) => p.toolId === selectedTool.id) : undefined;
   const toolPermissionValue: PermissionPolicy = toolPolicy?.permission ?? "ask";
 
@@ -4358,11 +4792,11 @@ function McpHubView({
     }
     const entries = Object.entries(schema as Record<string, unknown>);
     if (entries.length === 0) {
-      return <code className="mcp-schema-primitive">{'{}'}</code>;
+      return <code className="mcp-schema-primitive">{"{}"}</code>;
     }
     return (
       <div className="mcp-schema-block" style={{ marginLeft: depth * 14 }}>
-        {'{'}
+        {"{"}
         {entries.map(([key, value]) => (
           <div className="mcp-schema-row" key={key}>
             <span className="mcp-schema-key">"{key}"</span>
@@ -4374,7 +4808,7 @@ function McpHubView({
             )}
           </div>
         ))}
-        {'}'}
+        {"}"}
       </div>
     );
   }
@@ -4390,7 +4824,11 @@ function McpHubView({
       const type = prop.type as string;
       const desc = (prop.description as string) ?? "";
       if (type === "string") {
-        example[key] = desc.includes("path") ? "/example/path" : desc.includes("url") ? "https://example.com" : `example_${key}`;
+        example[key] = desc.includes("path")
+          ? "/example/path"
+          : desc.includes("url")
+            ? "https://example.com"
+            : `example_${key}`;
       } else if (type === "number" || type === "integer") {
         example[key] = type === "integer" ? 1 : 1.0;
       } else if (type === "boolean") {
@@ -4406,7 +4844,13 @@ function McpHubView({
 
   return (
     <section className="workspace module-workspace mcp-workspace">
-      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="服务器详情和工具市场分开展示，刷新后可查看真实工具清单。" actionLabel="新增 MCP" onAction={onCreate} />
+      <ModuleHeader
+        eyebrow="MCP"
+        title="MCP 工具服务器"
+        detail="服务器详情和工具市场分开展示，刷新后可查看真实工具清单。"
+        actionLabel="新增 MCP"
+        onAction={onCreate}
+      />
       <div className="mcp-console-layout">
         <section className="panel-block mcp-server-list-panel">
           <div className="panel-heading compact">
@@ -4432,13 +4876,18 @@ function McpHubView({
               <button
                 className={selectedServer?.id === server.id ? "mcp-server-row active" : "mcp-server-row"}
                 key={server.id}
-                onClick={() => { setSelectedServerId(server.id); setSelectedToolId(null); }}
+                onClick={() => {
+                  setSelectedServerId(server.id);
+                  setSelectedToolId(null);
+                }}
                 type="button"
               >
                 <Terminal size={16} />
                 <span>
                   <strong>{server.name}</strong>
-                  <small>{server.transport} · {server.enabled ? "启用" : "停用"}</small>
+                  <small>
+                    {server.transport} · {server.enabled ? "启用" : "停用"}
+                  </small>
                 </span>
                 <b>{toolResults[server.id]?.tools.length ?? 0}</b>
               </button>
@@ -4482,24 +4931,44 @@ function McpHubView({
               ) : null}
               {selectedToolsResult ? (
                 <div className={selectedToolsResult.ok ? "mcp-tools-result ok" : "mcp-tools-result failed"}>
-                  <strong>{selectedToolsResult.ok ? `已发现 ${selectedToolsResult.tools.length} 个工具` : "工具发现失败"}</strong>
+                  <strong>
+                    {selectedToolsResult.ok ? `已发现 ${selectedToolsResult.tools.length} 个工具` : "工具发现失败"}
+                  </strong>
                   <span>{selectedToolsResult.message}</span>
                 </div>
               ) : null}
               <div className="mcp-card-actions">
-                <button className="secondary-button" onClick={() => onToggle(selectedServer.id, !selectedServer.enabled)} type="button">
+                <button
+                  className="secondary-button"
+                  onClick={() => onToggle(selectedServer.id, !selectedServer.enabled)}
+                  type="button"
+                >
                   {selectedServer.enabled ? "停用" : "启用"}
                 </button>
-                <button className="secondary-button" disabled={testingServerId === selectedServer.id} onClick={() => onTest(selectedServer)} type="button">
+                <button
+                  className="secondary-button"
+                  disabled={testingServerId === selectedServer.id}
+                  onClick={() => onTest(selectedServer)}
+                  type="button"
+                >
                   {testingServerId === selectedServer.id ? "测试中..." : "测试连接"}
                 </button>
-                <button className="secondary-button" disabled={refreshingToolsServerId === selectedServer.id} onClick={() => onRefreshTools(selectedServer)} type="button">
+                <button
+                  className="secondary-button"
+                  disabled={refreshingToolsServerId === selectedServer.id}
+                  onClick={() => onRefreshTools(selectedServer)}
+                  type="button"
+                >
                   {refreshingToolsServerId === selectedServer.id ? "刷新中..." : "刷新工具"}
                 </button>
                 <button className="secondary-button" onClick={() => onEdit(selectedServer.id)} type="button">
                   编辑
                 </button>
-                <button className="secondary-button danger-soft-button" onClick={() => onDelete(selectedServer.id)} type="button">
+                <button
+                  className="secondary-button danger-soft-button"
+                  onClick={() => onDelete(selectedServer.id)}
+                  type="button"
+                >
                   删除
                 </button>
               </div>
@@ -4537,19 +5006,18 @@ function McpHubView({
                 <div className="mcp-tool-detail-section">
                   <h4>输入 Schema</h4>
                   <div className="mcp-schema-viewer">
-                    {selectedTool.inputSchema
-                      ? renderSchema(selectedTool.inputSchema)
-                      : <span className="mcp-schema-empty">该工具没有定义输入 Schema。</span>
-                    }
+                    {selectedTool.inputSchema ? (
+                      renderSchema(selectedTool.inputSchema)
+                    ) : (
+                      <span className="mcp-schema-empty">该工具没有定义输入 Schema。</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="mcp-tool-detail-section">
                   <h4>参数示例</h4>
                   <pre className="mcp-example-code">
-                    {selectedTool.inputSchema
-                      ? buildExample(selectedTool.inputSchema)
-                      : "{}"}
+                    {selectedTool.inputSchema ? buildExample(selectedTool.inputSchema) : "{}"}
                   </pre>
                 </div>
 
@@ -4560,7 +5028,13 @@ function McpHubView({
                       <label className={`mcp-perm-radio${toolPermissionValue === perm ? " active" : ""}`} key={perm}>
                         <input
                           checked={toolPermissionValue === perm}
-                          onChange={() => onUpdateToolPolicy({ toolId: selectedTool.id, serverId: selectedTool.serverId, permission: perm })}
+                          onChange={() =>
+                            onUpdateToolPolicy({
+                              toolId: selectedTool.id,
+                              serverId: selectedTool.serverId,
+                              permission: perm
+                            })
+                          }
                           name={`mcp-tool-perm-${selectedTool.id}`}
                           type="radio"
                         />
@@ -4579,9 +5053,27 @@ function McpHubView({
           ) : (
             <>
               <div className="marketplace-tabs">
-                <button className={mcpMarketTab === "installed" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setMcpMarketTab("installed")} type="button">已安装</button>
-                <button className={mcpMarketTab === "marketplace" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setMcpMarketTab("marketplace")} type="button">市场</button>
-                <button className={mcpMarketTab === "custom" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setMcpMarketTab("custom")} type="button">自定义</button>
+                <button
+                  className={mcpMarketTab === "installed" ? "marketplace-tab active" : "marketplace-tab"}
+                  onClick={() => setMcpMarketTab("installed")}
+                  type="button"
+                >
+                  已安装
+                </button>
+                <button
+                  className={mcpMarketTab === "marketplace" ? "marketplace-tab active" : "marketplace-tab"}
+                  onClick={() => setMcpMarketTab("marketplace")}
+                  type="button"
+                >
+                  市场
+                </button>
+                <button
+                  className={mcpMarketTab === "custom" ? "marketplace-tab active" : "marketplace-tab"}
+                  onClick={() => setMcpMarketTab("custom")}
+                  type="button"
+                >
+                  自定义
+                </button>
               </div>
 
               {mcpMarketTab === "installed" ? (
@@ -4591,8 +5083,14 @@ function McpHubView({
                   ) : (
                     selectedTools.map((tool) => {
                       const tp = toolPolicies.find((p) => p.toolId === tool.id);
-                      const permLabel = tp?.permission === "allow" ? "允许" : tp?.permission === "deny" ? "拒绝" : "询问";
-                      const permClass = tp?.permission === "allow" ? "status ready" : tp?.permission === "deny" ? "status danger-status" : "status muted-status";
+                      const permLabel =
+                        tp?.permission === "allow" ? "允许" : tp?.permission === "deny" ? "拒绝" : "询问";
+                      const permClass =
+                        tp?.permission === "allow"
+                          ? "status ready"
+                          : tp?.permission === "deny"
+                            ? "status danger-status"
+                            : "status muted-status";
                       return (
                         <article className="mcp-tool-market-card" key={tool.id}>
                           <div>
@@ -4602,7 +5100,13 @@ function McpHubView({
                           </div>
                           <p>{tool.description || "该工具没有描述。"}</p>
                           <div className="mcp-card-actions">
-                            <button className="secondary-button" onClick={() => setSelectedToolId(tool.id)} type="button">查看详情</button>
+                            <button
+                              className="secondary-button"
+                              onClick={() => setSelectedToolId(tool.id)}
+                              type="button"
+                            >
+                              查看详情
+                            </button>
                             {tp ? <span className={permClass}>{permLabel}</span> : null}
                           </div>
                         </article>
@@ -4614,7 +5118,23 @@ function McpHubView({
                 <>
                   <div style={{ display: "flex", gap: 6, padding: "8px 12px", flexWrap: "wrap" }}>
                     {mcpCategories.map((cat) => (
-                      <button className={mcpCategoryFilter === cat ? "quick-action-chip" : "quick-action-chip"} key={cat} onClick={() => setMcpCategoryFilter(cat)} style={mcpCategoryFilter === cat ? { borderColor: "var(--green)", color: "var(--green)", background: "var(--theme-primary-muted)" } : {}} type="button">{cat}</button>
+                      <button
+                        className={mcpCategoryFilter === cat ? "quick-action-chip" : "quick-action-chip"}
+                        key={cat}
+                        onClick={() => setMcpCategoryFilter(cat)}
+                        style={
+                          mcpCategoryFilter === cat
+                            ? {
+                                borderColor: "var(--green)",
+                                color: "var(--green)",
+                                background: "var(--theme-primary-muted)"
+                              }
+                            : {}
+                        }
+                        type="button"
+                      >
+                        {cat}
+                      </button>
                     ))}
                   </div>
                   <div className="marketplace-grid">
@@ -4631,7 +5151,9 @@ function McpHubView({
                             {installed ? (
                               <span className="marketplace-badge installed">已安装</span>
                             ) : (
-                              <button className="secondary-button" type="button">安装</button>
+                              <button className="secondary-button" type="button">
+                                安装
+                              </button>
                             )}
                           </div>
                         </article>
@@ -4691,12 +5213,22 @@ function MemoryHubView({
     if (e.kind !== activeSection) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q) || e.tags.some((t) => t.toLowerCase().includes(q));
+    return (
+      e.title.toLowerCase().includes(q) ||
+      e.content.toLowerCase().includes(q) ||
+      e.tags.some((t) => t.toLowerCase().includes(q))
+    );
   });
 
-  const filteredSummaries = activeSection === "session"
-    ? sessionSummaries.filter((s) => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.summary.toLowerCase().includes(searchQuery.toLowerCase()))
-    : [];
+  const filteredSummaries =
+    activeSection === "session"
+      ? sessionSummaries.filter(
+          (s) =>
+            !searchQuery ||
+            s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            s.summary.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : [];
 
   function handleStartEdit(entry: MemoryEntry) {
     setEditingId(entry.id);
@@ -4710,7 +5242,10 @@ function MemoryHubView({
     onUpdateEntry(editingId, {
       title: draftTitle,
       content: draftContent,
-      tags: draftTags.split(",").map((t) => t.trim()).filter(Boolean)
+      tags: draftTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
     });
     setEditingId(null);
   }
@@ -4722,7 +5257,10 @@ function MemoryHubView({
       kind: activeSection,
       title: draftTitle || "新记忆条目",
       content: draftContent || "",
-      tags: draftTags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: draftTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
       createdAt: now,
       updatedAt: now,
       source: "手动创建"
@@ -4762,18 +5300,28 @@ function MemoryHubView({
           <div className="memory-category-list">
             {(["project", "session", "long_term"] as const).map((kind) => {
               const KIcon = kindIcons[kind];
-              const count = kind === "session" ? sessionSummaries.length : memoryEntries.filter((e) => e.kind === kind).length;
+              const count =
+                kind === "session" ? sessionSummaries.length : memoryEntries.filter((e) => e.kind === kind).length;
               return (
                 <button
                   className={activeSection === kind ? "memory-category-row active" : "memory-category-row"}
                   key={kind}
-                  onClick={() => { setActiveSection(kind); setEditingId(null); }}
+                  onClick={() => {
+                    setActiveSection(kind);
+                    setEditingId(null);
+                  }}
                   type="button"
                 >
                   <KIcon size={16} />
                   <span>
                     <strong>{kindLabels[kind]}</strong>
-                    <small>{kind === "project" ? "项目偏好、路径、技术栈" : kind === "session" ? "对话摘要与关键结论" : "长期积累的用户画像与模式"}</small>
+                    <small>
+                      {kind === "project"
+                        ? "项目偏好、路径、技术栈"
+                        : kind === "session"
+                          ? "对话摘要与关键结论"
+                          : "长期积累的用户画像与模式"}
+                    </small>
                   </span>
                   <b>{count}</b>
                 </button>
@@ -4813,22 +5361,14 @@ function MemoryHubView({
           <div className="memory-toolbar">
             <label className="memory-search-label">
               <Search size={14} />
-              <input
-                placeholder="搜索记忆..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <input placeholder="搜索记忆..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </label>
           </div>
 
           {activeSection !== "session" ? (
             <div className="memory-entry-list">
               <div className="memory-create-row">
-                <input
-                  placeholder="标题"
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                />
+                <input placeholder="标题" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
                 <textarea
                   placeholder="内容"
                   rows={2}
@@ -4856,8 +5396,12 @@ function MemoryHubView({
                         <textarea value={draftContent} onChange={(e) => setDraftContent(e.target.value)} rows={3} />
                         <input value={draftTags} onChange={(e) => setDraftTags(e.target.value)} placeholder="标签" />
                         <div className="mcp-card-actions">
-                          <button className="secondary-button" onClick={handleSaveEdit} type="button">保存</button>
-                          <button className="secondary-button" onClick={() => setEditingId(null)} type="button">取消</button>
+                          <button className="secondary-button" onClick={handleSaveEdit} type="button">
+                            保存
+                          </button>
+                          <button className="secondary-button" onClick={() => setEditingId(null)} type="button">
+                            取消
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -4865,13 +5409,28 @@ function MemoryHubView({
                         <div className="memory-entry-header">
                           <strong>{entry.title}</strong>
                           <div className="memory-entry-actions">
-                            <button className="icon-button" onClick={() => onUpdateEntry(entry.id, { pinned: !entry.pinned })} title={entry.pinned ? "取消置顶" : "置顶"} type="button">
+                            <button
+                              className="icon-button"
+                              onClick={() => onUpdateEntry(entry.id, { pinned: !entry.pinned })}
+                              title={entry.pinned ? "取消置顶" : "置顶"}
+                              type="button"
+                            >
                               <Pin size={13} />
                             </button>
-                            <button className="icon-button" onClick={() => handleStartEdit(entry)} title="编辑" type="button">
+                            <button
+                              className="icon-button"
+                              onClick={() => handleStartEdit(entry)}
+                              title="编辑"
+                              type="button"
+                            >
                               <Pencil size={13} />
                             </button>
-                            <button className="icon-button" onClick={() => onDeleteEntry(entry.id)} title="删除" type="button">
+                            <button
+                              className="icon-button"
+                              onClick={() => onDeleteEntry(entry.id)}
+                              title="删除"
+                              type="button"
+                            >
                               <Trash2 size={13} />
                             </button>
                           </div>
@@ -4886,7 +5445,9 @@ function MemoryHubView({
                               </span>
                             ))}
                           </div>
-                          <small>{entry.source ?? "手动"} · {new Date(entry.updatedAt).toLocaleDateString("zh-CN")}</small>
+                          <small>
+                            {entry.source ?? "手动"} · {new Date(entry.updatedAt).toLocaleDateString("zh-CN")}
+                          </small>
                         </div>
                       </>
                     )}
@@ -4958,7 +5519,13 @@ function AgentsHubView({
 
   return (
     <section className="workspace module-workspace agent-workspace">
-      <ModuleHeader eyebrow="Agents" title="我的 Agent" detail="助手、团队和运行引擎集中到独立页面。" actionLabel="新建 Agent" onAction={onCreate} />
+      <ModuleHeader
+        eyebrow="Agents"
+        title="我的 Agent"
+        detail="助手、团队和运行引擎集中到独立页面。"
+        actionLabel="新建 Agent"
+        onAction={onCreate}
+      />
       <div className="agent-team-layout">
         <section className="panel-block agent-team-panel">
           <div className="panel-heading compact">
@@ -4969,14 +5536,32 @@ function AgentsHubView({
             <Users size={18} />
           </div>
           <div className="agent-team-stats">
-            <span><b>{agents.length}</b>总 Agent</span>
-            <span><b>{enabledAgents.length}</b>已启用</span>
-            <span><b>{runningAgents.length}</b>运行中</span>
+            <span>
+              <b>{agents.length}</b>总 Agent
+            </span>
+            <span>
+              <b>{enabledAgents.length}</b>已启用
+            </span>
+            <span>
+              <b>{runningAgents.length}</b>运行中
+            </span>
           </div>
 
           <div className="marketplace-tabs">
-            <button className={agentViewTab === "agents" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setAgentViewTab("agents")} type="button">Agent</button>
-            <button className={agentViewTab === "teams" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setAgentViewTab("teams")} type="button">团队</button>
+            <button
+              className={agentViewTab === "agents" ? "marketplace-tab active" : "marketplace-tab"}
+              onClick={() => setAgentViewTab("agents")}
+              type="button"
+            >
+              Agent
+            </button>
+            <button
+              className={agentViewTab === "teams" ? "marketplace-tab active" : "marketplace-tab"}
+              onClick={() => setAgentViewTab("teams")}
+              type="button"
+            >
+              团队
+            </button>
           </div>
 
           {agentViewTab === "agents" ? (
@@ -4996,7 +5581,9 @@ function AgentsHubView({
                       <span className="agent-mini-avatar">{agent.name.slice(0, 1)}</span>
                       <span>
                         <strong>{agent.name}</strong>
-                        <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
+                        <small>
+                          {engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}
+                        </small>
                       </span>
                       {activeAgent?.id === agent.id ? <b>当前</b> : null}
                     </button>
@@ -5011,10 +5598,21 @@ function AgentsHubView({
                   <span className="team-emoji">{team.emoji}</span>
                   <strong>{team.name}</strong>
                   <small>{team.description}</small>
-                  <span className="team-member-count">{team.agentIds.length} 个成员 · {team.workflow}</span>
+                  <span className="team-member-count">
+                    {team.agentIds.length} 个成员 · {team.workflow}
+                  </span>
                 </article>
               ))}
-              <article className="team-card" style={{ borderStyle: "dashed", cursor: "pointer", display: "grid", placeItems: "center", minHeight: 100 }}>
+              <article
+                className="team-card"
+                style={{
+                  borderStyle: "dashed",
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                  minHeight: 100
+                }}
+              >
                 <span style={{ fontSize: 24 }}>+</span>
                 <small>新建团队</small>
               </article>
@@ -5129,13 +5727,18 @@ function AgentsHubView({
             {engines.map((engine) => {
               const linkedAgents = agents.filter((agent) => agent.engineId === engine.id);
               return (
-                <article className={selectedEngine?.id === engine.id ? "agent-engine-row active" : "agent-engine-row"} key={engine.id}>
+                <article
+                  className={selectedEngine?.id === engine.id ? "agent-engine-row active" : "agent-engine-row"}
+                  key={engine.id}
+                >
                   <div>
                     <strong>{engine.name}</strong>
                     <span>{engine.description}</span>
                   </div>
                   <div className="agent-engine-row-footer">
-                    <small>{engine.kind} · {engineSetupLabel(engine.setupStatus)}</small>
+                    <small>
+                      {engine.kind} · {engineSetupLabel(engine.setupStatus)}
+                    </small>
                     <b>{linkedAgents.length} Agent</b>
                   </div>
                   <div className="agent-engine-capabilities">
@@ -5219,84 +5822,6 @@ function ModuleHeader({
       ) : null}
     </header>
   );
-}
-
-function applyChatStreamEvent(snapshot: AppSnapshot, event: ChatStreamEvent): AppSnapshot {
-  if (event.type === "user_message" || event.type === "assistant_start") {
-    if (snapshot.messages.some((message) => message.id === event.message.id)) {
-      return snapshot;
-    }
-    return {
-      ...snapshot,
-      messages: [...snapshot.messages, event.message]
-    };
-  }
-
-  if (event.type === "assistant_delta") {
-    return {
-      ...snapshot,
-      messages: snapshot.messages.map((message) =>
-        message.id === event.messageId ? { ...message, content: `${message.content}${event.delta}` } : message
-      )
-    };
-  }
-
-  if (event.type === "assistant_done") {
-    const hasActivity = snapshot.activity.some((item) => item.id === event.activity.id);
-    return {
-      ...snapshot,
-      messages: snapshot.messages.map((message) => (message.id === event.message.id ? event.message : message)),
-      activity: hasActivity ? snapshot.activity : [event.activity, ...snapshot.activity].slice(0, 20)
-    };
-  }
-
-  if (event.type === "tool_call") {
-    return {
-      ...snapshot,
-      messages: snapshot.messages.map((message) =>
-        message.id === event.messageId
-          ? { ...message, toolCalls: [...(message.toolCalls ?? []), event.toolCall] }
-          : message
-      )
-    };
-  }
-
-  if (event.type === "tool_message") {
-    if (snapshot.messages.some((message) => message.id === event.message.id)) {
-      return snapshot;
-    }
-    return {
-      ...snapshot,
-      messages: [...snapshot.messages, event.message]
-    };
-  }
-
-  if (event.type === "approval_queued") {
-    if (snapshot.approvals.some((approval) => approval.id === event.approval.id)) {
-      return snapshot;
-    }
-    return {
-      ...snapshot,
-      approvals: [event.approval, ...snapshot.approvals]
-    };
-  }
-
-  if (event.messageId) {
-    return {
-      ...snapshot,
-      messages: snapshot.messages.map((message) =>
-        message.id === event.messageId
-          ? {
-              ...message,
-              content: message.content || `模型调用失败：${event.message}`,
-              toolCalls: message.toolCalls?.map((tool) => ({ ...tool, status: "failed" }))
-            }
-          : message
-      )
-    };
-  }
-
-  return snapshot;
 }
 
 function SettingsCenter({
@@ -5419,9 +5944,9 @@ function SettingsCenter({
 
   const selectedRuntimeProvider =
     draft.providers.find((provider) => provider.id === draft.model.activeProviderId) ?? draft.providers[0];
-  const runtimeModels = Array.from(new Set([draft.model.activeModel, ...(selectedRuntimeProvider?.models ?? [])])).filter(
-    Boolean
-  );
+  const runtimeModels = Array.from(
+    new Set([draft.model.activeModel, ...(selectedRuntimeProvider?.models ?? [])])
+  ).filter(Boolean);
   const canPickDirectory = Boolean(window.nexadeskDesktop?.selectDirectory);
   const activeSettingsTab = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
 
@@ -5542,903 +6067,979 @@ function SettingsCenter({
             </div>
             <div className="settings-main-actions">
               {localStatus ? <span className="settings-status-pill">{localStatus}</span> : null}
-              <button className="primary-button" disabled={saving} onClick={() => void persist(draft).catch(() => undefined)} type="button">
+              <button
+                className="primary-button"
+                disabled={saving}
+                onClick={() => void persist(draft).catch(() => undefined)}
+                type="button"
+              >
                 {saving ? "保存中..." : "保存更改"}
               </button>
             </div>
           </header>
 
           <div className="settings-detail">
-        {activeTab === "providers" ? (
-        <ProviderConfigPanel
-          settings={draft}
-          providers={draft.providers}
-          onSaveSettings={(next, providerSecrets = []) => {
-            setDraft(next);
-            return persist(next, providerSecrets);
-          }}
-          onSaveProvider={(provider, providerSecrets = []) => {
-            const exists = draft.providers.some((item) => item.id === provider.id);
-            const next = {
-              ...draft,
-              providers: exists
-                ? draft.providers.map((item) => (item.id === provider.id ? provider : item))
-                : [...draft.providers, provider],
-              model:
-                draft.model.activeProviderId === provider.id || !draft.model.activeProviderId
-                  ? {
-                      activeProviderId: provider.id,
-                      activeModel: provider.defaultModel || provider.models[0] || ""
-                    }
-              : draft.model
-            };
-            setDraft(next);
-            return persist(next, providerSecrets);
-          }}
-        />
-        ) : null}
-
-        {activeTab === "model" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">模型中心</p>
-              <h3>工作台默认模型</h3>
-            </div>
-            <Zap size={18} />
-          </div>
-          <div className="settings-form">
-            <label className="field-label">
-              <span>默认 Provider</span>
-              <select
-                value={selectedRuntimeProvider?.id ?? ""}
-                onChange={(event) => {
-                  const provider = draft.providers.find((item) => item.id === event.target.value);
-                  updateDraft({
-                    model: {
-                      activeProviderId: event.target.value,
-                      activeModel: provider?.defaultModel || provider?.models[0] || ""
-                    }
-                  });
+            {activeTab === "providers" ? (
+              <ProviderConfigPanel
+                settings={draft}
+                providers={draft.providers}
+                onSaveSettings={(next, providerSecrets = []) => {
+                  setDraft(next);
+                  return persist(next, providerSecrets);
                 }}
-              >
-                {draft.providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.connected ? "启用" : "停用"} - {provider.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              <span>默认模型</span>
-              <select
-                value={draft.model.activeModel}
-                onChange={(event) =>
-                  updateDraft({
-                    model: { ...draft.model, activeModel: event.target.value }
-                  })
-                }
-              >
-                {runtimeModels.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="secret-note">
-              工作台会优先使用这里选择的 Provider 和模型。切换后保存，下一条消息就会真实调用该模型。
-            </p>
-          </div>
-        </section>
-        ) : null}
+                onSaveProvider={(provider, providerSecrets = []) => {
+                  const exists = draft.providers.some((item) => item.id === provider.id);
+                  const next = {
+                    ...draft,
+                    providers: exists
+                      ? draft.providers.map((item) => (item.id === provider.id ? provider : item))
+                      : [...draft.providers, provider],
+                    model:
+                      draft.model.activeProviderId === provider.id || !draft.model.activeProviderId
+                        ? {
+                            activeProviderId: provider.id,
+                            activeModel: provider.defaultModel || provider.models[0] || ""
+                          }
+                        : draft.model
+                  };
+                  setDraft(next);
+                  return persist(next, providerSecrets);
+                }}
+              />
+            ) : null}
 
-        {activeTab === "engines" ? (
-        <section className="panel-block settings-section engine-settings">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">Agent Engine Center</p>
-              <h3>外部 Agent 引擎</h3>
-            </div>
-            <button className="mini-button" disabled={detectingEngines} onClick={() => void handleDetectAgentEngines()} type="button">
-              {detectingEngines ? "检测中..." : "检测本机引擎"}
-            </button>
-          </div>
-          <div className="settings-form">
-            <p className="secret-note">
-              这里把模型 Provider 和 Agent 执行器拆开管理：Provider 负责 API/模型，Agent 引擎负责本机 CLI、运行时、权限模式和后续启动检测。
-            </p>
-            <div className="collapse-list">
-              {draft.assistant.engines.map((engine) => {
-                const detection = engineDetections.find((item) => item.engineId === engine.id);
-                return (
-                <details className={engine.enabled ? "config-disclosure enabled" : "config-disclosure"} key={engine.id}>
-                  <summary>
-                    <span className="summary-main">
-                      <strong>{engine.name}</strong>
-                      <small>
-                        {engine.kind.toUpperCase()} · {engine.setupStatus === "ready" ? "可用" : engine.setupStatus === "needs_setup" ? "待配置" : "未安装"} · {engine.description}
-                      </small>
-                    </span>
-                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
-                      <input
-                        checked={engine.enabled}
+            {activeTab === "model" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">模型中心</p>
+                    <h3>工作台默认模型</h3>
+                  </div>
+                  <Zap size={18} />
+                </div>
+                <div className="settings-form">
+                  <label className="field-label">
+                    <span>默认 Provider</span>
+                    <select
+                      value={selectedRuntimeProvider?.id ?? ""}
+                      onChange={(event) => {
+                        const provider = draft.providers.find((item) => item.id === event.target.value);
+                        updateDraft({
+                          model: {
+                            activeProviderId: event.target.value,
+                            activeModel: provider?.defaultModel || provider?.models[0] || ""
+                          }
+                        });
+                      }}
+                    >
+                      {draft.providers.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.connected ? "启用" : "停用"} - {provider.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    <span>默认模型</span>
+                    <select
+                      value={draft.model.activeModel}
+                      onChange={(event) =>
+                        updateDraft({
+                          model: { ...draft.model, activeModel: event.target.value }
+                        })
+                      }
+                    >
+                      {runtimeModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="secret-note">
+                    工作台会优先使用这里选择的 Provider 和模型。切换后保存，下一条消息就会真实调用该模型。
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "engines" ? (
+              <section className="panel-block settings-section engine-settings">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">Agent Engine Center</p>
+                    <h3>外部 Agent 引擎</h3>
+                  </div>
+                  <button
+                    className="mini-button"
+                    disabled={detectingEngines}
+                    onClick={() => void handleDetectAgentEngines()}
+                    type="button"
+                  >
+                    {detectingEngines ? "检测中..." : "检测本机引擎"}
+                  </button>
+                </div>
+                <div className="settings-form">
+                  <p className="secret-note">
+                    这里把模型 Provider 和 Agent 执行器拆开管理：Provider 负责 API/模型，Agent 引擎负责本机
+                    CLI、运行时、权限模式和后续启动检测。
+                  </p>
+                  <div className="collapse-list">
+                    {draft.assistant.engines.map((engine) => {
+                      const detection = engineDetections.find((item) => item.engineId === engine.id);
+                      return (
+                        <details
+                          className={engine.enabled ? "config-disclosure enabled" : "config-disclosure"}
+                          key={engine.id}
+                        >
+                          <summary>
+                            <span className="summary-main">
+                              <strong>{engine.name}</strong>
+                              <small>
+                                {engine.kind.toUpperCase()} ·{" "}
+                                {engine.setupStatus === "ready"
+                                  ? "可用"
+                                  : engine.setupStatus === "needs_setup"
+                                    ? "待配置"
+                                    : "未安装"}{" "}
+                                · {engine.description}
+                              </small>
+                            </span>
+                            <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
+                              <input
+                                checked={engine.enabled}
+                                onChange={(event) =>
+                                  updateEngine(engine.id, {
+                                    enabled: event.target.checked,
+                                    setupStatus:
+                                      event.target.checked && !engine.installed ? "needs_setup" : engine.setupStatus
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              <span>{engine.enabled ? "启用" : "停用"}</span>
+                            </label>
+                          </summary>
+                          <div className="disclosure-body">
+                            <div className="engine-status-row">
+                              <span className={engine.installed ? "status ready" : "status muted-status"}>
+                                {engine.installed ? "已检测" : "未检测"}
+                              </span>
+                              <span className="runtime-pill">
+                                {engine.configSource === "local_cli" ? "读取本机 CLI 配置" : "使用 NexaDesk 模型中心"}
+                              </span>
+                              {detection?.version ? <span className="runtime-pill">{detection.version}</span> : null}
+                            </div>
+                            {detection ? (
+                              <div className="engine-detection-card">
+                                <strong>{detection.message}</strong>
+                                {detection.resolvedPath ? <span>命令路径：{detection.resolvedPath}</span> : null}
+                                {detection.configPath ? <span>配置路径：{detection.configPath}</span> : null}
+                                <small>检测时间：{formatTime(detection.checkedAt)}</small>
+                              </div>
+                            ) : null}
+                            <div className="field-grid">
+                              <label className="field-label">
+                                <span>配置来源</span>
+                                <select
+                                  value={engine.configSource}
+                                  onChange={(event) =>
+                                    updateEngine(engine.id, {
+                                      configSource: event.target.value as AgentEngineSettings["configSource"]
+                                    })
+                                  }
+                                >
+                                  <option value="nexadesk_model">NexaDesk 模型中心</option>
+                                  <option value="local_cli">本机 CLI 配置</option>
+                                </select>
+                              </label>
+                              <label className="field-label">
+                                <span>权限模式</span>
+                                <select
+                                  value={engine.permissionMode}
+                                  onChange={(event) =>
+                                    updateEngine(engine.id, {
+                                      permissionMode: event.target.value as AgentEngineSettings["permissionMode"]
+                                    })
+                                  }
+                                >
+                                  <option value="ask">进入审批队列</option>
+                                  <option value="conservative">保守模式</option>
+                                  <option value="auto">自动模式</option>
+                                  <option value="bypass">外部引擎自行处理</option>
+                                </select>
+                              </label>
+                            </div>
+                            <div className="field-grid">
+                              <label className="field-label">
+                                <span>CLI 命令</span>
+                                <input
+                                  disabled={engine.kind === "builtin"}
+                                  value={engine.command ?? ""}
+                                  onChange={(event) => updateEngine(engine.id, { command: event.target.value })}
+                                  placeholder="例如 codex、claude、qwen"
+                                />
+                              </label>
+                              <label className="field-label">
+                                <span>配置文件路径</span>
+                                <input
+                                  value={engine.configPath ?? ""}
+                                  onChange={(event) => updateEngine(engine.id, { configPath: event.target.value })}
+                                  placeholder="后续可自动检测本机 CLI 配置"
+                                />
+                              </label>
+                            </div>
+                            <div className="field-grid">
+                              <label className="field-label">
+                                <span>绑定 Provider</span>
+                                <select
+                                  value={engine.providerId ?? ""}
+                                  onChange={(event) =>
+                                    updateEngine(engine.id, { providerId: event.target.value || undefined })
+                                  }
+                                >
+                                  <option value="">跟随默认模型</option>
+                                  {draft.providers.map((provider) => (
+                                    <option key={provider.id} value={provider.id}>
+                                      {provider.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="field-label">
+                                <span>绑定模型</span>
+                                <input
+                                  value={engine.model ?? ""}
+                                  onChange={(event) => updateEngine(engine.id, { model: event.target.value })}
+                                  placeholder="为空则跟随 Provider 默认模型"
+                                />
+                              </label>
+                            </div>
+                            <div className="engine-capability-row">
+                              {engine.capabilities.map((capability) => (
+                                <span key={capability}>{capability}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "assistants" ? (
+              <section className="panel-block settings-section assistant-settings">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">助手系统</p>
+                    <h3>内置助手</h3>
+                  </div>
+                  <Bot size={18} />
+                </div>
+                <div className="settings-form">
+                  <div className="collapse-list">
+                    {draft.assistant.agents.map((agent) => (
+                      <details
+                        className={agent.enabled ? "config-disclosure enabled" : "config-disclosure"}
+                        key={agent.id}
+                      >
+                        <summary>
+                          <span className="summary-main">
+                            <strong>{agent.name}</strong>
+                            <small>
+                              {agent.category} · {agent.description}
+                            </small>
+                          </span>
+                          <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
+                            <input
+                              checked={agent.enabled}
+                              onChange={(event) => updateAgent(agent.id, { enabled: event.target.checked })}
+                              type="checkbox"
+                            />
+                            <span>{agent.enabled ? "启用" : "停用"}</span>
+                          </label>
+                        </summary>
+                        <div className="disclosure-body">
+                          <label className="field-label">
+                            <span>绑定 Agent 引擎</span>
+                            <select
+                              value={agent.engineId ?? "nexadesk_builtin"}
+                              onChange={(event) =>
+                                updateAgent(agent.id, { engineId: event.target.value as AgentProfile["engineId"] })
+                              }
+                            >
+                              {draft.assistant.engines.map((engine) => (
+                                <option key={engine.id} value={engine.id}>
+                                  {engine.enabled ? "启用" : "停用"} - {engine.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field-label">
+                            <span>绑定 Provider</span>
+                            <select
+                              value={agent.providerId}
+                              onChange={(event) => updateAgent(agent.id, { providerId: event.target.value })}
+                            >
+                              {draft.providers.map((provider) => (
+                                <option key={provider.id} value={provider.id}>
+                                  {provider.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field-label">
+                            <span>系统提示词</span>
+                            <textarea
+                              rows={4}
+                              value={agent.instructions}
+                              onChange={(event) => updateAgent(agent.id, { instructions: event.target.value })}
+                            />
+                          </label>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "skills" ? (
+              <section className="panel-block settings-section skill-settings">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">技能系统</p>
+                    <h3>启用、禁用与自定义技能</h3>
+                  </div>
+                  <button className="mini-button" onClick={addCustomSkill} type="button">
+                    新建技能
+                  </button>
+                </div>
+                <div className="settings-form">
+                  <div className="collapse-list">
+                    {draft.assistant.skills.map((skill) => (
+                      <details
+                        className={skill.enabled ? "config-disclosure enabled" : "config-disclosure"}
+                        key={skill.id}
+                      >
+                        <summary>
+                          <span className="summary-main">
+                            <strong>{skill.name}</strong>
+                            <small>
+                              {skill.source === "custom" ? "自定义" : "内置"} · {skill.description}
+                            </small>
+                          </span>
+                          <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
+                            <input
+                              checked={skill.enabled}
+                              onChange={(event) => updateSkill(skill.id, { enabled: event.target.checked })}
+                              type="checkbox"
+                            />
+                            <span>{skill.enabled ? "启用" : "停用"}</span>
+                          </label>
+                        </summary>
+                        <div className="disclosure-body">
+                          <label className="field-label">
+                            <span>技能名称</span>
+                            <input
+                              disabled={skill.source !== "custom"}
+                              value={skill.name}
+                              onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
+                            />
+                          </label>
+                          <label className="field-label">
+                            <span>适用场景</span>
+                            <input
+                              value={skill.description}
+                              onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
+                            />
+                          </label>
+                          <label className="field-label">
+                            <span>技能提示词</span>
+                            <textarea
+                              rows={4}
+                              value={skill.instructions}
+                              onChange={(event) => updateSkill(skill.id, { instructions: event.target.value })}
+                            />
+                          </label>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                  <p className="secret-note">
+                    助手只会加载自己绑定且已启用的技能。自定义技能会随设置保存，后续可以扩展成本地技能包或插件。
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "appearance" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">界面</p>
+                    <h3>外观与主题</h3>
+                  </div>
+                  <Settings size={18} />
+                </div>
+                <div className="settings-form">
+                  <div className="field-grid">
+                    <label className="field-label">
+                      <span>语言</span>
+                      <select value={lang} onChange={(event) => setLang(event.target.value as Lang)}>
+                        <option value="zh">简体中文</option>
+                        <option value="en">English</option>
+                      </select>
+                    </label>
+                    <label className="field-label">
+                      <span>界面密度</span>
+                      <select
+                        value={draft.appearance.density}
                         onChange={(event) =>
-                          updateEngine(engine.id, {
-                            enabled: event.target.checked,
-                            setupStatus: event.target.checked && !engine.installed ? "needs_setup" : engine.setupStatus
+                          updateDraft({
+                            appearance: {
+                              ...draft.appearance,
+                              density: event.target.value as AppSettings["appearance"]["density"]
+                            }
+                          })
+                        }
+                      >
+                        <option value="comfortable">舒适</option>
+                        <option value="compact">紧凑</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <h4
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--muted-text)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      margin: "12px 0 6px"
+                    }}
+                  >
+                    主题模式
+                  </h4>
+                  <div className="theme-mode-row">
+                    {(["light", "dark", "system"] as const).map((m) => (
+                      <button
+                        className={themeMode === m ? "theme-mode-btn active" : "theme-mode-btn"}
+                        key={m}
+                        onClick={() => setThemeMode(m)}
+                        type="button"
+                      >
+                        {m === "light" ? "☀️ 浅色" : m === "dark" ? "🌙 深色" : "💻 跟随系统"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <h4
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--muted-text)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      margin: "12px 0 6px"
+                    }}
+                  >
+                    主题配色
+                  </h4>
+                  <div className="theme-gallery">
+                    {THEMES.filter(
+                      (t) => themeMode === "system" || t.appearance === themeMode || themeMode === themeMode
+                    ).map((theme) => (
+                      <button
+                        className={themeId === theme.id ? "theme-swatch active" : "theme-swatch"}
+                        key={theme.id}
+                        onClick={() => setThemeId(theme.id)}
+                        type="button"
+                        title={theme.description}
+                      >
+                        <div className="theme-preview-strip">
+                          {theme.preview.map((color, i) => (
+                            <span key={i} style={{ background: color }} />
+                          ))}
+                        </div>
+                        <small>{theme.name}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="field-grid" style={{ marginTop: 12 }}>
+                    <label className="field-label">
+                      <span>字体预设</span>
+                      <select
+                        value={
+                          fontOptions.includes(draft.appearance.fontFamily) ? draft.appearance.fontFamily : "Custom"
+                        }
+                        onChange={(event) => {
+                          if (event.target.value !== "Custom") {
+                            updateDraft({ appearance: { ...draft.appearance, fontFamily: event.target.value } });
+                          }
+                        }}
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font === "Custom" ? "Custom" : font}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-label">
+                      <span>字号</span>
+                      <input
+                        min={12}
+                        max={20}
+                        type="number"
+                        value={draft.appearance.fontSize}
+                        onChange={(event) =>
+                          updateDraft({ appearance: { ...draft.appearance, fontSize: Number(event.target.value) } })
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "workspace" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">工作区</p>
+                    <h3>文件与导出</h3>
+                  </div>
+                  <Folder size={18} />
+                </div>
+                <div className="settings-form">
+                  <label className="field-label">
+                    <span>默认工作区</span>
+                    <div className="directory-field">
+                      <input
+                        value={draft.workspace.defaultWorkspace}
+                        onChange={(event) =>
+                          updateDraft({ workspace: { ...draft.workspace, defaultWorkspace: event.target.value } })
+                        }
+                      />
+                      <button
+                        className="mini-button"
+                        disabled={!canPickDirectory}
+                        onClick={() =>
+                          void chooseDirectory({
+                            title: "选择默认工作区",
+                            defaultPath: draft.workspace.defaultWorkspace,
+                            onSelect: (path) =>
+                              updateDraft({
+                                workspace: {
+                                  ...draft.workspace,
+                                  defaultWorkspace: path,
+                                  allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                                }
+                              })
+                          })
+                        }
+                        type="button"
+                      >
+                        选择目录
+                      </button>
+                    </div>
+                  </label>
+                  <label className="field-label">
+                    <span>导出目录</span>
+                    <div className="directory-field">
+                      <input
+                        value={draft.workspace.exportDirectory}
+                        onChange={(event) =>
+                          updateDraft({ workspace: { ...draft.workspace, exportDirectory: event.target.value } })
+                        }
+                      />
+                      <button
+                        className="mini-button"
+                        disabled={!canPickDirectory}
+                        onClick={() =>
+                          void chooseDirectory({
+                            title: "选择导出目录",
+                            defaultPath: draft.workspace.exportDirectory || draft.workspace.defaultWorkspace,
+                            onSelect: (path) =>
+                              updateDraft({
+                                workspace: {
+                                  ...draft.workspace,
+                                  exportDirectory: path,
+                                  allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                                }
+                              })
+                          })
+                        }
+                        type="button"
+                      >
+                        选择目录
+                      </button>
+                    </div>
+                  </label>
+                  <label className="field-label">
+                    <span>允许访问的根目录</span>
+                    <textarea
+                      rows={3}
+                      value={draft.workspace.allowedRoots.join("\n")}
+                      onChange={(event) =>
+                        updateDraft({
+                          workspace: {
+                            ...draft.workspace,
+                            allowedRoots: event.target.value
+                              .split("\n")
+                              .map((item) => item.trim())
+                              .filter(Boolean)
+                          }
+                        })
+                      }
+                    />
+                  </label>
+                  <div className="config-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={!canPickDirectory}
+                      onClick={() =>
+                        void chooseDirectory({
+                          title: "添加允许访问的根目录",
+                          defaultPath: draft.workspace.defaultWorkspace,
+                          onSelect: (path) =>
+                            updateDraft({
+                              workspace: {
+                                ...draft.workspace,
+                                allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
+                              }
+                            })
+                        })
+                      }
+                      type="button"
+                    >
+                      添加允许目录
+                    </button>
+                    <span className="secret-note">
+                      目录选择仅在桌面应用中启用。Agent 的读写工具会被限制在允许访问的根目录内。
+                    </span>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "permissions" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">权限</p>
+                    <h3>安全策略</h3>
+                  </div>
+                  <ShieldCheck size={18} />
+                </div>
+                <div className="settings-form">
+                  {(["shell", "fileWrite", "network", "browser", "mcp", "automation"] as const).map((key) => (
+                    <label className="field-label policy-row" key={key}>
+                      <span>{policyLabel(key)}</span>
+                      <select
+                        value={draft.permissions[key]}
+                        onChange={(event) =>
+                          updateDraft({
+                            permissions: {
+                              ...draft.permissions,
+                              [key]: event.target.value as AppSettings["permissions"][typeof key]
+                            }
+                          })
+                        }
+                      >
+                        <option value="ask">每次询问</option>
+                        <option value="allow">允许</option>
+                        <option value="deny">拒绝</option>
+                      </select>
+                    </label>
+                  ))}
+                  <label className="connection-toggle">
+                    <input
+                      checked={draft.permissions.autoApproveLowRisk}
+                      onChange={(event) =>
+                        updateDraft({
+                          permissions: { ...draft.permissions, autoApproveLowRisk: event.target.checked }
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>自动批准低风险操作</span>
+                  </label>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "memory" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">Memory</p>
+                    <h3>记忆管理</h3>
+                  </div>
+                  <FileText size={18} />
+                </div>
+                <div className="settings-form">
+                  {(["projectMemory", "conversationMemory", "longTermMemory"] as const).map((key) => (
+                    <label className="connection-toggle" key={key}>
+                      <input
+                        checked={draft.memory[key]}
+                        onChange={(event) =>
+                          updateDraft({
+                            memory: { ...draft.memory, [key]: event.target.checked }
                           })
                         }
                         type="checkbox"
                       />
-                      <span>{engine.enabled ? "启用" : "停用"}</span>
+                      <span>{memorySettingLabel(key)}</span>
                     </label>
-                  </summary>
-                  <div className="disclosure-body">
-                    <div className="engine-status-row">
-                      <span className={engine.installed ? "status ready" : "status muted-status"}>
-                        {engine.installed ? "已检测" : "未检测"}
-                      </span>
-                      <span className="runtime-pill">{engine.configSource === "local_cli" ? "读取本机 CLI 配置" : "使用 NexaDesk 模型中心"}</span>
-                      {detection?.version ? <span className="runtime-pill">{detection.version}</span> : null}
-                    </div>
-                    {detection ? (
-                      <div className="engine-detection-card">
-                        <strong>{detection.message}</strong>
-                        {detection.resolvedPath ? <span>命令路径：{detection.resolvedPath}</span> : null}
-                        {detection.configPath ? <span>配置路径：{detection.configPath}</span> : null}
-                        <small>检测时间：{formatTime(detection.checkedAt)}</small>
-                      </div>
-                    ) : null}
-                    <div className="field-grid">
-                      <label className="field-label">
-                        <span>配置来源</span>
-                        <select
-                          value={engine.configSource}
-                          onChange={(event) =>
-                            updateEngine(engine.id, {
-                              configSource: event.target.value as AgentEngineSettings["configSource"]
-                            })
-                          }
-                        >
-                          <option value="nexadesk_model">NexaDesk 模型中心</option>
-                          <option value="local_cli">本机 CLI 配置</option>
-                        </select>
-                      </label>
-                      <label className="field-label">
-                        <span>权限模式</span>
-                        <select
-                          value={engine.permissionMode}
-                          onChange={(event) =>
-                            updateEngine(engine.id, {
-                              permissionMode: event.target.value as AgentEngineSettings["permissionMode"]
-                            })
-                          }
-                        >
-                          <option value="ask">进入审批队列</option>
-                          <option value="conservative">保守模式</option>
-                          <option value="auto">自动模式</option>
-                          <option value="bypass">外部引擎自行处理</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="field-grid">
-                      <label className="field-label">
-                        <span>CLI 命令</span>
-                        <input
-                          disabled={engine.kind === "builtin"}
-                          value={engine.command ?? ""}
-                          onChange={(event) => updateEngine(engine.id, { command: event.target.value })}
-                          placeholder="例如 codex、claude、qwen"
-                        />
-                      </label>
-                      <label className="field-label">
-                        <span>配置文件路径</span>
-                        <input
-                          value={engine.configPath ?? ""}
-                          onChange={(event) => updateEngine(engine.id, { configPath: event.target.value })}
-                          placeholder="后续可自动检测本机 CLI 配置"
-                        />
-                      </label>
-                    </div>
-                    <div className="field-grid">
-                      <label className="field-label">
-                        <span>绑定 Provider</span>
-                        <select
-                          value={engine.providerId ?? ""}
-                          onChange={(event) => updateEngine(engine.id, { providerId: event.target.value || undefined })}
-                        >
-                          <option value="">跟随默认模型</option>
-                          {draft.providers.map((provider) => (
-                            <option key={provider.id} value={provider.id}>
-                              {provider.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="field-label">
-                        <span>绑定模型</span>
-                        <input
-                          value={engine.model ?? ""}
-                          onChange={(event) => updateEngine(engine.id, { model: event.target.value })}
-                          placeholder="为空则跟随 Provider 默认模型"
-                        />
-                      </label>
-                    </div>
-                    <div className="engine-capability-row">
-                      {engine.capabilities.map((capability) => (
-                        <span key={capability}>{capability}</span>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "assistants" ? (
-        <section className="panel-block settings-section assistant-settings">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">助手系统</p>
-              <h3>内置助手</h3>
-            </div>
-            <Bot size={18} />
-          </div>
-          <div className="settings-form">
-            <div className="collapse-list">
-              {draft.assistant.agents.map((agent) => (
-                <details className={agent.enabled ? "config-disclosure enabled" : "config-disclosure"} key={agent.id}>
-                  <summary>
-                    <span className="summary-main">
-                      <strong>{agent.name}</strong>
-                      <small>
-                        {agent.category} · {agent.description}
-                      </small>
-                    </span>
-                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
-                      <input
-                        checked={agent.enabled}
-                        onChange={(event) => updateAgent(agent.id, { enabled: event.target.checked })}
-                        type="checkbox"
-                      />
-                      <span>{agent.enabled ? "启用" : "停用"}</span>
-                    </label>
-                  </summary>
-                  <div className="disclosure-body">
-                    <label className="field-label">
-                      <span>绑定 Agent 引擎</span>
-                      <select
-                        value={agent.engineId ?? "nexadesk_builtin"}
-                        onChange={(event) => updateAgent(agent.id, { engineId: event.target.value as AgentProfile["engineId"] })}
-                      >
-                        {draft.assistant.engines.map((engine) => (
-                          <option key={engine.id} value={engine.id}>
-                            {engine.enabled ? "启用" : "停用"} - {engine.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-label">
-                      <span>绑定 Provider</span>
-                      <select
-                        value={agent.providerId}
-                        onChange={(event) => updateAgent(agent.id, { providerId: event.target.value })}
-                      >
-                        {draft.providers.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-label">
-                      <span>系统提示词</span>
-                      <textarea
-                        rows={4}
-                        value={agent.instructions}
-                        onChange={(event) => updateAgent(agent.id, { instructions: event.target.value })}
-                      />
-                    </label>
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "skills" ? (
-        <section className="panel-block settings-section skill-settings">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">技能系统</p>
-              <h3>启用、禁用与自定义技能</h3>
-            </div>
-            <button className="mini-button" onClick={addCustomSkill} type="button">
-              新建技能
-            </button>
-          </div>
-          <div className="settings-form">
-            <div className="collapse-list">
-              {draft.assistant.skills.map((skill) => (
-                <details className={skill.enabled ? "config-disclosure enabled" : "config-disclosure"} key={skill.id}>
-                  <summary>
-                    <span className="summary-main">
-                      <strong>{skill.name}</strong>
-                      <small>
-                        {skill.source === "custom" ? "自定义" : "内置"} · {skill.description}
-                      </small>
-                    </span>
-                    <label className="connection-toggle" onClick={(event) => event.stopPropagation()}>
-                      <input
-                        checked={skill.enabled}
-                        onChange={(event) => updateSkill(skill.id, { enabled: event.target.checked })}
-                        type="checkbox"
-                      />
-                      <span>{skill.enabled ? "启用" : "停用"}</span>
-                    </label>
-                  </summary>
-                  <div className="disclosure-body">
-                    <label className="field-label">
-                      <span>技能名称</span>
-                      <input
-                        disabled={skill.source !== "custom"}
-                        value={skill.name}
-                        onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
-                      />
-                    </label>
-                    <label className="field-label">
-                      <span>适用场景</span>
-                      <input
-                        value={skill.description}
-                        onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
-                      />
-                    </label>
-                    <label className="field-label">
-                      <span>技能提示词</span>
-                      <textarea
-                        rows={4}
-                        value={skill.instructions}
-                        onChange={(event) => updateSkill(skill.id, { instructions: event.target.value })}
-                      />
-                    </label>
-                  </div>
-                </details>
-              ))}
-            </div>
-            <p className="secret-note">
-              助手只会加载自己绑定且已启用的技能。自定义技能会随设置保存，后续可以扩展成本地技能包或插件。
-            </p>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "appearance" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">界面</p>
-              <h3>外观与主题</h3>
-            </div>
-            <Settings size={18} />
-          </div>
-          <div className="settings-form">
-            <div className="field-grid">
-              <label className="field-label">
-                <span>语言</span>
-                <select
-                  value={lang}
-                  onChange={(event) => setLang(event.target.value as Lang)}
-                >
-                  <option value="zh">简体中文</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-              <label className="field-label">
-                <span>界面密度</span>
-                <select
-                  value={draft.appearance.density}
-                  onChange={(event) =>
-                    updateDraft({
-                      appearance: { ...draft.appearance, density: event.target.value as AppSettings["appearance"]["density"] }
-                    })
-                  }
-                >
-                  <option value="comfortable">舒适</option>
-                  <option value="compact">紧凑</option>
-                </select>
-              </label>
-            </div>
-
-            <h4 style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-text)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "12px 0 6px" }}>主题模式</h4>
-            <div className="theme-mode-row">
-              {(["light", "dark", "system"] as const).map((m) => (
-                <button className={themeMode === m ? "theme-mode-btn active" : "theme-mode-btn"} key={m} onClick={() => setThemeMode(m)} type="button">
-                  {m === "light" ? "☀️ 浅色" : m === "dark" ? "🌙 深色" : "💻 跟随系统"}
-                </button>
-              ))}
-            </div>
-
-            <h4 style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-text)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "12px 0 6px" }}>主题配色</h4>
-            <div className="theme-gallery">
-              {THEMES.filter((t) => themeMode === "system" || t.appearance === themeMode || themeMode === themeMode).map((theme) => (
-                <button
-                  className={themeId === theme.id ? "theme-swatch active" : "theme-swatch"}
-                  key={theme.id}
-                  onClick={() => setThemeId(theme.id)}
-                  type="button"
-                  title={theme.description}
-                >
-                  <div className="theme-preview-strip">
-                    {theme.preview.map((color, i) => (
-                      <span key={i} style={{ background: color }} />
-                    ))}
-                  </div>
-                  <small>{theme.name}</small>
-                </button>
-              ))}
-            </div>
-
-            <div className="field-grid" style={{ marginTop: 12 }}>
-              <label className="field-label">
-                <span>字体预设</span>
-                <select
-                  value={fontOptions.includes(draft.appearance.fontFamily) ? draft.appearance.fontFamily : "Custom"}
-                  onChange={(event) => {
-                    if (event.target.value !== "Custom") {
-                      updateDraft({ appearance: { ...draft.appearance, fontFamily: event.target.value } });
-                    }
-                  }}
-                >
-                  {fontOptions.map((font) => (
-                    <option key={font} value={font}>
-                      {font === "Custom" ? "Custom" : font}
-                    </option>
                   ))}
-                </select>
-              </label>
-              <label className="field-label">
-                <span>字号</span>
-                <input
-                  min={12}
-                  max={20}
-                  type="number"
-                  value={draft.appearance.fontSize}
-                  onChange={(event) =>
-                    updateDraft({ appearance: { ...draft.appearance, fontSize: Number(event.target.value) } })
-                  }
-                />
-              </label>
-            </div>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "workspace" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">工作区</p>
-              <h3>文件与导出</h3>
-            </div>
-            <Folder size={18} />
-          </div>
-          <div className="settings-form">
-            <label className="field-label">
-              <span>默认工作区</span>
-              <div className="directory-field">
-                <input
-                  value={draft.workspace.defaultWorkspace}
-                  onChange={(event) =>
-                    updateDraft({ workspace: { ...draft.workspace, defaultWorkspace: event.target.value } })
-                  }
-                />
-                <button
-                  className="mini-button"
-                  disabled={!canPickDirectory}
-                  onClick={() =>
-                    void chooseDirectory({
-                      title: "选择默认工作区",
-                      defaultPath: draft.workspace.defaultWorkspace,
-                      onSelect: (path) =>
+                  <label className="field-label">
+                    <span>记忆保留天数</span>
+                    <input
+                      min={1}
+                      max={365}
+                      type="number"
+                      value={draft.memory.retentionDays}
+                      onChange={(event) =>
                         updateDraft({
-                          workspace: {
-                            ...draft.workspace,
-                            defaultWorkspace: path,
-                            allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
-                          }
+                          memory: { ...draft.memory, retentionDays: Number(event.target.value) }
                         })
-                    })
-                  }
-                  type="button"
-                >
-                  选择目录
-                </button>
-              </div>
-            </label>
-            <label className="field-label">
-              <span>导出目录</span>
-              <div className="directory-field">
-                <input
-                  value={draft.workspace.exportDirectory}
-                  onChange={(event) =>
-                    updateDraft({ workspace: { ...draft.workspace, exportDirectory: event.target.value } })
-                  }
-                />
-                <button
-                  className="mini-button"
-                  disabled={!canPickDirectory}
-                  onClick={() =>
-                    void chooseDirectory({
-                      title: "选择导出目录",
-                      defaultPath: draft.workspace.exportDirectory || draft.workspace.defaultWorkspace,
-                      onSelect: (path) =>
-                        updateDraft({
-                          workspace: {
-                            ...draft.workspace,
-                            exportDirectory: path,
-                            allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
-                          }
-                        })
-                    })
-                  }
-                  type="button"
-                >
-                  选择目录
-                </button>
-              </div>
-            </label>
-            <label className="field-label">
-              <span>允许访问的根目录</span>
-              <textarea
-                rows={3}
-                value={draft.workspace.allowedRoots.join("\n")}
-                onChange={(event) =>
-                  updateDraft({
-                    workspace: {
-                      ...draft.workspace,
-                      allowedRoots: event.target.value
-                        .split("\n")
-                        .map((item) => item.trim())
-                        .filter(Boolean)
-                    }
-                  })
-                }
-              />
-            </label>
-            <div className="config-actions">
-              <button
-                className="secondary-button"
-                disabled={!canPickDirectory}
-                onClick={() =>
-                  void chooseDirectory({
-                    title: "添加允许访问的根目录",
-                    defaultPath: draft.workspace.defaultWorkspace,
-                    onSelect: (path) =>
-                      updateDraft({
-                        workspace: {
-                          ...draft.workspace,
-                          allowedRoots: uniquePathList([...draft.workspace.allowedRoots, path])
-                        }
-                      })
-                  })
-                }
-                type="button"
-              >
-                添加允许目录
-              </button>
-              <span className="secret-note">
-                目录选择仅在桌面应用中启用。Agent 的读写工具会被限制在允许访问的根目录内。
-              </span>
-            </div>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "permissions" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">权限</p>
-              <h3>安全策略</h3>
-            </div>
-            <ShieldCheck size={18} />
-          </div>
-          <div className="settings-form">
-            {(["shell", "fileWrite", "network", "browser", "mcp", "automation"] as const).map((key) => (
-              <label className="field-label policy-row" key={key}>
-                <span>{policyLabel(key)}</span>
-                <select
-                  value={draft.permissions[key]}
-                  onChange={(event) =>
-                    updateDraft({
-                      permissions: {
-                        ...draft.permissions,
-                        [key]: event.target.value as AppSettings["permissions"][typeof key]
                       }
-                    })
-                  }
-                >
-                  <option value="ask">每次询问</option>
-                  <option value="allow">允许</option>
-                  <option value="deny">拒绝</option>
-                </select>
-              </label>
-            ))}
-            <label className="connection-toggle">
-              <input
-                checked={draft.permissions.autoApproveLowRisk}
-                onChange={(event) =>
-                  updateDraft({
-                    permissions: { ...draft.permissions, autoApproveLowRisk: event.target.checked }
-                  })
-                }
-                type="checkbox"
-              />
-              <span>自动批准低风险操作</span>
-            </label>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "memory" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">Memory</p>
-              <h3>记忆管理</h3>
-            </div>
-            <FileText size={18} />
-          </div>
-          <div className="settings-form">
-            {(["projectMemory", "conversationMemory", "longTermMemory"] as const).map((key) => (
-              <label className="connection-toggle" key={key}>
-                <input
-                  checked={draft.memory[key]}
-                  onChange={(event) =>
-                    updateDraft({
-                      memory: { ...draft.memory, [key]: event.target.checked }
-                    })
-                  }
-                  type="checkbox"
-                />
-                <span>{memorySettingLabel(key)}</span>
-              </label>
-            ))}
-            <label className="field-label">
-              <span>记忆保留天数</span>
-              <input
-                min={1}
-                max={365}
-                type="number"
-                value={draft.memory.retentionDays}
-                onChange={(event) =>
-                  updateDraft({
-                    memory: { ...draft.memory, retentionDays: Number(event.target.value) }
-                  })
-                }
-              />
-            </label>
-            <label className="field-label">
-              <span>记忆规则备注</span>
-              <textarea
-                rows={4}
-                value={draft.memory.notes}
-                onChange={(event) =>
-                  updateDraft({
-                    memory: { ...draft.memory, notes: event.target.value }
-                  })
-                }
-              />
-            </label>
-            <p className="secret-note">
-              这里先保存记忆策略配置；后续可接项目记忆索引、会话摘要和长期记忆审查页。
-            </p>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "im" ? (
-          <IMSettingsPanel onClose={() => {}} />
-        ) : null}
-
-        {activeTab === "email" ? (
-          <EmailConfigPanel onClose={() => {}} />
-        ) : null}
-
-        {activeTab === "shortcuts" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">Keyboard</p>
-              <h3>快捷键</h3>
-            </div>
-            <KeyRound size={18} />
-          </div>
-          <div className="settings-form">
-            {(["sendMessage", "commandPalette", "newTask", "openSettings", "toggleWorkspaceContext"] as const).map((key) => (
-              <label className="field-label shortcut-row" key={key}>
-                <span>{shortcutSettingLabel(key)}</span>
-                <input
-                  value={draft.shortcuts[key]}
-                  onChange={(event) =>
-                    updateDraft({
-                      shortcuts: { ...draft.shortcuts, [key]: event.target.value }
-                    })
-                  }
-                />
-              </label>
-            ))}
-            <p className="secret-note">
-              快捷键配置已进入设置体系；真正的全局快捷键注册会在桌面快捷键模块里继续接入。
-            </p>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "about" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">About</p>
-              <h3>关于 NexaDesk</h3>
-            </div>
-            <Workflow size={18} />
-          </div>
-          <div className="settings-form">
-            <div className="diagnostics-grid">
-              <DiagnosticRow label="版本" value={desktopStatus?.version ?? "0.1.0"} />
-              <DiagnosticRow label="发布通道" value={draft.about.releaseChannel} />
-              <DiagnosticRow label="许可证" value={draft.about.license} />
-              <DiagnosticRow label="仓库" value={draft.about.repositoryUrl} />
-              <DiagnosticRow label="运行模式" value={desktopStatus?.mode === "desktop" ? "桌面应用" : "Web 开发"} />
-              <DiagnosticRow label="数据目录" value={desktopStatus?.dataDir ?? "Not set"} />
-            </div>
-            <div className="field-grid">
-              <label className="field-label">
-                <span>发布通道</span>
-                <select
-                  value={draft.about.releaseChannel}
-                  onChange={(event) =>
-                    updateDraft({
-                      about: { ...draft.about, releaseChannel: event.target.value as AppSettings["about"]["releaseChannel"] }
-                    })
-                  }
-                >
-                  <option value="stable">Stable</option>
-                  <option value="beta">Beta</option>
-                  <option value="dev">Dev</option>
-                </select>
-              </label>
-              <label className="connection-toggle">
-                <input
-                  checked={draft.about.checkUpdates}
-                  onChange={(event) =>
-                    updateDraft({
-                      about: { ...draft.about, checkUpdates: event.target.checked }
-                    })
-                  }
-                  type="checkbox"
-                />
-                <span>允许检查更新</span>
-              </label>
-            </div>
-            <label className="field-label">
-              <span>仓库地址</span>
-              <input
-                value={draft.about.repositoryUrl}
-                onChange={(event) =>
-                  updateDraft({
-                    about: { ...draft.about, repositoryUrl: event.target.value }
-                  })
-                }
-              />
-            </label>
-            <label className="field-label">
-              <span>许可证说明</span>
-              <input
-                value={draft.about.license}
-                onChange={(event) =>
-                  updateDraft({
-                    about: { ...draft.about, license: event.target.value }
-                  })
-                }
-              />
-            </label>
-          </div>
-        </section>
-        ) : null}
-
-        {activeTab === "desktop" ? (
-        <section className="panel-block settings-section">
-          <div className="panel-heading compact">
-            <div>
-              <p className="eyebrow">桌面应用</p>
-              <h3>安装包与诊断</h3>
-            </div>
-            <Workflow size={18} />
-          </div>
-          <div className="settings-form">
-            {(["launchAtStartup", "autoUpdate", "telemetry"] as const).map((key) => (
-              <label className="connection-toggle" key={key}>
-                <input
-                  checked={draft.app[key]}
-                  onChange={(event) => updateDraft({ app: { ...draft.app, [key]: event.target.checked } })}
-                  type="checkbox"
-                />
-                <span>{appSettingLabel(key)}</span>
-              </label>
-            ))}
-            <label className="field-label">
-              <span>日志级别</span>
-              <select
-                value={draft.app.logLevel}
-                onChange={(event) =>
-                  updateDraft({ app: { ...draft.app, logLevel: event.target.value as AppSettings["app"]["logLevel"] } })
-                }
-              >
-                <option value="debug">Debug</option>
-                <option value="info">Info</option>
-                <option value="warn">Warn</option>
-                <option value="error">Error</option>
-              </select>
-            </label>
-            <details className="diagnostics-box">
-              <summary>
-                <span>桌面诊断</span>
-                <span className="diagnostics-actions">
-                  <button
-                    className="mini-button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void refreshDesktopStatus();
-                    }}
-                    type="button"
-                  >
-                    刷新
-                  </button>
-                  <button
-                    className="mini-button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void copyDesktopDiagnostics();
-                    }}
-                    type="button"
-                  >
-                    复制诊断
-                  </button>
-                </span>
-              </summary>
-              {desktopStatus ? (
-                <div className="diagnostics-grid">
-                  <DiagnosticRow label="运行模式" value={desktopStatus.mode === "desktop" ? "桌面应用" : "Web 开发"} />
-                  <DiagnosticRow label="Version" value={desktopStatus.version} />
-                  <DiagnosticRow label="API" value={desktopStatus.apiBase} />
-                  <DiagnosticRow label="Data directory" value={desktopStatus.dataDir ?? "Not set"} />
-                  <DiagnosticRow label="Settings file" value={desktopStatus.settingsPath ?? "Not set"} />
-                  <DiagnosticRow label="Secrets file" value={desktopStatus.secretsPath ?? "Not set"} />
-                  <DiagnosticRow label="Runtime state" value={desktopStatus.runtimeStatePath ?? "Not set"} />
-                  <DiagnosticRow label="Secret protection" value={desktopStatus.secretsEncrypted ? "Encrypted" : "Not encrypted"} />
-                  <DiagnosticRow label="System secure storage" value={desktopStatus.safeStorage} />
-                  <DiagnosticRow label="Log file" value={desktopStatus.logPath ?? "Not set"} />
-                  <DiagnosticRow label="Crash log" value={desktopStatus.crashLogPath ?? "Not set"} />
-                  <DiagnosticRow label="Platform" value={`${desktopStatus.platform} / ${desktopStatus.arch}`} />
-                  <DiagnosticRow label="Uptime" value={`${desktopStatus.uptimeSeconds}s`} />
-                  {copyStatus ? <p className="secret-note">{copyStatus}</p> : null}
+                    />
+                  </label>
+                  <label className="field-label">
+                    <span>记忆规则备注</span>
+                    <textarea
+                      rows={4}
+                      value={draft.memory.notes}
+                      onChange={(event) =>
+                        updateDraft({
+                          memory: { ...draft.memory, notes: event.target.value }
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="secret-note">
+                    这里先保存记忆策略配置；后续可接项目记忆索引、会话摘要和长期记忆审查页。
+                  </p>
                 </div>
-              ) : (
-                <p className="secret-note">桌面诊断暂不可用。请确认本地 API 已启动。</p>
-              )}
-            </details>
-          </div>
-        </section>
-        ) : null}
+              </section>
+            ) : null}
+
+            {activeTab === "im" ? <IMSettingsPanel onClose={() => {}} /> : null}
+
+            {activeTab === "email" ? <EmailConfigPanel onClose={() => {}} /> : null}
+
+            {activeTab === "shortcuts" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">Keyboard</p>
+                    <h3>快捷键</h3>
+                  </div>
+                  <KeyRound size={18} />
+                </div>
+                <div className="settings-form">
+                  {(
+                    ["sendMessage", "commandPalette", "newTask", "openSettings", "toggleWorkspaceContext"] as const
+                  ).map((key) => (
+                    <label className="field-label shortcut-row" key={key}>
+                      <span>{shortcutSettingLabel(key)}</span>
+                      <input
+                        value={draft.shortcuts[key]}
+                        onChange={(event) =>
+                          updateDraft({
+                            shortcuts: { ...draft.shortcuts, [key]: event.target.value }
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                  <p className="secret-note">
+                    快捷键配置已进入设置体系；真正的全局快捷键注册会在桌面快捷键模块里继续接入。
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "about" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">About</p>
+                    <h3>关于 NexaDesk</h3>
+                  </div>
+                  <Workflow size={18} />
+                </div>
+                <div className="settings-form">
+                  <div className="diagnostics-grid">
+                    <DiagnosticRow label="版本" value={desktopStatus?.version ?? "0.1.0"} />
+                    <DiagnosticRow label="发布通道" value={draft.about.releaseChannel} />
+                    <DiagnosticRow label="许可证" value={draft.about.license} />
+                    <DiagnosticRow label="仓库" value={draft.about.repositoryUrl} />
+                    <DiagnosticRow
+                      label="运行模式"
+                      value={desktopStatus?.mode === "desktop" ? "桌面应用" : "Web 开发"}
+                    />
+                    <DiagnosticRow label="数据目录" value={desktopStatus?.dataDir ?? "Not set"} />
+                  </div>
+                  <div className="field-grid">
+                    <label className="field-label">
+                      <span>发布通道</span>
+                      <select
+                        value={draft.about.releaseChannel}
+                        onChange={(event) =>
+                          updateDraft({
+                            about: {
+                              ...draft.about,
+                              releaseChannel: event.target.value as AppSettings["about"]["releaseChannel"]
+                            }
+                          })
+                        }
+                      >
+                        <option value="stable">Stable</option>
+                        <option value="beta">Beta</option>
+                        <option value="dev">Dev</option>
+                      </select>
+                    </label>
+                    <label className="connection-toggle">
+                      <input
+                        checked={draft.about.checkUpdates}
+                        onChange={(event) =>
+                          updateDraft({
+                            about: { ...draft.about, checkUpdates: event.target.checked }
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>允许检查更新</span>
+                    </label>
+                  </div>
+                  <label className="field-label">
+                    <span>仓库地址</span>
+                    <input
+                      value={draft.about.repositoryUrl}
+                      onChange={(event) =>
+                        updateDraft({
+                          about: { ...draft.about, repositoryUrl: event.target.value }
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="field-label">
+                    <span>许可证说明</span>
+                    <input
+                      value={draft.about.license}
+                      onChange={(event) =>
+                        updateDraft({
+                          about: { ...draft.about, license: event.target.value }
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "desktop" ? (
+              <section className="panel-block settings-section">
+                <div className="panel-heading compact">
+                  <div>
+                    <p className="eyebrow">桌面应用</p>
+                    <h3>安装包与诊断</h3>
+                  </div>
+                  <Workflow size={18} />
+                </div>
+                <div className="settings-form">
+                  {(["launchAtStartup", "autoUpdate", "telemetry"] as const).map((key) => (
+                    <label className="connection-toggle" key={key}>
+                      <input
+                        checked={draft.app[key]}
+                        onChange={(event) => updateDraft({ app: { ...draft.app, [key]: event.target.checked } })}
+                        type="checkbox"
+                      />
+                      <span>{appSettingLabel(key)}</span>
+                    </label>
+                  ))}
+                  <label className="field-label">
+                    <span>日志级别</span>
+                    <select
+                      value={draft.app.logLevel}
+                      onChange={(event) =>
+                        updateDraft({
+                          app: { ...draft.app, logLevel: event.target.value as AppSettings["app"]["logLevel"] }
+                        })
+                      }
+                    >
+                      <option value="debug">Debug</option>
+                      <option value="info">Info</option>
+                      <option value="warn">Warn</option>
+                      <option value="error">Error</option>
+                    </select>
+                  </label>
+                  <details className="diagnostics-box">
+                    <summary>
+                      <span>桌面诊断</span>
+                      <span className="diagnostics-actions">
+                        <button
+                          className="mini-button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void refreshDesktopStatus();
+                          }}
+                          type="button"
+                        >
+                          刷新
+                        </button>
+                        <button
+                          className="mini-button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void copyDesktopDiagnostics();
+                          }}
+                          type="button"
+                        >
+                          复制诊断
+                        </button>
+                      </span>
+                    </summary>
+                    {desktopStatus ? (
+                      <div className="diagnostics-grid">
+                        <DiagnosticRow
+                          label="运行模式"
+                          value={desktopStatus.mode === "desktop" ? "桌面应用" : "Web 开发"}
+                        />
+                        <DiagnosticRow label="Version" value={desktopStatus.version} />
+                        <DiagnosticRow label="API" value={desktopStatus.apiBase} />
+                        <DiagnosticRow label="Data directory" value={desktopStatus.dataDir ?? "Not set"} />
+                        <DiagnosticRow label="Settings file" value={desktopStatus.settingsPath ?? "Not set"} />
+                        <DiagnosticRow label="Secrets file" value={desktopStatus.secretsPath ?? "Not set"} />
+                        <DiagnosticRow label="Runtime state" value={desktopStatus.runtimeStatePath ?? "Not set"} />
+                        <DiagnosticRow
+                          label="Secret protection"
+                          value={desktopStatus.secretsEncrypted ? "Encrypted" : "Not encrypted"}
+                        />
+                        <DiagnosticRow label="System secure storage" value={desktopStatus.safeStorage} />
+                        <DiagnosticRow label="Log file" value={desktopStatus.logPath ?? "Not set"} />
+                        <DiagnosticRow label="Crash log" value={desktopStatus.crashLogPath ?? "Not set"} />
+                        <DiagnosticRow label="Platform" value={`${desktopStatus.platform} / ${desktopStatus.arch}`} />
+                        <DiagnosticRow label="Uptime" value={`${desktopStatus.uptimeSeconds}s`} />
+                        {copyStatus ? <p className="secret-note">{copyStatus}</p> : null}
+                      </div>
+                    ) : (
+                      <p className="secret-note">桌面诊断暂不可用。请确认本地 API 已启动。</p>
+                    )}
+                  </details>
+                </div>
+              </section>
+            ) : null}
           </div>
         </section>
       </div>
@@ -6535,7 +7136,10 @@ function ProviderConfigPanel({
 }: {
   settings: AppSettings;
   providers: ProviderSettings[];
-  onSaveSettings?: (settings: AppSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<AppSettings> | AppSettings;
+  onSaveSettings?: (
+    settings: AppSettings,
+    providerSecrets?: ProviderSecretUpdate[]
+  ) => Promise<AppSettings> | AppSettings;
   onSaveProvider?: (provider: ProviderSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<unknown> | unknown;
 }) {
   const [selectedProviderId, setSelectedProviderId] = useState(providers[0]?.id ?? "");
@@ -6575,7 +7179,11 @@ function ProviderConfigPanel({
   const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
   const selectedDraft =
     drafts[selectedProviderId] ??
-    (selectedProvider ? createProviderDraft(selectedProvider) : providers[0] ? createProviderDraft(providers[0]) : null);
+    (selectedProvider
+      ? createProviderDraft(selectedProvider)
+      : providers[0]
+        ? createProviderDraft(providers[0])
+        : null);
   const models = selectedDraft ? parseModels(selectedDraft.modelsText) : [];
   const canDeleteSelectedProvider = selectedDraft ? !defaultProviderIds.has(selectedDraft.id) : false;
   const selectedTestResult = selectedDraft ? testResults[selectedDraft.id] : undefined;
@@ -6741,7 +7349,10 @@ function ProviderConfigPanel({
     const nextSettings: AppSettings = {
       ...settings,
       providers: remainingProviders,
-      providerStatus: pruneProviderStatus(settings.providerStatus, remainingProviders.map((provider) => provider.id)),
+      providerStatus: pruneProviderStatus(
+        settings.providerStatus,
+        remainingProviders.map((provider) => provider.id)
+      ),
       model:
         settings.model.activeProviderId === selectedDraft.id
           ? {
@@ -6889,7 +7500,7 @@ function ProviderConfigPanel({
         const currentDefaultModel = currentDraft.defaultModel.trim();
         const defaultModel = uniqueModels.includes(currentDefaultModel)
           ? currentDefaultModel
-          : uniqueModels[0] ?? currentDefaultModel;
+          : (uniqueModels[0] ?? currentDefaultModel);
         return {
           ...current,
           [selectedDraft.id]: {
@@ -6989,7 +7600,9 @@ function ProviderConfigPanel({
           </article>
           <article>
             <span>国内矩阵</span>
-            <strong>{alignedMatrixCount}/{domesticProviderMatrix.length}</strong>
+            <strong>
+              {alignedMatrixCount}/{domesticProviderMatrix.length}
+            </strong>
             <small>{matrixIssueCount ? `${matrixIssueCount} 项需检查` : "默认配置已对齐"}</small>
           </article>
         </div>
@@ -7006,7 +7619,9 @@ function ProviderConfigPanel({
                   const draft = drafts[provider.id] ?? createProviderDraft(provider);
                   return (
                     <button
-                      className={provider.id === selectedDraft.id ? "provider-picker-card active" : "provider-picker-card"}
+                      className={
+                        provider.id === selectedDraft.id ? "provider-picker-card active" : "provider-picker-card"
+                      }
                       key={provider.id}
                       onClick={() => setSelectedProviderId(provider.id)}
                       type="button"
@@ -7050,17 +7665,19 @@ function ProviderConfigPanel({
                     </span>
                     <span className="matrix-badges">
                       <span className={`matrix-badge ${row.summary.status}`}>{row.summary.label}</span>
-                      <span className={`matrix-badge ${providerTestTone(row.result)}`}>{providerTestLabel(row.result)}</span>
+                      <span className={`matrix-badge ${providerTestTone(row.result)}`}>
+                        {providerTestLabel(row.result)}
+                      </span>
                     </span>
                     <span className="matrix-meta">
-                      {row.summary.issues.length ? row.summary.issues.slice(0, 2).join("；") : `Key env: ${row.item.envKey}`}
+                      {row.summary.issues.length
+                        ? row.summary.issues.slice(0, 2).join("；")
+                        : `Key env: ${row.item.envKey}`}
                     </span>
                   </button>
                 ))}
               </div>
-              <p className="secret-note compact">
-                矩阵检查默认配置；真实可用性仍以测试连接和刷新模型结果为准。
-              </p>
+              <p className="secret-note compact">矩阵检查默认配置；真实可用性仍以测试连接和刷新模型结果为准。</p>
             </section>
           </aside>
 
@@ -7077,199 +7694,206 @@ function ProviderConfigPanel({
             </div>
 
             <details className="config-disclosure" open>
-          <summary>
-            <span className="summary-main">
-              <strong>连接与模型</strong>
-              <small>名称、接口类型、Base URL、默认模型和模型列表</small>
-            </span>
-          </summary>
-          <div className="disclosure-body">
-            <div className="field-grid">
-              <label className="field-label">
-                <span>供应商名称</span>
-                <input
-                  value={selectedDraft.name}
-                  onChange={(event) => updateSelected({ name: event.target.value })}
-                  placeholder="OpenAI Official"
-                />
-              </label>
+              <summary>
+                <span className="summary-main">
+                  <strong>连接与模型</strong>
+                  <small>名称、接口类型、Base URL、默认模型和模型列表</small>
+                </span>
+              </summary>
+              <div className="disclosure-body">
+                <div className="field-grid">
+                  <label className="field-label">
+                    <span>供应商名称</span>
+                    <input
+                      value={selectedDraft.name}
+                      onChange={(event) => updateSelected({ name: event.target.value })}
+                      placeholder="OpenAI Official"
+                    />
+                  </label>
 
-              <label className="field-label">
-                <span>接口类型</span>
-                <select
-                  value={selectedDraft.apiMode}
-                  onChange={(event) => updateSelected({ apiMode: event.target.value as ProviderApiMode })}
-                >
-                  {apiModeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                  <label className="field-label">
+                    <span>接口类型</span>
+                    <select
+                      value={selectedDraft.apiMode}
+                      onChange={(event) => updateSelected({ apiMode: event.target.value as ProviderApiMode })}
+                    >
+                      {apiModeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
 
-            <label className="field-label">
-              <span>Base URL</span>
-              <input
-                value={selectedDraft.baseUrl}
-                onChange={(event) => updateSelected({ baseUrl: event.target.value })}
-                placeholder="https://api.openai.com/v1"
-              />
-            </label>
+                <label className="field-label">
+                  <span>Base URL</span>
+                  <input
+                    value={selectedDraft.baseUrl}
+                    onChange={(event) => updateSelected({ baseUrl: event.target.value })}
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
 
-            <div className="field-grid">
-              <label className="field-label">
-                <span>默认模型</span>
-                <input
-                  value={selectedDraft.defaultModel}
-                  onChange={(event) => updateSelected({ defaultModel: event.target.value })}
-                  placeholder="gpt-5"
-                />
-              </label>
-              <label className="field-label">
-                <span>运行状态</span>
-                <select
-                  value={selectedDraft.connected ? "enabled" : "disabled"}
-                  onChange={(event) => updateSelected({ connected: event.target.value === "enabled" })}
-                >
-                  <option value="enabled">启用</option>
-                  <option value="disabled">停用</option>
-                </select>
-              </label>
-            </div>
+                <div className="field-grid">
+                  <label className="field-label">
+                    <span>默认模型</span>
+                    <input
+                      value={selectedDraft.defaultModel}
+                      onChange={(event) => updateSelected({ defaultModel: event.target.value })}
+                      placeholder="gpt-5"
+                    />
+                  </label>
+                  <label className="field-label">
+                    <span>运行状态</span>
+                    <select
+                      value={selectedDraft.connected ? "enabled" : "disabled"}
+                      onChange={(event) => updateSelected({ connected: event.target.value === "enabled" })}
+                    >
+                      <option value="enabled">启用</option>
+                      <option value="disabled">停用</option>
+                    </select>
+                  </label>
+                </div>
 
-            <label className="field-label">
-              <span>模型列表（每行一个，也支持逗号分隔）</span>
-              <textarea
-                value={selectedDraft.modelsText}
-                onChange={(event) => updateSelected({ modelsText: event.target.value })}
-                placeholder={"gpt-5\nqwen-plus\ndeepseek-chat"}
-                rows={4}
-              />
-            </label>
-          </div>
-        </details>
+                <label className="field-label">
+                  <span>模型列表（每行一个，也支持逗号分隔）</span>
+                  <textarea
+                    value={selectedDraft.modelsText}
+                    onChange={(event) => updateSelected({ modelsText: event.target.value })}
+                    placeholder={"gpt-5\nqwen-plus\ndeepseek-chat"}
+                    rows={4}
+                  />
+                </label>
+              </div>
+            </details>
 
             <details className="config-disclosure" open>
-          <summary>
-            <span className="summary-main">
-              <strong>API Key 与操作</strong>
-              <small>测试连接、保存、复制、清除 Key 或删除自定义 Provider</small>
-            </span>
-          </summary>
-          <div className="disclosure-body">
-            <label className="field-label">
-              <span>API Key</span>
-              <input
-                autoComplete="off"
-                value={selectedDraft.apiKey}
-                onChange={(event) => updateSelected({ apiKey: event.target.value })}
-                placeholder={selectedDraft.apiKeyConfigured ? "已配置。输入新 Key 可替换。" : "只保存到后端/桌面安全存储"}
-                type="password"
-              />
-            </label>
-
-            <div className="config-actions">
-              <button className="secondary-button" disabled={testProviderId === selectedDraft.id} onClick={handleTestProvider} type="button">
-                {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
-              </button>
-              <button
-                className="secondary-button"
-                disabled={refreshProviderId === selectedDraft.id}
-                onClick={handleRefreshModels}
-                type="button"
-              >
-                {refreshProviderId === selectedDraft.id ? "刷新中..." : "刷新模型"}
-              </button>
-              <button className="secondary-button" onClick={handleCopyProvider} type="button">
-                复制
-              </button>
-              <button
-                className="secondary-button"
-                disabled={savingProviderId === selectedDraft.id || (!selectedDraft.apiKeyConfigured && !selectedDraft.apiKey.trim())}
-                onClick={handleClearApiKey}
-                type="button"
-              >
-                清除 Key
-              </button>
-              <button
-                className="secondary-button danger-button"
-                disabled={savingProviderId === selectedDraft.id || !canDeleteSelectedProvider}
-                onClick={handleDeleteProvider}
-                title={canDeleteSelectedProvider ? "删除这个自定义 Provider" : "内置 Provider 不能删除"}
-                type="button"
-              >
-                删除
-              </button>
-              <button
-                className="primary-button"
-                disabled={savingProviderId === selectedDraft.id}
-                onClick={handleSaveProvider}
-                type="button"
-              >
-                {savingProviderId === selectedDraft.id ? "保存中..." : "保存"}
-              </button>
-            </div>
-            <p className="secret-note">
-              {providerNotice ??
-                renderProviderNote(
-                  selectedDraft,
-                  savedProviderId,
-                  selectedTestResult,
-                  selectedRefreshResult
-                )}
-            </p>
-          </div>
-        </details>
-
-            <details className="config-disclosure">
-          <summary>
-            <span className="summary-main">
-              <strong>能力开关</strong>
-              <small>Streaming、Tool calling、Vision、Search 和结构化输出</small>
-            </span>
-          </summary>
-          <div className="disclosure-body">
-            <div className="capability-grid">
-              {capabilityOptions.map((option) => (
-                <label className="capability-toggle" key={option.value}>
-                  <input
-                    checked={selectedDraft.capabilities[option.value]}
-                    onChange={(event) => updateCapability(option.value, event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>{option.label}</strong>
-                    <small>{option.hint}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </details>
-
-            <details className="config-disclosure">
-          <summary>
-            <span className="summary-main">
-              <strong>预览与状态</strong>
-              <small>{models.length} 个模型 · {selectedDraft.apiKeyConfigured ? "Key 已保存" : "Key 未保存"}</small>
-            </span>
-          </summary>
-          <div className="disclosure-body">
-            <div className="provider-check-summary">
-              <ProviderCheckLine label="最近测试" result={selectedTestResult} emptyText="还没有测试连接记录" />
-              <ProviderCheckLine label="最近刷新" result={selectedRefreshResult} emptyText="还没有刷新模型记录" />
-            </div>
-            <div className="model-chips">
-              {models.map((model) => (
-                <span className="model-chip" key={model}>
-                  {model}
+              <summary>
+                <span className="summary-main">
+                  <strong>API Key 与操作</strong>
+                  <small>测试连接、保存、复制、清除 Key 或删除自定义 Provider</small>
                 </span>
-              ))}
-            </div>
-          </div>
-        </details>
+              </summary>
+              <div className="disclosure-body">
+                <label className="field-label">
+                  <span>API Key</span>
+                  <input
+                    autoComplete="off"
+                    value={selectedDraft.apiKey}
+                    onChange={(event) => updateSelected({ apiKey: event.target.value })}
+                    placeholder={
+                      selectedDraft.apiKeyConfigured ? "已配置。输入新 Key 可替换。" : "只保存到后端/桌面安全存储"
+                    }
+                    type="password"
+                  />
+                </label>
+
+                <div className="config-actions">
+                  <button
+                    className="secondary-button"
+                    disabled={testProviderId === selectedDraft.id}
+                    onClick={handleTestProvider}
+                    type="button"
+                  >
+                    {testProviderId === selectedDraft.id ? "测试中..." : "测试连接"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={refreshProviderId === selectedDraft.id}
+                    onClick={handleRefreshModels}
+                    type="button"
+                  >
+                    {refreshProviderId === selectedDraft.id ? "刷新中..." : "刷新模型"}
+                  </button>
+                  <button className="secondary-button" onClick={handleCopyProvider} type="button">
+                    复制
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={
+                      savingProviderId === selectedDraft.id ||
+                      (!selectedDraft.apiKeyConfigured && !selectedDraft.apiKey.trim())
+                    }
+                    onClick={handleClearApiKey}
+                    type="button"
+                  >
+                    清除 Key
+                  </button>
+                  <button
+                    className="secondary-button danger-button"
+                    disabled={savingProviderId === selectedDraft.id || !canDeleteSelectedProvider}
+                    onClick={handleDeleteProvider}
+                    title={canDeleteSelectedProvider ? "删除这个自定义 Provider" : "内置 Provider 不能删除"}
+                    type="button"
+                  >
+                    删除
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={savingProviderId === selectedDraft.id}
+                    onClick={handleSaveProvider}
+                    type="button"
+                  >
+                    {savingProviderId === selectedDraft.id ? "保存中..." : "保存"}
+                  </button>
+                </div>
+                <p className="secret-note">
+                  {providerNotice ??
+                    renderProviderNote(selectedDraft, savedProviderId, selectedTestResult, selectedRefreshResult)}
+                </p>
+              </div>
+            </details>
+
+            <details className="config-disclosure">
+              <summary>
+                <span className="summary-main">
+                  <strong>能力开关</strong>
+                  <small>Streaming、Tool calling、Vision、Search 和结构化输出</small>
+                </span>
+              </summary>
+              <div className="disclosure-body">
+                <div className="capability-grid">
+                  {capabilityOptions.map((option) => (
+                    <label className="capability-toggle" key={option.value}>
+                      <input
+                        checked={selectedDraft.capabilities[option.value]}
+                        onChange={(event) => updateCapability(option.value, event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>{option.label}</strong>
+                        <small>{option.hint}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </details>
+
+            <details className="config-disclosure">
+              <summary>
+                <span className="summary-main">
+                  <strong>预览与状态</strong>
+                  <small>
+                    {models.length} 个模型 · {selectedDraft.apiKeyConfigured ? "Key 已保存" : "Key 未保存"}
+                  </small>
+                </span>
+              </summary>
+              <div className="disclosure-body">
+                <div className="provider-check-summary">
+                  <ProviderCheckLine label="最近测试" result={selectedTestResult} emptyText="还没有测试连接记录" />
+                  <ProviderCheckLine label="最近刷新" result={selectedRefreshResult} emptyText="还没有刷新模型记录" />
+                </div>
+                <div className="model-chips">
+                  {models.map((model) => (
+                    <span className="model-chip" key={model}>
+                      {model}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
@@ -7344,8 +7968,6 @@ function providerDraftToSettings(draft: ProviderDraft): ProviderSettings {
   };
 }
 
-
-
 function buildProviderStatus(test?: ProviderTestResult, models?: ProviderModelsResult): ProviderStatusRecord {
   return {
     ok: test?.ok ?? false,
@@ -7374,7 +7996,9 @@ function providerTestTone(result?: ProviderStatusRecord): string {
 
 function providerTestLabel(result?: ProviderStatusRecord): string {
   if (!result) return "未检查";
-  return result.ok ? `通过 ${result.checkedAt ? formatProviderCheckTime(result.checkedAt) : ""}` : `失败: ${result.message}`;
+  return result.ok
+    ? `通过 ${result.checkedAt ? formatProviderCheckTime(result.checkedAt) : ""}`
+    : `失败: ${result.message}`;
 }
 
 function formatCompactNumber(value: number): string {
@@ -7391,7 +8015,11 @@ function formatDuration(ms?: number): string {
 }
 
 function formatTime(iso: string): string {
-  try { return new Date(iso).toLocaleString("zh-CN"); } catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString("zh-CN");
+  } catch {
+    return iso;
+  }
 }
 
 function formatRelativeTime(iso: string): string {
@@ -7410,12 +8038,6 @@ function formatRuntimeEntryTps(entry: RuntimeTelemetryEntry): string {
   if (!entry.durationMs || entry.durationMs === 0) return "-";
   return `${(entry.outputTokens / (entry.durationMs / 1000)).toFixed(1)} t/s`;
 }
-
-
-
-
-
-
 
 function memorySettingLabel(key: string): string {
   const labels: Record<string, string> = {
@@ -7437,67 +8059,15 @@ function shortcutSettingLabel(key: string): string {
   return labels[key] ?? key;
 }
 
-
-
 /* ── Missing helper functions ── */
 
-function buildRuntimeDashboardStats(telemetry: RuntimeTelemetryEntry[]): RuntimeDashboardStats {
-  const total = telemetry.length;
-  const completed = telemetry.filter((e) => e.status === "completed").length;
-  const successRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const avgCompletion = telemetry.reduce((s, e) => s + (e.durationMs ?? 0), 0) / Math.max(total, 1);
-  const avgFirstToken = telemetry.reduce((s, e) => s + (e.firstTokenMs ?? 0), 0) / Math.max(total, 1);
-  const totalTokens = telemetry.reduce((s, e) => s + e.totalTokens, 0);
-  const outputTokens = telemetry.reduce((s, e) => s + e.outputTokens, 0);
-  const totalDuration = telemetry.reduce((s, e) => s + (e.durationMs ?? 0), 0);
-  const outputTps = totalDuration > 0 ? outputTokens / (totalDuration / 1000) : 0;
-  const modelTps = totalDuration > 0 ? totalTokens / (totalDuration / 1000) : 0;
-  const trendBars = Array.from({ length: 20 }, (_, i) => {
-    const slice = telemetry.slice(i * Math.max(1, Math.floor(total / 20)), (i + 1) * Math.max(1, Math.floor(total / 20)));
-    return slice.length > 0 ? Math.min(100, (slice.length / Math.max(total / 20, 1)) * 100) : 5;
-  });
-  return {
-    totalCalls: total,
-    successRateLabel: `${successRate}%`,
-    averageCompletionLabel: formatDuration(avgCompletion),
-    averageFirstTokenLabel: formatDuration(avgFirstToken),
-    outputTpsLabel: `${outputTps.toFixed(1)} t/s`,
-    modelTpsLabel: `${modelTps.toFixed(1)} t/s`,
-    totalTokens,
-    contextTokens: Math.round(totalTokens * 0.3),
-    telemetrySourceLabel: "本地遥测",
-    trendBars
-  };
-}
-
-function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 3);
-}
-
-function automationScheduleKindLabel(kind: string): string {
-  const map: Record<string, string> = { manual: "手动", once: "一次", hourly: "每小时", daily: "每天", weekly: "每周" };
-  return map[kind] ?? kind;
-}
-
-function automationRunStatusLabel(status: string): string {
-  return status === "completed" ? "完成" : status === "failed" ? "失败" : status === "running" ? "运行中" : status;
-}
-
-function toolNameLabel(name: string): string {
-  const map: Record<string, string> = { list_dir: "列目录", read_file: "读文件", write_file: "写文件", run_command: "执行命令", search: "搜索", browser: "浏览器", image_generate: "生成图片" };
-  return map[name] ?? name;
-}
-
-function toolStatusLabel(status: string): string {
-  return status === "completed" ? "完成" : status === "failed" ? "失败" : status === "running" ? "运行中" : status === "queued" ? "排队" : status;
-}
-
-function policyLabel(policy: string): string {
-  return policy === "allow" ? "允许" : policy === "deny" ? "拒绝" : "询问";
-}
-
 function appSettingLabel(key: string): string {
-  const map: Record<string, string> = { launchAtStartup: "开机启动", autoUpdate: "自动更新", telemetry: "遥测", logLevel: "日志级别" };
+  const map: Record<string, string> = {
+    launchAtStartup: "开机启动",
+    autoUpdate: "自动更新",
+    telemetry: "遥测",
+    logLevel: "日志级别"
+  };
   return map[key] ?? key;
 }
 
@@ -7506,11 +8076,16 @@ function inspectProviderMatrixItem(item: ProviderMatrixItem): string {
 }
 
 function resultToProviderStatusRecord(result: ProviderTestResult): ProviderStatusRecord {
-  return { ok: result.ok, status: result.status, message: result.message, checkedUrl: result.checkedAt, checkedAt: result.checkedAt ?? new Date().toISOString() };
+  return {
+    ok: result.ok,
+    status: result.status,
+    message: result.message,
+    checkedUrl: result.checkedAt,
+    checkedAt: result.checkedAt ?? new Date().toISOString()
+  };
 }
 
 /* ── Missing components ── */
-
 
 function WindowTitleBar({ title }: { title: string }) {
   return (
@@ -7518,9 +8093,15 @@ function WindowTitleBar({ title }: { title: string }) {
       <div />
       <span className="window-title-bar-center">{title}</span>
       <div className="window-title-bar-actions">
-        <button className="window-title-bar-btn" type="button">-</button>
-        <button className="window-title-bar-btn" type="button">[]</button>
-        <button className="window-title-bar-btn close" type="button">x</button>
+        <button className="window-title-bar-btn" type="button">
+          -
+        </button>
+        <button className="window-title-bar-btn" type="button">
+          []
+        </button>
+        <button className="window-title-bar-btn close" type="button">
+          x
+        </button>
       </div>
     </div>
   );
@@ -7531,10 +8112,17 @@ function PrivacyDialog({ onAccept, onReject }: { onAccept: () => void; onReject:
     <div className="privacy-dialog-backdrop">
       <div className="privacy-dialog">
         <h2>欢迎使用 NexaDesk</h2>
-        <p>NexaDesk 是一款本地优先的 AI 智能体工作台。您的对话数据默认保存在本地设备上。使用前请阅读并同意我们的服务条款和隐私政策。</p>
+        <p>
+          NexaDesk 是一款本地优先的 AI
+          智能体工作台。您的对话数据默认保存在本地设备上。使用前请阅读并同意我们的服务条款和隐私政策。
+        </p>
         <div className="privacy-dialog-actions">
-          <button className="secondary-button" onClick={onReject} type="button">不同意</button>
-          <button className="primary-button" onClick={onAccept} type="button">同意并继续</button>
+          <button className="secondary-button" onClick={onReject} type="button">
+            不同意
+          </button>
+          <button className="primary-button" onClick={onAccept} type="button">
+            同意并继续
+          </button>
         </div>
       </div>
     </div>
@@ -7557,7 +8145,9 @@ function UpdateModal({ onClose }: { onClose: () => void }) {
         <h2>应用更新</h2>
         <p>当前已是最新版本。</p>
         <div className="privacy-dialog-actions">
-          <button className="primary-button" onClick={onClose} type="button">确定</button>
+          <button className="primary-button" onClick={onClose} type="button">
+            确定
+          </button>
         </div>
       </div>
     </div>
@@ -7569,7 +8159,9 @@ function ActivitySidebar({ activities, onClose }: { activities: ActivityEvent[];
     <aside className="activity-sidebar">
       <div className="activity-sidebar-header">
         <h4>活动流</h4>
-        <button className="icon-button" onClick={onClose} type="button"><X size={14} /></button>
+        <button className="icon-button" onClick={onClose} type="button">
+          <X size={14} />
+        </button>
       </div>
       <div className="activity-list">
         {activities.map((event) => (
@@ -7592,16 +8184,30 @@ function DesktopPet({ onClose }: { onClose: () => void }) {
   );
 }
 
-
-function EngineSelectorBar({ engines, activeEngineId, onSelect }: { engines: AgentEngineSettings[]; activeEngineId?: string; onSelect: (id: string) => void }) {
+function EngineSelectorBar({
+  engines,
+  activeEngineId,
+  onSelect
+}: {
+  engines: AgentEngineSettings[];
+  activeEngineId?: string;
+  onSelect: (id: string) => void;
+}) {
   return (
     <div className="engine-selector-bar">
-      {engines.filter((e) => e.enabled || e.installed).map((engine) => (
-        <button className={activeEngineId === engine.id ? "engine-chip active" : "engine-chip"} key={engine.id} onClick={() => onSelect(engine.id)} type="button">
-          <span className={`engine-chip-dot ${engine.setupStatus}`} />
-          {engine.name}
-        </button>
-      ))}
+      {engines
+        .filter((e) => e.enabled || e.installed)
+        .map((engine) => (
+          <button
+            className={activeEngineId === engine.id ? "engine-chip active" : "engine-chip"}
+            key={engine.id}
+            onClick={() => onSelect(engine.id)}
+            type="button"
+          >
+            <span className={`engine-chip-dot ${engine.setupStatus}`} />
+            {engine.name}
+          </button>
+        ))}
     </div>
   );
 }
@@ -7611,7 +8217,7 @@ const IM_PLATFORMS = [
   { id: "dingtalk", name: "钉钉", emoji: "\u{1F48E}", category: "中国" },
   { id: "qq", name: "QQ", emoji: "\u{1F427}", category: "中国" },
   { id: "telegram", name: "Telegram", emoji: "\u{2708}\uFE0F", category: "国际" },
-  { id: "discord", name: "Discord", emoji: "\u{1F3AE}", category: "国际" },
+  { id: "discord", name: "Discord", emoji: "\u{1F3AE}", category: "国际" }
 ];
 
 function IMSettingsPanel() {
@@ -7619,13 +8225,20 @@ function IMSettingsPanel() {
   return (
     <section className="panel-block settings-section">
       <div className="panel-heading compact">
-        <div><p className="eyebrow">IM Integration</p><h3>即时通讯集成</h3></div>
+        <div>
+          <p className="eyebrow">IM Integration</p>
+          <h3>即时通讯集成</h3>
+        </div>
         <Mail size={18} />
       </div>
       <div className="settings-form">
         <div className="im-platform-grid">
           {IM_PLATFORMS.map((platform) => (
-            <article className={selectedPlatform === platform.id ? "im-platform-card connected" : "im-platform-card"} key={platform.id} onClick={() => setSelectedPlatform(platform.id)}>
+            <article
+              className={selectedPlatform === platform.id ? "im-platform-card connected" : "im-platform-card"}
+              key={platform.id}
+              onClick={() => setSelectedPlatform(platform.id)}
+            >
               <span className="im-platform-icon">{platform.emoji}</span>
               <strong>{platform.name}</strong>
               <small>{platform.category} · 点击配置</small>
@@ -7633,13 +8246,32 @@ function IMSettingsPanel() {
           ))}
         </div>
         {selectedPlatform && (
-          <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--surface-soft)" }}>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 8px" }}>{IM_PLATFORMS.find((p) => p.id === selectedPlatform)?.name} 配置</h4>
-            <label className="field-label"><span>App ID</span><input placeholder="输入 App ID" /></label>
-            <label className="field-label"><span>App Secret</span><input type="password" placeholder="输入 App Secret" /></label>
+          <div
+            style={{
+              padding: 12,
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              background: "var(--surface-soft)"
+            }}
+          >
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 8px" }}>
+              {IM_PLATFORMS.find((p) => p.id === selectedPlatform)?.name} 配置
+            </h4>
+            <label className="field-label">
+              <span>App ID</span>
+              <input placeholder="输入 App ID" />
+            </label>
+            <label className="field-label">
+              <span>App Secret</span>
+              <input type="password" placeholder="输入 App Secret" />
+            </label>
             <div className="mcp-card-actions" style={{ marginTop: 8 }}>
-              <button className="secondary-button" type="button">测试连接</button>
-              <button className="primary-button" type="button">保存</button>
+              <button className="secondary-button" type="button">
+                测试连接
+              </button>
+              <button className="primary-button" type="button">
+                保存
+              </button>
             </div>
           </div>
         )}
@@ -7652,7 +8284,7 @@ const EMAIL_PROVIDERS = [
   { id: "gmail", name: "Gmail", imap: "imap.gmail.com:993", smtp: "smtp.gmail.com:587" },
   { id: "outlook", name: "Outlook", imap: "outlook.office365.com:993", smtp: "smtp.office365.com:587" },
   { id: "163", name: "163 邮箱", imap: "imap.163.com:993", smtp: "smtp.163.com:465" },
-  { id: "qq", name: "QQ 邮箱", imap: "imap.qq.com:993", smtp: "smtp.qq.com:587" },
+  { id: "qq", name: "QQ 邮箱", imap: "imap.qq.com:993", smtp: "smtp.qq.com:587" }
 ];
 
 function EmailConfigPanel() {
@@ -7661,22 +8293,48 @@ function EmailConfigPanel() {
   return (
     <section className="panel-block settings-section">
       <div className="panel-heading compact">
-        <div><p className="eyebrow">Email</p><h3>邮件集成</h3></div>
+        <div>
+          <p className="eyebrow">Email</p>
+          <h3>邮件集成</h3>
+        </div>
         <Mail size={18} />
       </div>
       <div className="settings-form">
         <div className="email-provider-grid">
           {EMAIL_PROVIDERS.map((p) => (
-            <button className={selectedProvider === p.id ? "email-provider-chip active" : "email-provider-chip"} key={p.id} onClick={() => setSelectedProvider(p.id)} type="button"><strong>{p.name}</strong></button>
+            <button
+              className={selectedProvider === p.id ? "email-provider-chip active" : "email-provider-chip"}
+              key={p.id}
+              onClick={() => setSelectedProvider(p.id)}
+              type="button"
+            >
+              <strong>{p.name}</strong>
+            </button>
           ))}
         </div>
-        <label className="field-label"><span>IMAP 服务器</span><input defaultValue={provider.imap} /></label>
-        <label className="field-label"><span>SMTP 服务器</span><input defaultValue={provider.smtp} /></label>
-        <label className="field-label"><span>邮箱地址</span><input placeholder="your@email.com" /></label>
-        <label className="field-label"><span>密码</span><input type="password" placeholder="输入密码" /></label>
+        <label className="field-label">
+          <span>IMAP 服务器</span>
+          <input defaultValue={provider.imap} />
+        </label>
+        <label className="field-label">
+          <span>SMTP 服务器</span>
+          <input defaultValue={provider.smtp} />
+        </label>
+        <label className="field-label">
+          <span>邮箱地址</span>
+          <input placeholder="your@email.com" />
+        </label>
+        <label className="field-label">
+          <span>密码</span>
+          <input type="password" placeholder="输入密码" />
+        </label>
         <div className="mcp-card-actions">
-          <button className="secondary-button" type="button">测试连接</button>
-          <button className="primary-button" type="button">保存</button>
+          <button className="secondary-button" type="button">
+            测试连接
+          </button>
+          <button className="primary-button" type="button">
+            保存
+          </button>
         </div>
       </div>
     </section>
@@ -7721,14 +8379,24 @@ function TaskCard({ task, agents }: { task: any; agents: AgentProfile[] }) {
   );
 }
 
-function ApprovalCard({ approval, onResolve }: { approval: PermissionRequest; onResolve: (id: string, approved: boolean) => void }) {
+function ApprovalCard({
+  approval,
+  onResolve
+}: {
+  approval: PermissionRequest;
+  onResolve: (id: string, approved: boolean) => void;
+}) {
   return (
     <div className="approval-card">
       <strong>{approval.action}</strong>
       <span>{approval.risk}</span>
       <div>
-        <button onClick={() => onResolve(approval.id, true)} type="button">批准</button>
-        <button onClick={() => onResolve(approval.id, false)} type="button">拒绝</button>
+        <button onClick={() => onResolve(approval.id, true)} type="button">
+          批准
+        </button>
+        <button onClick={() => onResolve(approval.id, false)} type="button">
+          拒绝
+        </button>
       </div>
     </div>
   );
@@ -7743,11 +8411,19 @@ function ApprovalHistoryCard({ entry }: { entry: ApprovalHistoryEntry }) {
   );
 }
 
-function WorkspaceFilePanel({ files, onSelect }: { files: WorkspaceTreeEntry[]; onSelect: (file: WorkspaceTreeEntry) => void }) {
+function WorkspaceFilePanel({
+  files,
+  onSelect
+}: {
+  files: WorkspaceTreeEntry[];
+  onSelect: (file: WorkspaceTreeEntry) => void;
+}) {
   return (
     <div className="workspace-file-panel">
       {files.map((f) => (
-        <button key={f.path} onClick={() => onSelect(f)} type="button">{f.name}</button>
+        <button key={f.path} onClick={() => onSelect(f)} type="button">
+          {f.name}
+        </button>
       ))}
     </div>
   );
@@ -7762,13 +8438,25 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
   );
 }
 
-function WorkspaceFilePreviewDrawer({ preview, sending, onAskAgent, onClose }: { preview: WorkspaceFilePreviewResult | null; sending: boolean; onAskAgent: () => void; onClose: () => void }) {
+function WorkspaceFilePreviewDrawer({
+  preview,
+  sending,
+  onAskAgent,
+  onClose
+}: {
+  preview: WorkspaceFilePreviewResult | null;
+  sending: boolean;
+  onAskAgent: () => void;
+  onClose: () => void;
+}) {
   if (!preview) return null;
   return (
     <div className="workspace-file-preview-drawer">
       <strong>{preview.name}</strong>
       <pre>{preview.content}</pre>
-      <button onClick={onClose} type="button">关闭</button>
+      <button onClick={onClose} type="button">
+        关闭
+      </button>
     </div>
   );
 }
@@ -7782,8 +8470,12 @@ function MessageBubble({ message, agents }: { message: ChatMessage; agents: Agen
   );
 }
 
-
-function renderProviderNote(draft: any, savedId?: string, test?: ProviderTestResult, refresh?: ProviderModelsResult): string {
+function renderProviderNote(
+  draft: any,
+  savedId?: string,
+  test?: ProviderTestResult,
+  refresh?: ProviderModelsResult
+): string {
   return "";
 }
 
@@ -7795,11 +8487,18 @@ function createCapabilityRecord(caps?: string[]): Record<string, boolean> {
 
 function formatProviderCheckTime(iso?: string): string {
   if (!iso) return "未检查";
-  try { return new Date(iso).toLocaleString("zh-CN"); } catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString("zh-CN");
+  } catch {
+    return iso;
+  }
 }
 
 function parseModels(text: string): string[] {
-  return text.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+  return text
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function sanitizeImportedProvider(item: unknown): ProviderSettings | null {
@@ -7807,14 +8506,16 @@ function sanitizeImportedProvider(item: unknown): ProviderSettings | null {
   return {
     id: item.id,
     name: item.name,
-    kind: typeof item.kind === "string" ? item.kind as ProviderSettings["kind"] : "openai_compatible",
-    apiMode: typeof item.apiMode === "string" ? item.apiMode as ProviderApiMode : "chat_completions",
+    kind: typeof item.kind === "string" ? (item.kind as ProviderSettings["kind"]) : "openai_compatible",
+    apiMode: typeof item.apiMode === "string" ? (item.apiMode as ProviderApiMode) : "chat_completions",
     connected: false,
     baseUrl: typeof item.baseUrl === "string" ? item.baseUrl : "",
     models: Array.isArray(item.models) ? item.models.filter((m: unknown) => typeof m === "string") : [],
     defaultModel: typeof item.defaultModel === "string" ? item.defaultModel : "",
     apiKeyConfigured: false,
-    capabilities: (Array.isArray(item.capabilities) ? item.capabilities.filter((c: unknown) => typeof c === "string") : []) as ProviderCapability[]
+    capabilities: (Array.isArray(item.capabilities)
+      ? item.capabilities.filter((c: unknown) => typeof c === "string")
+      : []) as ProviderCapability[]
   };
 }
 
