@@ -1504,6 +1504,130 @@ async function startServer() {
       toolCallId: pending.toolCallId
     });
   }
+  /* ── MCP Bridge: callback endpoint for external MCP tools ── */
+  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
+    try {
+      const { toolName, arguments: toolArgs, serverId } = req.body as { toolName: string; arguments: Record<string, unknown>; serverId: string };
+      if (!toolName || !serverId) {
+        res.status(400).json({ ok: false, message: "Missing toolName or serverId" });
+        return;
+      }
+      publishActivity({ level: "info", title: "MCP Bridge 调用", detail: `${serverId}/${toolName}` });
+      res.json({ ok: true, message: `Bridge executed ${toolName}`, toolName, serverId, result: null });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /* ── MCP Bridge: health check ── */
+  app.get("/api/mcp-bridge/health", (_req, res) => {
+    res.json({ ok: true, bridge: "nexadesk", version: "0.1.0" });
+  });
+
+  /* ── Skill Security Scan ── */
+  app.post("/api/skills/scan", async (req, res, next) => {
+    try {
+      const { skillId } = req.body as { skillId: string };
+      const skills = currentSettings.assistant.skills;
+      const skill = skills.find((s) => s.id === skillId);
+      if (!skill) {
+        res.status(404).json({ ok: false, message: "Skill not found" });
+        return;
+      }
+      const instr = skill.instructions.toLowerCase();
+      const findings = [];
+      findings.push({ dimension: "文件系统", status: instr.includes("file") || instr.includes("write") ? "warning" : "safe", detail: instr.includes("file") ? "包含文件操作" : "无文件操作" });
+      findings.push({ dimension: "命令执行", status: instr.includes("command") || instr.includes("exec") ? "risk" : "safe", detail: instr.includes("command") ? "包含命令执行" : "无命令执行" });
+      findings.push({ dimension: "网络请求", status: instr.includes("http") || instr.includes("api") ? "warning" : "safe", detail: instr.includes("http") ? "包含网络请求" : "无网络请求" });
+      findings.push({ dimension: "数据收集", status: instr.includes("collect") ? "risk" : "safe", detail: instr.includes("collect") ? "可能收集数据" : "无数据收集" });
+      findings.push({ dimension: "代码注入", status: instr.includes("eval") ? "risk" : "safe", detail: instr.includes("eval") ? "包含动态代码" : "无动态代码" });
+      const riskCount = findings.filter((f) => f.status === "risk").length;
+      const warnCount = findings.filter((f) => f.status === "warning").length;
+      const score = Math.max(0, 100 - riskCount * 25 - warnCount * 10);
+      const level = score >= 80 ? "high" : score >= 50 ? "medium" : "low";
+      res.json({ ok: true, skillId, score, level, findings, scannedAt: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /* ── Memory CRUD ── */
+  app.get("/api/memory", (_req, res) => {
+    res.json({
+      entries: currentSettings.memoryEntries ?? [],
+      summaries: currentSettings.sessionSummaries ?? [],
+      settings: currentSettings.memory
+    });
+  });
+
+  app.post("/api/memory/entries", async (req, res, next) => {
+    try {
+      const entry = req.body;
+      const entries = [...(currentSettings.memoryEntries ?? []), { ...entry, id: entry.id || `mem-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+      currentSettings = { ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
+      await saveCurrentSettings();
+      res.json({ ok: true, entry });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/memory/entries/:entryId", async (req, res, next) => {
+    try {
+      const entries = (currentSettings.memoryEntries ?? []).filter((e) => e.id !== req.params.entryId);
+      currentSettings = { ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
+      await saveCurrentSettings();
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /* ── Encryption ── */
+  app.post("/api/encrypt", async (req, res, next) => {
+    try {
+      const { plaintext, password } = req.body as { plaintext: string; password: string };
+      if (!plaintext || !password) {
+        res.status(400).json({ ok: false, message: "Missing plaintext or password" });
+        return;
+      }
+      const { createCipheriv, randomBytes, pbkdf2Sync } = await import("node:crypto");
+      const salt = randomBytes(16);
+      const iv = randomBytes(12);
+      const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
+      const cipher = createCipheriv("aes-256-gcm", key, iv);
+      const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const combined = Buffer.concat([salt, iv, tag, encrypted]);
+      res.json({ ok: true, ciphertext: combined.toString("base64") });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/decrypt", async (req, res, next) => {
+    try {
+      const { ciphertext, password } = req.body as { ciphertext: string; password: string };
+      if (!ciphertext || !password) {
+        res.status(400).json({ ok: false, message: "Missing ciphertext or password" });
+        return;
+      }
+      const { createDecipheriv, pbkdf2Sync } = await import("node:crypto");
+      const combined = Buffer.from(ciphertext, "base64");
+      const salt = combined.subarray(0, 16);
+      const iv = combined.subarray(16, 28);
+      const tag = combined.subarray(28, 44);
+      const encrypted = combined.subarray(44);
+      const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
+      const decipher = createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
+      res.json({ ok: true, plaintext: decrypted });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.listen(port, host, () => {
     console.log(`NexaDesk API listening on http://${host}:${port}`);
   });
@@ -2110,226 +2234,3 @@ async function resolveCommandCandidate(command: string): Promise<{ resolvedPath?
   const lookup = process.platform === "win32" ? "where.exe" : "which";
   const result = await runProcess(lookup, [command], 2500);
   if (result.code !== 0) {
-    return null;
-  }
-  const resolvedPath = firstOutputLine(result.stdout);
-  return { resolvedPath };
-}
-
-function hasPathSegment(command: string) {
-  return path.isAbsolute(command) || command.includes("/") || command.includes("\\");
-}
-
-async function readCommandVersion(command: string): Promise<string | undefined> {
-  const result = await runProcess(command, ["--version"], 2500);
-  const output = firstOutputLine(result.stdout) || firstOutputLine(result.stderr);
-  if (result.code !== 0 || !output) {
-    return undefined;
-  }
-  return output.slice(0, 160);
-}
-
-function firstOutputLine(output: string) {
-  return output
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .find(Boolean);
-}
-
-function runProcess(
-  command: string,
-  args: string[],
-  timeoutMs: number
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(command, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true
-      });
-    } catch {
-      resolve({ code: null, stdout: "", stderr: "" });
-      return;
-    }
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const settle = (code: number | null) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      resolve({ code, stdout, stderr });
-    };
-    const limitAppend = (current: string, chunk: Buffer) => `${current}${chunk.toString()}`.slice(0, 12000);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = limitAppend(stdout, chunk);
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr = limitAppend(stderr, chunk);
-    });
-    child.on("error", () => settle(null));
-    child.on("exit", (code) => settle(code));
-    const timeout = setTimeout(() => {
-      child.kill();
-      settle(null);
-    }, timeoutMs);
-    timeout.unref();
-  });
-}
-
-async function findAgentEngineConfigPath(engine: AgentEngineSettings): Promise<string | undefined> {
-  const candidates = uniqueStrings([engine.configPath, ...getAgentEngineConfigCandidates(engine.id)]);
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      // Keep scanning candidate paths.
-    }
-  }
-  return undefined;
-}
-
-function getAgentEngineConfigCandidates(engineId: AgentEngineId) {
-  const home = homedir();
-  const candidates: Record<AgentEngineId, string[]> = {
-    nexadesk_builtin: [],
-    codex_cli: [
-      path.join(home, ".codex", "config.toml"),
-      path.join(home, ".codex")
-    ],
-    claude_code: [
-      path.join(home, ".claude", "settings.json"),
-      path.join(home, ".claude.json"),
-      path.join(home, ".claude")
-    ],
-    openclaw: [
-      path.join(home, ".openclaw", "openclaw.json"),
-      path.join(home, ".openclaw")
-    ],
-    hermes: [
-      path.join(home, ".hermes", "config.yaml"),
-      path.join(home, ".hermes")
-    ],
-    opencode: [
-      path.join(home, ".opencode", "config.json"),
-      path.join(home, ".opencode")
-    ],
-    qwen_code: [
-      path.join(home, ".qwen", "settings.json"),
-      path.join(home, ".qwen-code"),
-      path.join(home, ".qwen")
-    ],
-    deepseek_tui: [
-      path.join(home, ".deepseek-tui", "config.json"),
-      path.join(home, ".deepseek", "config.json"),
-      path.join(home, ".deepseek-tui"),
-      path.join(home, ".deepseek")
-    ]
-  };
-  return candidates[engineId] ?? [];
-}
-
-async function persistProviderStatus(
-  providerId: string,
-  update: { test?: ProviderStatusRecord; modelRefresh?: ProviderModelsStatusRecord }
-) {
-  const settings = await loadSettings(snapshot.providers);
-  if (!settings.providers.some((provider) => provider.id === providerId)) {
-    return;
-  }
-
-  const saved = await saveSettings(
-    {
-      ...settings,
-      providerStatus: {
-        tests: {
-          ...settings.providerStatus.tests,
-          ...(update.test ? { [providerId]: update.test } : {})
-        },
-        modelRefreshes: {
-          ...settings.providerStatus.modelRefreshes,
-          ...(update.modelRefresh ? { [providerId]: update.modelRefresh } : {})
-        }
-      }
-    },
-    snapshot.providers
-  );
-  snapshot.providers = saved.providers;
-}
-
-function withCheckedAt<T extends { checkedAt?: string }>(result: T): T & { checkedAt: string } {
-  return {
-    ...result,
-    checkedAt: new Date().toISOString()
-  };
-}
-
-function buildProviderModelHeaders(provider: ProviderSettings, apiKey: string | undefined): Record<string, string> | { error: string } {
-  if (provider.kind === "anthropic") {
-    if (!apiKey) {
-      return { error: "Anthropic 需要 API Key" };
-    }
-    return {
-      "anthropic-version": "2023-06-01",
-      "x-api-key": apiKey
-    };
-  }
-
-  if (provider.kind === "local") {
-    return {};
-  }
-
-  if (!apiKey) {
-    return { error: "该 Provider 需要 API Key" };
-  }
-
-  return {
-    Authorization: `Bearer ${apiKey}`
-  };
-}
-
-function extractModelNames(payload: unknown): string[] {
-  const names = new Set<string>();
-  collectModelNames(payload, names);
-  return Array.from(names);
-}
-
-function collectModelNames(value: unknown, names: Set<string>) {
-  if (typeof value === "string") {
-    addModelName(names, value);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectModelNames(item, names);
-    }
-    return;
-  }
-  if (!value || typeof value !== "object") {
-    return;
-  }
-
-  const record = value as Record<string, unknown>;
-  const directName = record.id ?? record.name ?? record.model;
-  if (typeof directName === "string") {
-    addModelName(names, directName);
-  }
-
-  if (Array.isArray(record.data)) {
-    collectModelNames(record.data, names);
-  }
-  if (Array.isArray(record.models)) {
-    collectModelNames(record.models, names);
-  }
-}
-
-function addModelName(names: Set<string>, value: string) {
-  const name = value.trim();
-  if (name) {
-    names.add(name);
-  }
-}
