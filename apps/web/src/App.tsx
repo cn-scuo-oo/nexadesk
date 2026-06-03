@@ -2082,6 +2082,7 @@ export function App() {
             activeAgent={activeAgent}
             agents={snapshot.agents}
             engines={runtimeSettings.assistant.engines}
+            teams={teams}
             onActivate={handleActivateAgent}
             onCreate={() => setEditingAgentId("__new__")}
             onEdit={(agentId) => setEditingAgentId(agentId)}
@@ -3711,39 +3712,69 @@ function RuntimeDashboardView({
       <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。" />
       <div className="runtime-dashboard-shell">
         <section className="runtime-dashboard-main">
-          <div className="dashboard-filter-row runtime-filter-row">
-            <span>近 24 小时</span>
-            <span>{activeRuntimeProvider?.name ?? "未选择 Provider"}</span>
-            <span>{activeRuntimeModel || "未选择模型"}</span>
-            <span>全部状态</span>
+          <div className="dashboard-filter-row">
+            <select><option>近 24 小时</option><option>近 7 天</option><option>近 30 天</option><option>全部</option></select>
+            <select><option>全部引擎</option><option>NexaDesk Built-in</option><option>Codex CLI</option><option>Claude Code</option></select>
+            <select><option>全部模型</option><option>{activeRuntimeModel || "未选择"}</option></select>
+            <select><option>全部状态</option><option>已完成</option><option>错误</option><option>运行中</option></select>
             <button className="mini-button" onClick={onRefreshTelemetry} type="button">刷新</button>
           </div>
 
-          <div className="runtime-metric-grid runtime-dashboard-metrics">
-            <Metric label="总调用" value={String(runtimeStats.totalCalls)} hint={runtimeStats.telemetrySourceLabel} />
-            <Metric label="成功率" value={runtimeStats.successRateLabel} hint="按模型流工具状态统计" />
-            <Metric label="平均完成时间" value={runtimeStats.averageCompletionLabel} hint="用户消息到助手完成" />
-            <Metric label="平均首字" value={runtimeStats.averageFirstTokenLabel} hint="流式首个 delta" />
-            <Metric label="输出 TPS" value={runtimeStats.outputTpsLabel} hint="输出 token / 生成耗时" />
-            <Metric label="Model TPS" value={runtimeStats.modelTpsLabel} hint="输入+输出 token / 总耗时" />
-            <Metric label="Token 总量" value={formatCompactNumber(runtimeStats.totalTokens)} hint="按真实消息内容估算" />
-            <Metric label="上下文 Token" value={formatCompactNumber(runtimeStats.contextTokens)} hint="当前会话上下文估算" />
+          <div className="dashboard-kpi-grid">
+            <div className="kpi-card"><strong>{runtimeStats.totalCalls}</strong><span>总调用</span><small>{runtimeStats.telemetrySourceLabel}</small></div>
+            <div className="kpi-card"><strong>{runtimeStats.successRateLabel}</strong><span>成功率</span><small>按模型流工具状态</small></div>
+            <div className="kpi-card"><strong>{runtimeStats.averageCompletionLabel}</strong><span>平均完成</span><small>P95 可能更高</small></div>
+            <div className="kpi-card"><strong>{runtimeStats.averageFirstTokenLabel}</strong><span>平均首字</span><small>TTFT</small></div>
+            <div className="kpi-card"><strong>{runtimeStats.outputTpsLabel}</strong><span>输出 TPS</span><small>token/s</small></div>
+            <div className="kpi-card"><strong>{runtimeStats.modelTpsLabel}</strong><span>Model TPS</span><small>总 token/s</small></div>
+            <div className="kpi-card"><strong>{formatCompactNumber(runtimeStats.totalTokens)}</strong><span>Token 总量</span><small>input + output</small></div>
+            <div className="kpi-card"><strong>{formatCompactNumber(runtimeStats.contextTokens)}</strong><span>上下文 Token</span><small>当前会话</small></div>
+            <div className="kpi-card"><strong>{activeRuntimeProvider?.connected ? "在线" : "离线"}</strong><span>Provider</span><small>{activeRuntimeProvider?.name ?? "未选择"}</small></div>
           </div>
 
-          <section className="runtime-chart panel-block runtime-chart-card">
-            <div className="panel-heading compact">
-              <div>
-                <p className="eyebrow">Trend</p>
-                <h3>调用趋势</h3>
+          <div className="dashboard-chart-grid">
+            <div className="chart-card">
+              <h4>调用趋势</h4>
+              <div className="runtime-chart-visual" aria-label="调用趋势图">
+                {runtimeStats.trendBars.map((height, index) => (
+                  <span key={index} style={{ "--bar-height": `${height}%` } as CSSProperties} />
+                ))}
               </div>
-              <span className="status ready">{activeRuntimeProvider?.connected ? "在线" : "未连接"}</span>
             </div>
-            <div className="runtime-chart-visual" aria-label="调用趋势图">
-              {runtimeStats.trendBars.map((height, index) => (
-                <span key={index} style={{ "--bar-height": `${height}%` } as CSSProperties} />
-              ))}
+            <div className="chart-card">
+              <h4>Token 分布</h4>
+              <div className="runtime-chart-visual" aria-label="Token 分布图">
+                {runtimeStats.trendBars.map((height, index) => (
+                  <span key={index} style={{ "--bar-height": `${Math.min(100, height * 1.2)}%`, background: "var(--theme-primary)" } as CSSProperties} />
+                ))}
+              </div>
             </div>
-          </section>
+            <div className="chart-card">
+              <h4>延迟趋势</h4>
+              <div className="runtime-chart-visual" aria-label="延迟趋势图">
+                {runtimeStats.trendBars.map((height, index) => (
+                  <span key={index} style={{ "--bar-height": `${Math.max(10, 100 - height)}%`, background: "var(--theme-accent)" } as CSSProperties} />
+                ))}
+              </div>
+            </div>
+            <div className="chart-card">
+              <h4>引擎分布</h4>
+              <div style={{ display: "flex", alignItems: "end", gap: 6, height: 100, padding: "10px 0" }}>
+                <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
+                  <div style={{ height: `${Math.max(20, (runningAgents / Math.max(totalAgents, 1)) * 100)}%`, background: "var(--green)", borderRadius: 4 }} />
+                  <small style={{ fontSize: 10, color: "var(--muted-text)" }}>内置</small>
+                </div>
+                <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
+                  <div style={{ height: "40%", background: "var(--theme-accent)", borderRadius: 4 }} />
+                  <small style={{ fontSize: 10, color: "var(--muted-text)" }}>CLI</small>
+                </div>
+                <div style={{ flex: 1, display: "grid", gap: 4, textAlign: "center" }}>
+                  <div style={{ height: "25%", background: "var(--theme-primary-muted)", borderRadius: 4, border: "1px solid var(--green)" }} />
+                  <small style={{ fontSize: 10, color: "var(--muted-text)" }}>Runtime</small>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <section className="panel-block runtime-call-detail-panel">
             <div className="panel-heading compact">
@@ -4138,6 +4169,18 @@ function McpHubView({
 }) {
   const [selectedServerId, setSelectedServerId] = useState<string | null>(servers[0]?.id ?? null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
+  const [mcpMarketTab, setMcpMarketTab] = useState<"installed" | "marketplace" | "custom">("installed");
+  const mcpRegistry = [
+    { id: "tavily", name: "Tavily Search", category: "搜索", description: "AI 优化的网页搜索 API，返回结构化结果。", command: "npx -y @anthropic/tavily-mcp" },
+    { id: "github-mcp", name: "GitHub MCP", category: "开发", description: "GitHub 仓库管理、Issue、PR 和代码搜索。", command: "npx -y @anthropic/github-mcp" },
+    { id: "context7", name: "Context7", category: "开发", description: "实时库文档查询，自动获取最新 API 文档。", command: "npx -y @anthropic/context7-mcp" },
+    { id: "gdrive", name: "Google Drive", category: "生产力", description: "Google Drive 文件搜索、读取和管理。", command: "npx -y @anthropic/gdrive-mcp" },
+    { id: "slack-mcp", name: "Slack MCP", category: "生产力", description: "Slack 频道消息读取和发送。", command: "npx -y @anthropic/slack-mcp" },
+    { id: "postgres-mcp", name: "PostgreSQL", category: "数据", description: "PostgreSQL 数据库查询和管理。", command: "npx -y @anthropic/postgres-mcp" },
+  ];
+  const mcpCategories = ["全部", "搜索", "开发", "生产力", "数据"];
+  const [mcpCategoryFilter, setMcpCategoryFilter] = useState("全部");
+  const filteredRegistry = mcpCategoryFilter === "全部" ? mcpRegistry : mcpRegistry.filter((r) => r.category === mcpCategoryFilter);
   useEffect(() => {
     if (!selectedServerId || !servers.some((server) => server.id === selectedServerId)) {
       setSelectedServerId(servers[0]?.id ?? null);
@@ -4398,40 +4441,72 @@ function McpHubView({
             </>
           ) : (
             <>
-              <div className=”panel-heading compact”>
-                <div>
-                  <p className=”eyebrow”>Tool Market</p>
-                  <h3>工具市场</h3>
+              <div className=”marketplace-tabs”>
+                <button className={mcpMarketTab === “installed” ? “marketplace-tab active” : “marketplace-tab”} onClick={() => setMcpMarketTab(“installed”)} type=”button”>已安装</button>
+                <button className={mcpMarketTab === “marketplace” ? “marketplace-tab active” : “marketplace-tab”} onClick={() => setMcpMarketTab(“marketplace”)} type=”button”>市场</button>
+                <button className={mcpMarketTab === “custom” ? “marketplace-tab active” : “marketplace-tab”} onClick={() => setMcpMarketTab(“custom”)} type=”button”>自定义</button>
+              </div>
+
+              {mcpMarketTab === “installed” ? (
+                <div className=”mcp-tool-market-grid”>
+                  {selectedTools.length === 0 ? (
+                    <EmptyState title=”暂无工具” detail=”点击”刷新工具”后会显示该服务器真实暴露的工具。” />
+                  ) : (
+                    selectedTools.map((tool) => {
+                      const tp = toolPolicies.find((p) => p.toolId === tool.id);
+                      const permLabel = tp?.permission === “allow” ? “允许” : tp?.permission === “deny” ? “拒绝” : “询问”;
+                      const permClass = tp?.permission === “allow” ? “status ready” : tp?.permission === “deny” ? “status danger-status” : “status muted-status”;
+                      return (
+                        <article className=”mcp-tool-market-card” key={tool.id}>
+                          <div>
+                            <Workflow size={16} />
+                            <strong>{tool.title || tool.name}</strong>
+                            <span>{tool.serverName}</span>
+                          </div>
+                          <p>{tool.description || “该工具没有描述。”}</p>
+                          <div className=”mcp-card-actions”>
+                            <button className=”secondary-button” onClick={() => setSelectedToolId(tool.id)} type=”button”>查看详情</button>
+                            {tp ? <span className={permClass}>{permLabel}</span> : null}
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
                 </div>
-                <b className=”status ready”>{selectedTools.length}</b>
-              </div>
-              <div className=”mcp-tool-market-grid”>
-                {selectedTools.length === 0 ? (
-                  <EmptyState title=”暂无工具” detail=”点击”刷新工具”后会显示该服务器真实暴露的工具。” />
-                ) : (
-                  selectedTools.map((tool) => {
-                    const tp = toolPolicies.find((p) => p.toolId === tool.id);
-                    const permLabel = tp?.permission === “allow” ? “允许” : tp?.permission === “deny” ? “拒绝” : “询问”;
-                    const permClass = tp?.permission === “allow” ? “status ready” : tp?.permission === “deny” ? “status danger-status” : “status muted-status”;
-                    return (
-                      <article className=”mcp-tool-market-card” key={tool.id}>
-                        <div>
-                          <Workflow size={16} />
-                          <strong>{tool.title || tool.name}</strong>
-                          <span>{tool.serverName}</span>
-                        </div>
-                        <p>{tool.description || “该工具没有描述。”}</p>
-                        <div className=”mcp-card-actions”>
-                          <button className=”secondary-button” onClick={() => setSelectedToolId(tool.id)} type=”button”>
-                            查看详情
-                          </button>
-                          {tp ? <span className={permClass}>{permLabel}</span> : null}
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
+              ) : mcpMarketTab === “marketplace” ? (
+                <>
+                  <div style={{ display: “flex”, gap: 6, padding: “8px 12px”, flexWrap: “wrap” }}>
+                    {mcpCategories.map((cat) => (
+                      <button className={mcpCategoryFilter === cat ? “quick-action-chip” : “quick-action-chip”} key={cat} onClick={() => setMcpCategoryFilter(cat)} style={mcpCategoryFilter === cat ? { borderColor: “var(--green)”, color: “var(--green)”, background: “var(--theme-primary-muted)” } : {}} type=”button”>{cat}</button>
+                    ))}
+                  </div>
+                  <div className=”marketplace-grid”>
+                    {filteredRegistry.map((item) => {
+                      const installed = servers.some((s) => s.name === item.name);
+                      return (
+                        <article className=”marketplace-card” key={item.id}>
+                          <div className=”marketplace-card-header”>
+                            <h4>{item.name}</h4>
+                            <span className=”marketplace-badge category”>{item.category}</span>
+                          </div>
+                          <p>{item.description}</p>
+                          <div className=”mcp-card-actions”>
+                            {installed ? (
+                              <span className=”marketplace-badge installed”>已安装</span>
+                            ) : (
+                              <button className=”secondary-button” type=”button”>安装</button>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: 20, textAlign: “center” }}>
+                  <EmptyState title=”自定义服务器” detail=”点击”新增 MCP”添加自定义服务器配置。” />
+                </div>
+              )}
             </>
           )}
         </section>
@@ -4715,6 +4790,7 @@ function AgentsHubView({
   activeAgent,
   agents,
   engines,
+  teams,
   onActivate,
   onCreate,
   onEdit,
@@ -4723,12 +4799,14 @@ function AgentsHubView({
   activeAgent: AgentProfile | null;
   agents: AgentProfile[];
   engines: AgentEngineSettings[];
+  teams: AgentTeam[];
   onActivate: (agentId: string) => void;
   onCreate: () => void;
   onEdit: (agentId: string) => void;
   onOpenSettings: () => void;
 }) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(activeAgent?.id ?? agents[0]?.id ?? null);
+  const [agentViewTab, setAgentViewTab] = useState<"agents" | "teams">("agents");
 
   useEffect(() => {
     if (!selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) {
@@ -4754,43 +4832,57 @@ function AgentsHubView({
             <Users size={18} />
           </div>
           <div className="agent-team-stats">
-            <span>
-              <b>{agents.length}</b>
-              总 Agent
-            </span>
-            <span>
-              <b>{enabledAgents.length}</b>
-              已启用
-            </span>
-            <span>
-              <b>{runningAgents.length}</b>
-              运行中
-            </span>
+            <span><b>{agents.length}</b>总 Agent</span>
+            <span><b>{enabledAgents.length}</b>已启用</span>
+            <span><b>{runningAgents.length}</b>运行中</span>
           </div>
-          <div className="agent-team-list">
-            {agents.length === 0 ? (
-              <EmptyState title="暂无 Agent" detail="新建 Agent 后会显示在团队列表中。" />
-            ) : (
-              agents.map((agent) => {
-                const engine = engines.find((item) => item.id === agent.engineId);
-                return (
-                  <button
-                    className={selectedAgent?.id === agent.id ? "agent-team-row active" : "agent-team-row"}
-                    key={agent.id}
-                    onClick={() => setSelectedAgentId(agent.id)}
-                    type="button"
-                  >
-                    <span className="agent-mini-avatar">{agent.name.slice(0, 1)}</span>
-                    <span>
-                      <strong>{agent.name}</strong>
-                      <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
-                    </span>
-                    {activeAgent?.id === agent.id ? <b>当前</b> : null}
-                  </button>
-                );
-              })
-            )}
+
+          <div className="marketplace-tabs">
+            <button className={agentViewTab === "agents" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setAgentViewTab("agents")} type="button">Agent</button>
+            <button className={agentViewTab === "teams" ? "marketplace-tab active" : "marketplace-tab"} onClick={() => setAgentViewTab("teams")} type="button">团队</button>
           </div>
+
+          {agentViewTab === "agents" ? (
+            <div className="agent-team-list">
+              {agents.length === 0 ? (
+                <EmptyState title="暂无 Agent" detail="新建 Agent 后会显示在团队列表中。" />
+              ) : (
+                agents.map((agent) => {
+                  const engine = engines.find((item) => item.id === agent.engineId);
+                  return (
+                    <button
+                      className={selectedAgent?.id === agent.id ? "agent-team-row active" : "agent-team-row"}
+                      key={agent.id}
+                      onClick={() => setSelectedAgentId(agent.id)}
+                      type="button"
+                    >
+                      <span className="agent-mini-avatar">{agent.name.slice(0, 1)}</span>
+                      <span>
+                        <strong>{agent.name}</strong>
+                        <small>{engine?.name ?? "NexaDesk Built-in"} · {agent.enabled ? "启用" : "停用"}</small>
+                      </span>
+                      {activeAgent?.id === agent.id ? <b>当前</b> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="team-grid">
+              {teams.map((team) => (
+                <article className="team-card" key={team.id}>
+                  <span className="team-emoji">{team.emoji}</span>
+                  <strong>{team.name}</strong>
+                  <small>{team.description}</small>
+                  <span className="team-member-count">{team.agentIds.length} 个成员 · {team.workflow}</span>
+                </article>
+              ))}
+              <article className="team-card" style={{ borderStyle: "dashed", cursor: "pointer", display: "grid", placeItems: "center", minHeight: 100 }}>
+                <span style={{ fontSize: 24 }}>+</span>
+                <small>新建团队</small>
+              </article>
+            </div>
+          )}
         </section>
 
         <section className="panel-block agent-detail-panel">
@@ -7349,237 +7441,4 @@ function pruneProviderStatus(providerStatus: ProviderStatusSettings, providerIds
   return {
     tests: Object.fromEntries(Object.entries(providerStatus.tests).filter(([providerId]) => allowed.has(providerId))),
     modelRefreshes: Object.fromEntries(
-      Object.entries(providerStatus.modelRefreshes).filter(([providerId]) => allowed.has(providerId))
-    )
-  };
-}
-
-function formatProviderCheckSuffix(result: { checkedAt?: string }) {
-  return result.checkedAt ? ` (${formatProviderCheckTime(result.checkedAt)})` : "";
-}
-
-function formatProviderCheckTime(value: string | undefined) {
-  if (!value) {
-    return "时间未知";
-  }
-  return new Date(value).toLocaleString();
-}
-
-function createCapabilityRecord(capabilities: ProviderCapability[]): Record<ProviderCapability, boolean> {
-  return capabilityOptions.reduce(
-    (record, option) => ({
-      ...record,
-      [option.value]: capabilities.includes(option.value)
-    }),
-    {} as Record<ProviderCapability, boolean>
-  );
-}
-
-function parseModels(modelsText: string) {
-  return modelsText
-    .split(/[\n,]+/)
-    .map((model) => model.trim())
-    .filter(Boolean);
-}
-
-function policyLabel(key: keyof AppSettings["permissions"]) {
-  const labels: Record<keyof AppSettings["permissions"], string> = {
-    shell: "命令行执行",
-    fileWrite: "文件写入",
-    network: "网络访问",
-    browser: "浏览器控制",
-    mcp: "MCP 工具",
-    automation: "自动化任务",
-    autoApproveLowRisk: "自动批准低风险操作"
-  };
-  return labels[key];
-}
-
-function memorySettingLabel(key: keyof Omit<AppSettings["memory"], "retentionDays" | "notes">) {
-  const labels: Record<keyof Omit<AppSettings["memory"], "retentionDays" | "notes">, string> = {
-    projectMemory: "启用项目记忆",
-    conversationMemory: "启用会话记忆",
-    longTermMemory: "启用长期记忆"
-  };
-  return labels[key];
-}
-
-function shortcutSettingLabel(key: keyof AppSettings["shortcuts"]) {
-  const labels: Record<keyof AppSettings["shortcuts"], string> = {
-    sendMessage: "发送消息",
-    commandPalette: "命令面板",
-    newTask: "新建任务",
-    openSettings: "打开设置",
-    toggleWorkspaceContext: "切换工作区上下文"
-  };
-  return labels[key];
-}
-
-function appSettingLabel(key: keyof Omit<AppSettings["app"], "logLevel">) {
-  const labels: Record<keyof Omit<AppSettings["app"], "logLevel">, string> = {
-    launchAtStartup: "开机启动",
-    autoUpdate: "启用自动更新",
-    telemetry: "允许匿名遥测"
-  };
-  return labels[key];
-}
-
-function AgentPill({ agent, active, onActivate }: { agent: AgentProfile; active: boolean; onActivate: () => void }) {
-  return (
-    <button className={active ? "agent-pill active" : "agent-pill"} onClick={onActivate} type="button">
-      <span className={`agent-status ${agent.status}`} />
-      <span>
-        <strong>{agent.name}</strong>
-        <small>{agent.enabled ? (active ? "当前助手" : agent.category) : "已停用"}</small>
-      </span>
-    </button>
-  );
-}
-
-function TeamNode({ agent, index }: { agent: AgentProfile; index: number }) {
-  const role = index === 0 ? "Leader" : "Teammate";
-  return (
-    <article className={`team-node ${index === 0 ? "leader" : ""}`}>
-      <div className="avatar">{agent.name.slice(0, 1)}</div>
-      <div>
-        <span>{role}</span>
-        <strong>{agent.name}</strong>
-        <small>{agent.runtime}</small>
-      </div>
-      <b className={`agent-status ${agent.status}`} />
-    </article>
-  );
-}
-
-function MessageBubble({ message, compactTools = false }: { message: ChatMessage; compactTools?: boolean }) {
-  const isToolMessage = message.role === "tool";
-  const [toolDetailOpen, setToolDetailOpen] = useState(false);
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-
-  async function copyToolResult() {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopyState("copied");
-      window.setTimeout(() => setCopyState("idle"), 1800);
-    } catch {
-      setCopyState("failed");
-      window.setTimeout(() => setCopyState("idle"), 2200);
-    }
-  }
-
-  return (
-    <article className={`message ${message.role}`}>
-      <div className="message-meta">
-        <span className="avatar small">{message.author.slice(0, 1)}</span>
-        <strong>{isToolMessage ? toolNameLabel(message.author) : message.author}</strong>
-        <time>{new Date(message.createdAt).toLocaleTimeString()}</time>
-      </div>
-      {isToolMessage ? (
-        <>
-          <div className="tool-result-actions">
-            <button className="mini-button" onClick={() => void copyToolResult()} type="button">
-              {copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制结果"}
-            </button>
-            <button className="mini-button" onClick={() => setToolDetailOpen(true)} type="button">
-              查看详情
-            </button>
-          </div>
-          <pre className="tool-result-body">{message.content || "工具没有返回内容。"}</pre>
-          {toolDetailOpen ? (
-            <ToolResultDrawer
-              copyLabel={copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制结果"}
-              message={message}
-              onClose={() => setToolDetailOpen(false)}
-              onCopy={() => void copyToolResult()}
-            />
-          ) : null}
-        </>
-      ) : (
-        <p>{message.content}</p>
-      )}
-      {message.toolCalls?.length && compactTools ? (
-        <div className="message-tool-summary">
-          <Terminal size={13} />
-          <span>{message.toolCalls.length} 个工具活动已同步到右侧执行面板</span>
-        </div>
-      ) : null}
-      {message.toolCalls?.length && !compactTools ? (
-        <ToolCallTimeline tools={message.toolCalls} />
-      ) : null}
-    </article>
-  );
-}
-
-function ToolCallTimeline({ tools }: { tools: ToolCall[] }) {
-  return (
-    <div className="tool-call-list" aria-label="Tool calls">
-      {tools.map((tool) => (
-        <article className={`tool-call-card ${tool.status}`} key={tool.id}>
-          <div className="tool-call-topline">
-            <span className={`tool-call-dot ${tool.status}`} />
-            <strong>{toolNameLabel(tool.name)}</strong>
-            <span className={`tool-call-status ${tool.status}`}>{toolStatusLabel(tool.status)}</span>
-          </div>
-          <p>{tool.summary}</p>
-          <div className="tool-call-meta">
-            <span className={`risk ${tool.risk}`}>{tool.risk}</span>
-            <span>{tool.name}</span>
-          </div>
-          <details className="tool-call-details">
-            <summary>调用详情</summary>
-            <dl>
-              <div>
-                <dt>工具</dt>
-                <dd>{tool.name}</dd>
-              </div>
-              <div>
-                <dt>状态</dt>
-                <dd>{toolStatusLabel(tool.status)}</dd>
-              </div>
-              <div>
-                <dt>风险</dt>
-                <dd>{tool.risk}</dd>
-              </div>
-              <div>
-                <dt>说明</dt>
-                <dd>{tool.summary}</dd>
-              </div>
-            </dl>
-          </details>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function ToolResultDrawer({
-  message,
-  copyLabel,
-  onCopy,
-  onClose
-}: {
-  message: ChatMessage;
-  copyLabel: string;
-  onCopy: () => void;
-  onClose: () => void;
-}) {
-  const titleId = `tool-result-${message.id}`;
-  return (
-    <div className="tool-result-drawer-backdrop" onClick={onClose} role="presentation">
-      <aside
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="tool-result-drawer"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <div className="tool-result-drawer-heading">
-          <div>
-            <p className="eyebrow">Tool result</p>
-            <h3 id={titleId}>{toolNameLabel(message.author)}</h3>
-          </div>
-          <button aria-label="关闭工具详情" className="icon-button" onClick={onClose} type="button">
-            <X size={16} />
-          </button>
-        </div>
-        <dl className="tool
+      Object.entries(providerStatus.modelRefreshes).filter(([providerId]) =>
