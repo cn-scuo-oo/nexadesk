@@ -1286,4 +1286,80 @@ export function createDemoSnapshot(now = new Date().toISOString()): AppSnapshot 
             id: "tool-2",
             name: "read_file",
             status: "completed",
-           
+            risk: "low",
+            summary: "读取文件：docs/roadmap.md"
+          }
+        ]
+      },
+      {
+        id: "msg-tool-1",
+        sessionId: "session-1",
+        role: "tool",
+        author: "read_file",
+        content:
+          "Phase 1 - Model Center\nPhase 2 - Cowork Agent\nPhase 3 - Assistants and Skills\nPhase 4 - Desktop Packaging",
+        createdAt: now
+      },
+      {
+        id: "msg-3",
+        sessionId: "session-1",
+        role: "assistant",
+        author: "Word 助手",
+        content:
+          "Office workflows should be represented as first-class assistants, not hidden tools: PPT, Word, Excel, and report generation can each become reusable presets.",
+        createdAt: now
+      }
+    ],
+    files: [
+      { path: "README.md", kind: "file", changed: true },
+      { path: "apps/web/src/App.tsx", kind: "file", changed: true },
+      { path: "apps/web/src/styles.css", kind: "file", changed: true },
+      { path: "apps/server/src/index.ts", kind: "file", changed: true },
+      { path: "packages/shared/src/index.ts", kind: "file", changed: true },
+      { path: "docs", kind: "folder", changed: false }
+    ],
+    approvals: [
+      {
+        id: "approval-1",
+        sessionId: "session-1",
+        agentId: "reviewer",
+        action: "Run typecheck and build in workspace",
+        risk: "medium",
+        requestedAt: now
+      },
+      {
+        id: "approval-2",
+        sessionId: "session-1",
+        agentId: "cowork",
+        action: "Allow shell command for runtime adapter probe",
+        risk: "high",
+        requestedAt: now
+      }
+    ],
+    approvalHistory: [],
+    automations: [
+      {
+        id: "daily-check",
+        name: "Daily workspace check",
+        schedule: "Every day at 09:00",
+        enabled: false,
+        nextRun: "Not scheduled",
+        prompt: "检查默认工作区的最近变化，列出风险、待办和建议。",
+        agentId: "cowork",
+        scheduleKind: "daily",
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    automationRuns: [],
+    activity: [
+      {
+        id: "activity-1",
+        level: "info",
+        title: "Workbench started",
+        detail: "Demo data loaded and local API is ready.",
+        createdAt: now
+      }
+    ]
+  };
+}
