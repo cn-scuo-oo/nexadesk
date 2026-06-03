@@ -202,6 +202,29 @@ export interface DesktopAppSettings {
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
+export interface MemorySettings {
+  projectMemory: boolean;
+  conversationMemory: boolean;
+  longTermMemory: boolean;
+  retentionDays: number;
+  notes: string;
+}
+
+export interface ShortcutSettings {
+  sendMessage: string;
+  commandPalette: string;
+  newTask: string;
+  openSettings: string;
+  toggleWorkspaceContext: string;
+}
+
+export interface AboutSettings {
+  releaseChannel: "stable" | "beta" | "dev";
+  checkUpdates: boolean;
+  repositoryUrl: string;
+  license: string;
+}
+
 export interface ModelRuntimeSettings {
   activeProviderId: string;
   activeModel: string;
@@ -222,6 +245,9 @@ export interface AppSettings {
   workspace: WorkspaceSettings;
   permissions: PermissionSettings;
   mcp: McpSettings;
+  memory: MemorySettings;
+  shortcuts: ShortcutSettings;
+  about: AboutSettings;
   app: DesktopAppSettings;
   updatedAt: string;
 }
@@ -391,6 +417,8 @@ export interface RuntimeTelemetryEntry {
   outputTokens: number;
   totalTokens: number;
   status: "running" | "completed" | "failed";
+  error?: string;
+  messagePreview?: string;
 }
 
 export interface AgentSession {
@@ -484,12 +512,52 @@ export interface ResolveApprovalRequest {
   reason?: string;
 }
 
+export type AutomationScheduleKind = "manual" | "once" | "hourly" | "daily" | "weekly";
+export type AutomationRunStatus = "running" | "completed" | "failed";
+
 export interface AutomationJob {
   id: string;
   name: string;
   schedule: string;
   enabled: boolean;
   nextRun: string;
+  prompt: string;
+  agentId?: string;
+  scheduleKind: AutomationScheduleKind;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  lastStatus?: AutomationRunStatus;
+  failureReason?: string;
+}
+
+export interface AutomationRun {
+  id: string;
+  jobId: string;
+  jobName: string;
+  agentId?: string;
+  status: AutomationRunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  resultSummary?: string;
+  failureReason?: string;
+}
+
+export interface CreateAutomationRequest {
+  name: string;
+  prompt: string;
+  scheduleKind: AutomationScheduleKind;
+  enabled?: boolean;
+  agentId?: string;
+}
+
+export interface UpdateAutomationRequest {
+  name?: string;
+  prompt?: string;
+  scheduleKind?: AutomationScheduleKind;
+  enabled?: boolean;
+  agentId?: string;
 }
 
 export interface ActivityEvent {
@@ -510,6 +578,7 @@ export interface AppSnapshot {
   approvals: PermissionRequest[];
   approvalHistory: ApprovalHistoryEntry[];
   automations: AutomationJob[];
+  automationRuns: AutomationRun[];
   activity: ActivityEvent[];
 }
 
@@ -1059,6 +1128,26 @@ export function createDefaultSettings(
     mcp: {
       servers: createDefaultMcpServers()
     },
+    memory: {
+      projectMemory: true,
+      conversationMemory: true,
+      longTermMemory: false,
+      retentionDays: 30,
+      notes: "保留项目偏好、常用路径和最近任务摘要；高敏感信息不要写入长期记忆。"
+    },
+    shortcuts: {
+      sendMessage: "Ctrl+Enter",
+      commandPalette: "Ctrl+K",
+      newTask: "Ctrl+N",
+      openSettings: "Ctrl+,",
+      toggleWorkspaceContext: "Ctrl+Shift+W"
+    },
+    about: {
+      releaseChannel: "dev",
+      checkUpdates: false,
+      repositoryUrl: "https://github.com/cn-scuo-oo/nexadesk",
+      license: "Private preview"
+    },
     app: {
       launchAtStartup: false,
       autoUpdate: false,
@@ -1173,9 +1262,15 @@ export function createDemoSnapshot(now = new Date().toISOString()): AppSnapshot 
         name: "Daily workspace check",
         schedule: "Every day at 09:00",
         enabled: false,
-        nextRun: "Not scheduled"
+        nextRun: "Not scheduled",
+        prompt: "检查默认工作区的最近变化，列出风险、待办和建议。",
+        agentId: "cowork",
+        scheduleKind: "daily",
+        createdAt: now,
+        updatedAt: now
       }
     ],
+    automationRuns: [],
     activity: [
       {
         id: "activity-1",

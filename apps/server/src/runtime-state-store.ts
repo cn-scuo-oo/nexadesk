@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   ActivityEvent,
   AutomationJob,
+  AutomationRun,
   PermissionRequest,
   RuntimeTelemetryEntry
 } from "@nexadesk/shared";
@@ -32,6 +33,7 @@ type RuntimeStateFile = {
   runtimeTelemetry?: RuntimeTelemetryEntry[];
   activity: ActivityEvent[];
   automations: AutomationJob[];
+  automationRuns?: AutomationRun[];
 };
 
 const repoRoot = resolve(getEnv("NEXADESK_REPO_ROOT", "AION_LITE_REPO_ROOT") ?? process.cwd());
@@ -56,6 +58,7 @@ export async function loadRuntimeState(snapshot: AppSnapshot): Promise<PendingTo
   snapshot.approvalHistory = saved.approvalHistory ?? snapshot.approvalHistory;
   snapshot.activity = saved.activity.length ? saved.activity.slice(0, 50) : snapshot.activity;
   snapshot.automations = saved.automations.length ? saved.automations : snapshot.automations;
+  snapshot.automationRuns = saved.automationRuns?.slice(0, 100) ?? snapshot.automationRuns;
   return saved.pendingToolApprovals ?? [];
 }
 
@@ -74,7 +77,8 @@ export async function saveRuntimeState(
     pendingToolApprovals,
     runtimeTelemetry: runtimeTelemetry.slice(0, 100),
     activity: snapshot.activity.slice(0, 50),
-    automations: snapshot.automations
+    automations: snapshot.automations,
+    automationRuns: snapshot.automationRuns.slice(0, 100)
   };
 
   await mkdir(dirname(runtimeStatePath), { recursive: true });

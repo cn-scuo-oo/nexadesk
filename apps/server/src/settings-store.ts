@@ -281,6 +281,9 @@ function mergeSettings(defaults: AppSettings, saved: AppSettings | null): AppSet
     mcp: {
       servers: mergeMcpServers(defaults.mcp.servers, saved.mcp?.servers ?? [])
     },
+    memory: { ...defaults.memory, ...saved.memory },
+    shortcuts: { ...defaults.shortcuts, ...saved.shortcuts },
+    about: { ...defaults.about, ...saved.about },
     app: { ...defaults.app, ...saved.app }
   };
 }

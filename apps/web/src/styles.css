@@ -2834,14 +2834,40 @@ h4 {
 }
 
 .automation-create-inline input,
-.automation-create-inline select {
+.automation-create-inline select,
+.automation-composer-card textarea {
   width: 100%;
-  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0 10px;
   color: var(--text);
   background: var(--surface);
+}
+
+.automation-create-inline input,
+.automation-create-inline select {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.automation-composer-card textarea {
+  min-height: 76px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.automation-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 0 14px 14px;
+}
+
+.automation-failure-reason,
+.automation-run-error,
+.runtime-call-error {
+  color: #8a2d2d !important;
+  font-weight: 800;
 }
 
 .automation-run-list article {
@@ -3320,6 +3346,139 @@ h4 {
   display: grid;
   gap: 0;
   overflow: hidden;
+}
+
+.runtime-call-detail-panel {
+  min-height: 330px;
+  overflow: hidden;
+}
+
+.runtime-call-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.runtime-call-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  max-height: 360px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  padding: 12px;
+}
+
+.runtime-call-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+
+.runtime-call-row:hover,
+.runtime-call-row.active {
+  border-color: #d8b96f;
+  background: #fff3d0;
+}
+
+.runtime-call-row strong,
+.runtime-call-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-call-row small {
+  margin-top: 3px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.runtime-call-row b {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #31584a;
+  background: #dfeee6;
+  font-size: 11px;
+}
+
+.runtime-call-inspector {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.runtime-call-inspector-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-call-inspector-head h3 {
+  margin-top: 4px;
+  font-size: 20px;
+}
+
+.runtime-call-inspector-head span:not(.status) {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.runtime-call-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.runtime-call-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-call-meta span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runtime-call-meta b {
+  overflow: hidden;
+  color: #211b13;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-call-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  color: var(--muted-text);
+  background: var(--surface-soft);
+  line-height: 1.45;
 }
 
 .runtime-health-list {
@@ -5828,6 +5987,7 @@ h4 {
   .mcp-console-layout,
   .agent-team-layout,
   .runtime-dashboard-shell,
+  .runtime-call-layout,
   .skills-filter-row,
   .automation-create-inline,
   .agent-engine-card,
@@ -5963,6 +6123,7 @@ h4 {
   .agent-team-stats,
   .agent-detail-grid,
   .agent-engine-meta,
+  .runtime-call-metrics,
   .runtime-dashboard-metrics,
   .installed-skill-grid,
   .skill-market-grid {

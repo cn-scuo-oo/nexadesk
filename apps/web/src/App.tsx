@@ -26,6 +26,7 @@ import {
   createDefaultProviders,
   createDefaultSettings,
   createDemoSnapshot,
+  type AutomationScheduleKind,
   type AgentEngineDetectionRecord,
   type AgentEngineSettings,
   type ActivityEvent,
@@ -61,6 +62,7 @@ import {
   type WorkspaceTreeEntry
 } from "@nexadesk/shared";
 import {
+  createAutomation,
   detectAgentEngines,
   deleteSession,
   fetchDesktopStatus,
@@ -73,6 +75,7 @@ import {
   fetchWorkspaceSearch,
   recoverSettings as recoverAppSettings,
   resolveApproval,
+  runAutomation,
   saveSettings as persistAppSettings,
   fetchRuntimeTelemetry,
   saveRuntimeTelemetry,
@@ -80,6 +83,7 @@ import {
   subscribeActivity,
   testProvider,
   testMcpServer,
+  updateAutomation,
   updateSession
 } from "./api";
 
@@ -102,6 +106,9 @@ type SettingsTab =
   | "appearance"
   | "workspace"
   | "permissions"
+  | "memory"
+  | "shortcuts"
+  | "about"
   | "desktop";
 
 type ProviderDraft = {
@@ -244,13 +251,16 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
   { id: "appearance", label: "界面字体", detail: "主题、语言、字号" },
   { id: "workspace", label: "工作区", detail: "目录、导出、访问范围" },
   { id: "permissions", label: "权限审批", detail: "工具风险策略" },
+  { id: "memory", label: "记忆", detail: "项目、会话、长期记忆" },
+  { id: "shortcuts", label: "快捷键", detail: "键盘操作与自定义" },
+  { id: "about", label: "关于", detail: "版本、许可证、仓库" },
   { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
 ];
 
 const settingsTabGroups: Array<{ title: string; tabs: SettingsTab[] }> = [
   { title: "模型与运行", tabs: ["providers", "model", "engines"] },
-  { title: "助手与工具", tabs: ["assistants", "skills", "permissions"] },
-  { title: "应用", tabs: ["appearance", "workspace", "desktop"] }
+  { title: "助手与工具", tabs: ["assistants", "skills", "permissions", "memory"] },
+  { title: "应用", tabs: ["appearance", "workspace", "shortcuts", "about", "desktop"] }
 ];
 
 const appViews = new Set<AppView>([
@@ -842,7 +852,8 @@ export function App() {
             inputTokens: estimateTokenCount(trimmedContent),
             outputTokens: 0,
             totalTokens: estimateTokenCount(trimmedContent),
-            status: "running"
+            status: "running",
+            messagePreview: trimmedContent.slice(0, 240)
           };
           setRuntimeTelemetry((current) => [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, maxRuntimeTelemetryEntries));
         }
@@ -899,7 +910,8 @@ export function App() {
                       ...entry,
                       completedAt: new Date().toISOString(),
                       durationMs: runtime ? Math.max(0, Math.round(performance.now() - runtime.startedMs)) : entry.durationMs,
-                      status: "failed"
+                      status: "failed",
+                      error: streamEvent.message
                     }
                   : entry
               )
@@ -1074,6 +1086,115 @@ export function App() {
     }
   }
 
+  function applyAutomationResult(
+    automations: AppSnapshot["automations"],
+    automationRuns: AppSnapshot["automationRuns"],
+    activity?: ActivityEvent
+  ) {
+    setSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            automations,
+            automationRuns,
+            activity: activity ? [activity, ...current.activity].slice(0, 20) : current.activity
+          }
+        : current
+    );
+  }
+
+  async function handleCreateAutomation(payload: {
+    name: string;
+    prompt: string;
+    scheduleKind: AutomationScheduleKind;
+    enabled: boolean;
+    agentId?: string;
+  }) {
+    if (!snapshot) {
+      return;
+    }
+    if (mode === "demo") {
+      const now = new Date().toISOString();
+      const job = {
+        id: `demo-automation-${crypto.randomUUID().slice(0, 8)}`,
+        name: payload.name,
+        prompt: payload.prompt,
+        scheduleKind: payload.scheduleKind,
+        schedule: automationScheduleKindLabel(payload.scheduleKind),
+        enabled: payload.enabled,
+        nextRun: payload.enabled && payload.scheduleKind !== "manual" ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : "Not scheduled",
+        agentId: payload.agentId,
+        createdAt: now,
+        updatedAt: now
+      };
+      applyAutomationResult([job, ...snapshot.automations], snapshot.automationRuns);
+      return;
+    }
+    const result = await createAutomation(payload);
+    applyAutomationResult(result.automations, result.automationRuns, result.activity);
+  }
+
+  async function handleUpdateAutomation(
+    jobId: string,
+    patch: {
+      name?: string;
+      prompt?: string;
+      scheduleKind?: AutomationScheduleKind;
+      enabled?: boolean;
+      agentId?: string;
+    }
+  ) {
+    if (!snapshot) {
+      return;
+    }
+    if (mode === "demo") {
+      const automations = snapshot.automations.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              ...patch,
+              schedule: patch.scheduleKind ? automationScheduleKindLabel(patch.scheduleKind) : job.schedule,
+              updatedAt: new Date().toISOString()
+            }
+          : job
+      );
+      applyAutomationResult(automations, snapshot.automationRuns);
+      return;
+    }
+    const result = await updateAutomation(jobId, patch);
+    applyAutomationResult(result.automations, result.automationRuns, result.activity);
+  }
+
+  async function handleRunAutomation(jobId: string) {
+    if (!snapshot) {
+      return;
+    }
+    if (mode === "demo") {
+      const job = snapshot.automations.find((item) => item.id === jobId);
+      if (!job) {
+        return;
+      }
+      const now = new Date().toISOString();
+      applyAutomationResult(snapshot.automations, [
+        {
+          id: `demo-run-${crypto.randomUUID().slice(0, 8)}`,
+          jobId,
+          jobName: job.name,
+          agentId: job.agentId,
+          status: "completed",
+          startedAt: now,
+          finishedAt: now,
+          durationMs: 320,
+          resultSummary: "Demo run completed. Start the desktop API to execute this through a real model."
+        },
+        ...snapshot.automationRuns
+      ]);
+      return;
+    }
+    const result = await runAutomation(jobId);
+    applyAutomationResult(result.automations, result.automationRuns);
+  }
+
   function handleOpenSession(sessionId: string) {
     setActiveSessionId(sessionId);
     handleOpenView("thread");
@@ -1194,6 +1315,19 @@ export function App() {
       }
     };
     await handleSaveSettings(nextSettings);
+  }
+
+  async function handleRefreshRuntimeTelemetry() {
+    if (mode !== "live") {
+      setSettingsStatus("演示模式下没有后端调用明细。");
+      return;
+    }
+    try {
+      setRuntimeTelemetry(await fetchRuntimeTelemetry());
+      setSettingsStatus("Runtime 调用明细已刷新。");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Runtime telemetry refresh failed.");
+    }
   }
 
   async function handleImportSkillPackage(raw: string, fileName = "skill-package.json") {
@@ -1720,7 +1854,15 @@ export function App() {
             onOpenWorkspace={() => handleOpenView("thread")}
           />
         ) : activeView === "scheduled" ? (
-          <ScheduledTasksView automations={snapshot.automations} taskBoard={taskBoard} agents={snapshot.agents} />
+          <ScheduledTasksView
+            agents={snapshot.agents}
+            automationRuns={snapshot.automationRuns}
+            automations={snapshot.automations}
+            taskBoard={taskBoard}
+            onCreateAutomation={(payload) => handleCreateAutomation(payload)}
+            onRunAutomation={(jobId) => handleRunAutomation(jobId)}
+            onUpdateAutomation={(jobId, patch) => handleUpdateAutomation(jobId, patch)}
+          />
         ) : activeView === "runtime" ? (
           <RuntimeDashboardView
             activeRuntimeModel={activeRuntimeModel}
@@ -1729,8 +1871,10 @@ export function App() {
             configuredProviders={configuredProviders}
             enabledSkills={enabledSkills.length}
             runtimeStats={runtimeStats}
+            telemetry={runtimeTelemetry}
             runningAgents={runningAgents.length}
             totalAgents={snapshot.agents.length}
+            onRefreshTelemetry={() => void handleRefreshRuntimeTelemetry()}
           />
         ) : activeView === "skills" ? (
           <SkillsHubView
@@ -3089,14 +3233,35 @@ function TaskSearchView({
 
 function ScheduledTasksView({
   agents,
+  automationRuns,
   automations,
-  taskBoard
+  taskBoard,
+  onCreateAutomation,
+  onRunAutomation,
+  onUpdateAutomation
 }: {
   agents: AgentProfile[];
+  automationRuns: AppSnapshot["automationRuns"];
   automations: AppSnapshot["automations"];
   taskBoard: TaskBoardItem[];
+  onCreateAutomation: (payload: {
+    name: string;
+    prompt: string;
+    scheduleKind: AutomationScheduleKind;
+    enabled: boolean;
+    agentId?: string;
+  }) => Promise<void> | void;
+  onRunAutomation: (jobId: string) => Promise<void> | void;
+  onUpdateAutomation: (jobId: string, patch: { enabled?: boolean; scheduleKind?: AutomationScheduleKind; name?: string; prompt?: string; agentId?: string }) => Promise<void> | void;
 }) {
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(automations[0]?.id ?? null);
+  const [draftName, setDraftName] = useState("每天整理工作区文件");
+  const [draftPrompt, setDraftPrompt] = useState("检查默认工作区最近变化，列出风险、待办和建议。");
+  const [draftScheduleKind, setDraftScheduleKind] = useState<AutomationScheduleKind>("daily");
+  const [draftAgentId, setDraftAgentId] = useState<string>(agents[0]?.id ?? "");
+  const [draftEnabled, setDraftEnabled] = useState(true);
+  const [automationBusyId, setAutomationBusyId] = useState<string | null>(null);
+  const [automationStatus, setAutomationStatus] = useState<string | null>(null);
   useEffect(() => {
     if (!selectedAutomationId || !automations.some((job) => job.id === selectedAutomationId)) {
       setSelectedAutomationId(automations[0]?.id ?? null);
@@ -3105,8 +3270,51 @@ function ScheduledTasksView({
 
   const selectedAutomation = automations.find((job) => job.id === selectedAutomationId) ?? automations[0];
   const enabledAutomations = automations.filter((job) => job.enabled).length;
-  const runningTasks = taskBoard.filter((task) => task.status === "Running").length;
+  const runningTasks = automationRuns.filter((run) => run.status === "running").length || taskBoard.filter((task) => task.status === "Running").length;
   const nextRunLabel = selectedAutomation?.nextRun || "未计划";
+  const selectedRuns = selectedAutomation
+    ? automationRuns.filter((run) => run.jobId === selectedAutomation.id)
+    : automationRuns;
+
+  async function submitAutomation(event: FormEvent) {
+    event.preventDefault();
+    const name = draftName.trim();
+    const prompt = draftPrompt.trim();
+    if (!name || !prompt) {
+      setAutomationStatus("请填写任务名称和执行提示词。");
+      return;
+    }
+    setAutomationStatus(null);
+    await Promise.resolve(
+      onCreateAutomation({
+        name,
+        prompt,
+        scheduleKind: draftScheduleKind,
+        enabled: draftEnabled,
+        agentId: draftAgentId || undefined
+      })
+    );
+    setDraftName("");
+    setDraftPrompt("");
+  }
+
+  async function toggleAutomation(jobId: string, enabled: boolean) {
+    setAutomationBusyId(jobId);
+    try {
+      await Promise.resolve(onUpdateAutomation(jobId, { enabled }));
+    } finally {
+      setAutomationBusyId(null);
+    }
+  }
+
+  async function runAutomationNow(jobId: string) {
+    setAutomationBusyId(jobId);
+    try {
+      await Promise.resolve(onRunAutomation(jobId));
+    } finally {
+      setAutomationBusyId(null);
+    }
+  }
 
   return (
     <section className="workspace module-workspace automation-workspace">
@@ -3155,7 +3363,7 @@ function ScheduledTasksView({
                     <strong>{job.name}</strong>
                     <small>{job.schedule}</small>
                   </span>
-                  <b>{job.enabled ? "启用" : "停用"}</b>
+                  <b>{job.lastStatus === "failed" ? "失败" : job.enabled ? "启用" : "停用"}</b>
                 </button>
               ))
             )}
@@ -3174,36 +3382,70 @@ function ScheduledTasksView({
             <article>
               <p className="eyebrow">计划</p>
               <strong>{selectedAutomation?.schedule ?? "未设置"}</strong>
-              <span>周期规则会在后续接入后台调度器后真正执行。</span>
+              <span>{selectedAutomation ? automationScheduleKindLabel(selectedAutomation.scheduleKind) : "未选择任务"}</span>
             </article>
             <article>
               <p className="eyebrow">下次运行</p>
               <strong>{nextRunLabel}</strong>
-              <span>{selectedAutomation?.enabled ? "等待调度触发。" : "当前任务未启用。"}</span>
+              <span>{selectedAutomation?.enabled ? "后端调度器会按计划触发。" : "当前任务未启用。"}</span>
             </article>
             <article>
               <p className="eyebrow">执行助手</p>
-              <strong>{agents.find((agent) => agent.id === "cowork")?.name ?? agents[0]?.name ?? "未配置"}</strong>
-              <span>默认由 Cowork 负责拆解任务，再分配到合适助手。</span>
+              <strong>{agents.find((agent) => agent.id === selectedAutomation?.agentId)?.name ?? agents.find((agent) => agent.id === "cowork")?.name ?? agents[0]?.name ?? "未配置"}</strong>
+              <span>{selectedAutomation?.lastRunAt ? `上次运行：${formatTime(selectedAutomation.lastRunAt)}` : "尚未运行。"}</span>
             </article>
           </div>
-          <div className="automation-composer-card">
+          {selectedAutomation ? (
+            <div className="automation-action-row">
+              <button
+                className="secondary-button"
+                disabled={automationBusyId === selectedAutomation.id}
+                onClick={() => void toggleAutomation(selectedAutomation.id, !selectedAutomation.enabled)}
+                type="button"
+              >
+                {selectedAutomation.enabled ? "停用计划" : "启用计划"}
+              </button>
+              <button
+                className="primary-button"
+                disabled={automationBusyId === selectedAutomation.id}
+                onClick={() => void runAutomationNow(selectedAutomation.id)}
+                type="button"
+              >
+                {automationBusyId === selectedAutomation.id ? "执行中..." : "立即运行"}
+              </button>
+              {selectedAutomation.failureReason ? <span className="automation-failure-reason">失败原因：{selectedAutomation.failureReason}</span> : null}
+            </div>
+          ) : null}
+          <form className="automation-composer-card" onSubmit={(event) => void submitAutomation(event)}>
             <strong>新建计划任务</strong>
             <div className="automation-create-inline">
-              <input placeholder="例如：每天整理工作区文件" />
-              <select>
+              <input placeholder="例如：每天整理工作区文件" value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+              <select value={draftAgentId} onChange={(event) => setDraftAgentId(event.target.value)}>
                 {agents.map((agent) => (
-                  <option key={agent.id}>{agent.name}</option>
+                  <option key={agent.id} value={agent.id}>{agent.name}</option>
                 ))}
               </select>
-              <select>
-                <option>每天</option>
-                <option>每周</option>
-                <option>仅一次</option>
+              <select value={draftScheduleKind} onChange={(event) => setDraftScheduleKind(event.target.value as AutomationScheduleKind)}>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+                <option value="hourly">每小时</option>
+                <option value="once">仅一次</option>
+                <option value="manual">手动</option>
               </select>
-              <button className="primary-button" type="button">创建</button>
+              <button className="primary-button" type="submit">创建</button>
             </div>
-          </div>
+            <textarea
+              rows={3}
+              value={draftPrompt}
+              onChange={(event) => setDraftPrompt(event.target.value)}
+              placeholder="写清楚这个计划任务要让 Agent 做什么。"
+            />
+            <label className="connection-toggle inline-check-row">
+              <input checked={draftEnabled} onChange={(event) => setDraftEnabled(event.target.checked)} type="checkbox" />
+              <span>创建后立即启用</span>
+            </label>
+            {automationStatus ? <p className="automation-failure-reason">{automationStatus}</p> : null}
+          </form>
         </section>
 
         <section className="panel-block automation-runs-panel">
@@ -3215,16 +3457,21 @@ function ScheduledTasksView({
             <Terminal size={18} />
           </div>
           <div className="automation-run-list">
-            {taskBoard.map((task) => {
-              const owner = agents.find((agent) => agent.id === task.ownerId);
+            {selectedRuns.length === 0 ? (
+              <EmptyState title="暂无运行记录" detail="计划触发或手动运行后会显示执行历史。" />
+            ) : null}
+            {selectedRuns.map((run) => {
+              const owner = agents.find((agent) => agent.id === run.agentId);
               return (
-                <article key={task.id}>
-                  <span className="tool-call-dot completed" />
+                <article key={run.id}>
+                  <span className={`tool-call-dot ${run.status}`} />
                   <div>
-                    <strong>{task.title}</strong>
-                    <small>{owner?.name ?? "Unassigned"} · {task.detail}</small>
+                    <strong>{run.jobName}</strong>
+                    <small>{owner?.name ?? "Unassigned"} · {formatRelativeTime(run.startedAt)} · {run.durationMs ? formatDuration(run.durationMs) : "运行中"}</small>
+                    {run.failureReason ? <small className="automation-run-error">失败原因：{run.failureReason}</small> : null}
+                    {run.resultSummary ? <small>{run.resultSummary}</small> : null}
                   </div>
-                  <b>{task.status}</b>
+                  <b>{automationRunStatusLabel(run.status)}</b>
                 </article>
               );
             })}
@@ -3242,8 +3489,10 @@ function RuntimeDashboardView({
   configuredProviders,
   enabledSkills,
   runtimeStats,
+  telemetry,
   runningAgents,
-  totalAgents
+  totalAgents,
+  onRefreshTelemetry
 }: {
   activeApprovals: number;
   activeRuntimeModel: string;
@@ -3251,9 +3500,19 @@ function RuntimeDashboardView({
   configuredProviders: number;
   enabledSkills: number;
   runtimeStats: RuntimeDashboardStats;
+  telemetry: RuntimeTelemetryEntry[];
   runningAgents: number;
   totalAgents: number;
+  onRefreshTelemetry: () => void;
 }) {
+  const [selectedTelemetryId, setSelectedTelemetryId] = useState<string | null>(telemetry[0]?.id ?? null);
+  useEffect(() => {
+    if (!selectedTelemetryId || !telemetry.some((entry) => entry.id === selectedTelemetryId)) {
+      setSelectedTelemetryId(telemetry[0]?.id ?? null);
+    }
+  }, [selectedTelemetryId, telemetry]);
+  const selectedTelemetry = telemetry.find((entry) => entry.id === selectedTelemetryId) ?? telemetry[0];
+
   return (
     <section className="workspace module-workspace runtime-dashboard-workspace">
       <ModuleHeader eyebrow="Runtime" title="AI Runtime Dashboard" detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。" />
@@ -3264,7 +3523,7 @@ function RuntimeDashboardView({
             <span>{activeRuntimeProvider?.name ?? "未选择 Provider"}</span>
             <span>{activeRuntimeModel || "未选择模型"}</span>
             <span>全部状态</span>
-            <button className="mini-button" type="button">刷新</button>
+            <button className="mini-button" onClick={onRefreshTelemetry} type="button">刷新</button>
           </div>
 
           <div className="runtime-metric-grid runtime-dashboard-metrics">
@@ -3290,6 +3549,76 @@ function RuntimeDashboardView({
               {runtimeStats.trendBars.map((height, index) => (
                 <span key={index} style={{ "--bar-height": `${height}%` } as CSSProperties} />
               ))}
+            </div>
+          </section>
+
+          <section className="panel-block runtime-call-detail-panel">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">Calls</p>
+                <h3>调用详情</h3>
+              </div>
+              <b className="status ready">{telemetry.length}</b>
+            </div>
+            <div className="runtime-call-layout">
+              <div className="runtime-call-list">
+                {telemetry.length === 0 ? (
+                  <EmptyState title="暂无调用明细" detail="发送消息或运行自动化后会记录模型调用、Token 和耗时。" />
+                ) : (
+                  telemetry.map((entry) => (
+                    <button
+                      className={selectedTelemetry?.id === entry.id ? "runtime-call-row active" : "runtime-call-row"}
+                      key={entry.id}
+                      onClick={() => setSelectedTelemetryId(entry.id)}
+                      type="button"
+                    >
+                      <span className={`tool-call-dot ${entry.status}`} />
+                      <span>
+                        <strong>{entry.model}</strong>
+                        <small>{entry.providerName} · {formatRelativeTime(entry.startedAt)}</small>
+                      </span>
+                      <b>{runtimeStatusLabel(entry.status)}</b>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="runtime-call-inspector">
+                {selectedTelemetry ? (
+                  <>
+                    <div className="runtime-call-inspector-head">
+                      <div>
+                        <p className="eyebrow">Selected Call</p>
+                        <h3>{selectedTelemetry.model}</h3>
+                        <span>{selectedTelemetry.providerName}</span>
+                      </div>
+                      <span className={selectedTelemetry.status === "failed" ? "status muted-status" : "status ready"}>
+                        {runtimeStatusLabel(selectedTelemetry.status)}
+                      </span>
+                    </div>
+                    <div className="runtime-call-metrics">
+                      <Metric label="Input Token" value={formatCompactNumber(selectedTelemetry.inputTokens)} />
+                      <Metric label="Output Token" value={formatCompactNumber(selectedTelemetry.outputTokens)} />
+                      <Metric label="Total Token" value={formatCompactNumber(selectedTelemetry.totalTokens)} />
+                      <Metric label="TTFT" value={formatDuration(selectedTelemetry.firstTokenMs)} />
+                      <Metric label="耗时" value={formatDuration(selectedTelemetry.durationMs)} />
+                      <Metric label="TPS" value={formatRuntimeEntryTps(selectedTelemetry)} />
+                    </div>
+                    <div className="runtime-call-meta">
+                      <span>Started <b>{formatTime(selectedTelemetry.startedAt)}</b></span>
+                      <span>Completed <b>{selectedTelemetry.completedAt ? formatTime(selectedTelemetry.completedAt) : "未完成"}</b></span>
+                      <span>Session <b>{selectedTelemetry.sessionId}</b></span>
+                    </div>
+                    {selectedTelemetry.messagePreview ? (
+                      <p className="runtime-call-preview">{selectedTelemetry.messagePreview}</p>
+                    ) : null}
+                    {selectedTelemetry.error ? (
+                      <p className="runtime-call-error">错误：{selectedTelemetry.error}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <EmptyState title="选择调用" detail="从左侧选择一次模型调用查看详情。" />
+                )}
+              </div>
             </div>
           </section>
         </section>
@@ -5018,6 +5347,166 @@ function SettingsCenter({
         </section>
         ) : null}
 
+        {activeTab === "memory" ? (
+        <section className="panel-block settings-section">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Memory</p>
+              <h3>记忆管理</h3>
+            </div>
+            <FileText size={18} />
+          </div>
+          <div className="settings-form">
+            {(["projectMemory", "conversationMemory", "longTermMemory"] as const).map((key) => (
+              <label className="connection-toggle" key={key}>
+                <input
+                  checked={draft.memory[key]}
+                  onChange={(event) =>
+                    updateDraft({
+                      memory: { ...draft.memory, [key]: event.target.checked }
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>{memorySettingLabel(key)}</span>
+              </label>
+            ))}
+            <label className="field-label">
+              <span>记忆保留天数</span>
+              <input
+                min={1}
+                max={365}
+                type="number"
+                value={draft.memory.retentionDays}
+                onChange={(event) =>
+                  updateDraft({
+                    memory: { ...draft.memory, retentionDays: Number(event.target.value) }
+                  })
+                }
+              />
+            </label>
+            <label className="field-label">
+              <span>记忆规则备注</span>
+              <textarea
+                rows={4}
+                value={draft.memory.notes}
+                onChange={(event) =>
+                  updateDraft({
+                    memory: { ...draft.memory, notes: event.target.value }
+                  })
+                }
+              />
+            </label>
+            <p className="secret-note">
+              这里先保存记忆策略配置；后续可接项目记忆索引、会话摘要和长期记忆审查页。
+            </p>
+          </div>
+        </section>
+        ) : null}
+
+        {activeTab === "shortcuts" ? (
+        <section className="panel-block settings-section">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">Keyboard</p>
+              <h3>快捷键</h3>
+            </div>
+            <KeyRound size={18} />
+          </div>
+          <div className="settings-form">
+            {(["sendMessage", "commandPalette", "newTask", "openSettings", "toggleWorkspaceContext"] as const).map((key) => (
+              <label className="field-label shortcut-row" key={key}>
+                <span>{shortcutSettingLabel(key)}</span>
+                <input
+                  value={draft.shortcuts[key]}
+                  onChange={(event) =>
+                    updateDraft({
+                      shortcuts: { ...draft.shortcuts, [key]: event.target.value }
+                    })
+                  }
+                />
+              </label>
+            ))}
+            <p className="secret-note">
+              快捷键配置已进入设置体系；真正的全局快捷键注册会在桌面快捷键模块里继续接入。
+            </p>
+          </div>
+        </section>
+        ) : null}
+
+        {activeTab === "about" ? (
+        <section className="panel-block settings-section">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">About</p>
+              <h3>关于 NexaDesk</h3>
+            </div>
+            <Workflow size={18} />
+          </div>
+          <div className="settings-form">
+            <div className="diagnostics-grid">
+              <DiagnosticRow label="版本" value={desktopStatus?.version ?? "0.1.0"} />
+              <DiagnosticRow label="发布通道" value={draft.about.releaseChannel} />
+              <DiagnosticRow label="许可证" value={draft.about.license} />
+              <DiagnosticRow label="仓库" value={draft.about.repositoryUrl} />
+              <DiagnosticRow label="运行模式" value={desktopStatus?.mode === "desktop" ? "桌面应用" : "Web 开发"} />
+              <DiagnosticRow label="数据目录" value={desktopStatus?.dataDir ?? "Not set"} />
+            </div>
+            <div className="field-grid">
+              <label className="field-label">
+                <span>发布通道</span>
+                <select
+                  value={draft.about.releaseChannel}
+                  onChange={(event) =>
+                    updateDraft({
+                      about: { ...draft.about, releaseChannel: event.target.value as AppSettings["about"]["releaseChannel"] }
+                    })
+                  }
+                >
+                  <option value="stable">Stable</option>
+                  <option value="beta">Beta</option>
+                  <option value="dev">Dev</option>
+                </select>
+              </label>
+              <label className="connection-toggle">
+                <input
+                  checked={draft.about.checkUpdates}
+                  onChange={(event) =>
+                    updateDraft({
+                      about: { ...draft.about, checkUpdates: event.target.checked }
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>允许检查更新</span>
+              </label>
+            </div>
+            <label className="field-label">
+              <span>仓库地址</span>
+              <input
+                value={draft.about.repositoryUrl}
+                onChange={(event) =>
+                  updateDraft({
+                    about: { ...draft.about, repositoryUrl: event.target.value }
+                  })
+                }
+              />
+            </label>
+            <label className="field-label">
+              <span>许可证说明</span>
+              <input
+                value={draft.about.license}
+                onChange={(event) =>
+                  updateDraft({
+                    about: { ...draft.about, license: event.target.value }
+                  })
+                }
+              />
+            </label>
+          </div>
+        </section>
+        ) : null}
+
         {activeTab === "desktop" ? (
         <section className="panel-block settings-section">
           <div className="panel-heading compact">
@@ -6297,6 +6786,26 @@ function policyLabel(key: keyof AppSettings["permissions"]) {
   return labels[key];
 }
 
+function memorySettingLabel(key: keyof Omit<AppSettings["memory"], "retentionDays" | "notes">) {
+  const labels: Record<keyof Omit<AppSettings["memory"], "retentionDays" | "notes">, string> = {
+    projectMemory: "启用项目记忆",
+    conversationMemory: "启用会话记忆",
+    longTermMemory: "启用长期记忆"
+  };
+  return labels[key];
+}
+
+function shortcutSettingLabel(key: keyof AppSettings["shortcuts"]) {
+  const labels: Record<keyof AppSettings["shortcuts"], string> = {
+    sendMessage: "发送消息",
+    commandPalette: "命令面板",
+    newTask: "新建任务",
+    openSettings: "打开设置",
+    toggleWorkspaceContext: "切换工作区上下文"
+  };
+  return labels[key];
+}
+
 function appSettingLabel(key: keyof Omit<AppSettings["app"], "logLevel">) {
   const labels: Record<keyof Omit<AppSettings["app"], "logLevel">, string> = {
     launchAtStartup: "开机启动",
@@ -7106,6 +7615,51 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
 
 function formatTime(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function formatDuration(value?: number) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "-";
+  }
+  return value < 1000 ? `${Math.round(value)}ms` : `${(value / 1000).toFixed(1)}s`;
+}
+
+function runtimeStatusLabel(status: RuntimeTelemetryEntry["status"]) {
+  const labels: Record<RuntimeTelemetryEntry["status"], string> = {
+    running: "运行中",
+    completed: "完成",
+    failed: "失败"
+  };
+  return labels[status];
+}
+
+function automationRunStatusLabel(status: AppSnapshot["automationRuns"][number]["status"]) {
+  const labels: Record<AppSnapshot["automationRuns"][number]["status"], string> = {
+    running: "运行中",
+    completed: "完成",
+    failed: "失败"
+  };
+  return labels[status];
+}
+
+function automationScheduleKindLabel(kind: AutomationScheduleKind) {
+  const labels: Record<AutomationScheduleKind, string> = {
+    manual: "手动运行",
+    once: "仅运行一次",
+    hourly: "每小时",
+    daily: "每天",
+    weekly: "每周"
+  };
+  return labels[kind];
+}
+
+function formatRuntimeEntryTps(entry: RuntimeTelemetryEntry) {
+  const durationSeconds = Math.max(0.1, ((entry.durationMs ?? 0) - (entry.firstTokenMs ?? 0)) / 1000);
+  if (!entry.outputTokens || !Number.isFinite(durationSeconds)) {
+    return "-";
+  }
+  const value = entry.outputTokens / durationSeconds;
+  return value >= 100 ? value.toFixed(0) : value.toFixed(1);
 }
 
 function formatRelativeTime(value: string) {

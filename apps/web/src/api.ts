@@ -1,5 +1,8 @@
 ﻿import type {
   ActivityEvent,
+  AutomationJob,
+  AutomationRun,
+  CreateAutomationRequest,
   AgentSession,
   AgentEngineDetectionResult,
   ApprovalHistoryEntry,
@@ -20,6 +23,7 @@
   RuntimeTelemetryEntry,
   SaveSettingsRequest,
   SendMessageRequest,
+  UpdateAutomationRequest,
   WorkspaceFilePreviewResult,
   WorkspaceListResult,
   WorkspaceSearchMode,
@@ -70,6 +74,56 @@ export async function saveRuntimeTelemetry(entries: RuntimeTelemetryEntry[]): Pr
   }
   const result = (await response.json()) as { entries: RuntimeTelemetryEntry[] };
   return result.entries;
+}
+
+export async function createAutomation(payload: CreateAutomationRequest): Promise<{
+  automations: AutomationJob[];
+  automationRuns: AutomationRun[];
+  activity: ActivityEvent;
+}> {
+  const response = await fetch(`${apiBase}/api/automations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`Create automation failed with ${response.status}`);
+  }
+  return response.json() as Promise<{ automations: AutomationJob[]; automationRuns: AutomationRun[]; activity: ActivityEvent }>;
+}
+
+export async function updateAutomation(jobId: string, payload: UpdateAutomationRequest): Promise<{
+  automations: AutomationJob[];
+  automationRuns: AutomationRun[];
+  activity: ActivityEvent;
+}> {
+  const response = await fetch(`${apiBase}/api/automations/${encodeURIComponent(jobId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`Update automation failed with ${response.status}`);
+  }
+  return response.json() as Promise<{ automations: AutomationJob[]; automationRuns: AutomationRun[]; activity: ActivityEvent }>;
+}
+
+export async function runAutomation(jobId: string): Promise<{
+  automations: AutomationJob[];
+  automationRuns: AutomationRun[];
+  run: AutomationRun;
+}> {
+  const response = await fetch(`${apiBase}/api/automations/${encodeURIComponent(jobId)}/run`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Run automation failed with ${response.status}`);
+  }
+  return response.json() as Promise<{ automations: AutomationJob[]; automationRuns: AutomationRun[]; run: AutomationRun }>;
 }
 
 export async function fetchDesktopStatus(): Promise<DesktopStatus> {

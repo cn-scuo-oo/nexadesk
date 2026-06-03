@@ -268,7 +268,8 @@ async function runRendererSmokeTest(apiPort) {
     inputTokens: 12,
     outputTokens: 24,
     totalTokens: 36,
-    status: "completed"
+    status: "completed",
+    messagePreview: "Runtime smoke call preview"
   };
   const telemetrySaved = await requestJson(apiPort, "/api/runtime/telemetry", {
     method: "PUT",
@@ -280,6 +281,26 @@ async function runRendererSmokeTest(apiPort) {
   const telemetryReloaded = await requestJson(apiPort, "/api/runtime/telemetry");
   if (!telemetryReloaded.entries?.some((entry) => entry.id === telemetryEntry.id)) {
     throw new Error("Renderer smoke test failed: runtime telemetry API did not reload persisted entries.");
+  }
+  const automationCreate = await requestJson(apiPort, "/api/automations", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Renderer smoke automation",
+      prompt: "Smoke automation should be created but not scheduled.",
+      scheduleKind: "manual",
+      enabled: false
+    })
+  });
+  const smokeAutomation = automationCreate.automations?.find((job) => job.name === "Renderer smoke automation");
+  if (!smokeAutomation || smokeAutomation.scheduleKind !== "manual") {
+    throw new Error("Renderer smoke test failed: automation create API did not persist a manual job.");
+  }
+  const automationUpdate = await requestJson(apiPort, "/api/automations/" + encodeURIComponent(smokeAutomation.id), {
+    method: "PATCH",
+    body: JSON.stringify({ enabled: true })
+  });
+  if (!automationUpdate.automations?.some((job) => job.id === smokeAutomation.id && job.enabled)) {
+    throw new Error("Renderer smoke test failed: automation update API did not toggle enabled state.");
   }
 
   const workbenchText = await renderAndReadText(apiPort);
@@ -358,15 +379,15 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const runtimeText = await renderAndReadText(apiPort, "runtime");
-  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字") || !runtimeText.includes("输出 TPS") || !runtimeText.includes("Token 总量")) {
+  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字") || !runtimeText.includes("输出 TPS") || !runtimeText.includes("Token 总量") || !runtimeText.includes("调用详情") || !runtimeText.includes("TTFT") || !runtimeText.includes("Runtime smoke call preview")) {
     throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
   }
   const runtimeLayout = await renderAndEvaluate(
     apiPort,
     "runtime",
-    "(() => ({ hasDashboardShell: Boolean(document.querySelector('.runtime-dashboard-shell')), hasMetricGrid: Boolean(document.querySelector('.runtime-dashboard-metrics')), hasChart: Boolean(document.querySelector('.runtime-chart-visual')), hasSideStack: Boolean(document.querySelector('.runtime-side-stack')) }))()"
+    "(() => ({ hasDashboardShell: Boolean(document.querySelector('.runtime-dashboard-shell')), hasMetricGrid: Boolean(document.querySelector('.runtime-dashboard-metrics')), hasChart: Boolean(document.querySelector('.runtime-chart-visual')), hasSideStack: Boolean(document.querySelector('.runtime-side-stack')), hasCallDetail: Boolean(document.querySelector('.runtime-call-detail-panel')), hasCallInspector: Boolean(document.querySelector('.runtime-call-inspector')) }))()"
   );
-  if (!runtimeLayout.hasDashboardShell || !runtimeLayout.hasMetricGrid || !runtimeLayout.hasChart || !runtimeLayout.hasSideStack) {
+  if (!runtimeLayout.hasDashboardShell || !runtimeLayout.hasMetricGrid || !runtimeLayout.hasChart || !runtimeLayout.hasSideStack || !runtimeLayout.hasCallDetail || !runtimeLayout.hasCallInspector) {
     throw new Error("Renderer smoke test failed: runtime dashboard layout controls were not rendered.");
   }
 
@@ -384,7 +405,7 @@ async function runRendererSmokeTest(apiPort) {
   }
 
   const scheduledText = await renderAndReadText(apiPort, "scheduled");
-  if (!scheduledText.includes("定时任务") || !scheduledText.includes("任务计划") || !scheduledText.includes("运行记录") || !scheduledText.includes("新建计划任务")) {
+  if (!scheduledText.includes("定时任务") || !scheduledText.includes("任务计划") || !scheduledText.includes("运行记录") || !scheduledText.includes("新建计划任务") || !scheduledText.includes("立即运行") || !scheduledText.includes("停用计划")) {
     throw new Error("Renderer smoke test failed: scheduled task workspace was not rendered as a separate view.");
   }
   const scheduledLayout = await renderAndEvaluate(
@@ -442,7 +463,10 @@ async function runRendererSmokeTest(apiPort) {
     !settingsText.includes("助手与工具") ||
     !settingsText.includes("保存更改") ||
     !settingsText.includes("模型服务") ||
-    !settingsText.includes("Agent 引擎")
+    !settingsText.includes("Agent 引擎") ||
+    !settingsText.includes("记忆") ||
+    !settingsText.includes("快捷键") ||
+    !settingsText.includes("关于")
   ) {
     throw new Error("Renderer smoke test failed: settings UI text was not rendered.");
   }

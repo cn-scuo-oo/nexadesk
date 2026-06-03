@@ -15,6 +15,9 @@ import {
   type ApprovalHistoryEntry,
   type AppSettings,
   type AgentProfile,
+  type AutomationJob,
+  type AutomationRun,
+  type CreateAutomationRequest,
   type ChatStreamEvent,
   type ChatMessage,
   type DesktopStatus,
@@ -35,7 +38,8 @@ import {
   type RuntimeTelemetryEntry,
   type ResolveApprovalRequest,
   type SaveSettingsRequest,
-  type SendMessageRequest
+  type SendMessageRequest,
+  type UpdateAutomationRequest
 } from "@nexadesk/shared";
 import {
   executeToolRequest,
@@ -69,6 +73,8 @@ const host = getEnv("NEXADESK_HOST", "AION_LITE_HOST") ?? "127.0.0.1";
 const port = Number(getEnv("NEXADESK_PORT", "AION_LITE_PORT") ?? 3939);
 const snapshot = createDemoSnapshot();
 let runtimeTelemetry: RuntimeTelemetryEntry[] = [];
+const runningAutomationJobs = new Set<string>();
+let automationScheduler: ReturnType<typeof setInterval> | null = null;
 const app = express();
 const pendingToolApprovals = new Map<
   string,
@@ -140,11 +146,31 @@ const runtimeTelemetryEntrySchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
-  status: z.enum(["running", "completed", "failed"])
+  status: z.enum(["running", "completed", "failed"]),
+  error: z.string().trim().max(1000).optional(),
+  messagePreview: z.string().trim().max(500).optional()
 });
 
 const runtimeTelemetrySchema = z.object({
   entries: z.array(runtimeTelemetryEntrySchema).max(100)
+});
+
+const automationScheduleKindSchema = z.enum(["manual", "once", "hourly", "daily", "weekly"]);
+
+const automationCreateSchema = z.object({
+  name: z.string().trim().min(1).max(140),
+  prompt: z.string().trim().min(1).max(4000),
+  scheduleKind: automationScheduleKindSchema,
+  enabled: z.boolean().optional(),
+  agentId: z.string().trim().optional()
+});
+
+const automationUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(140).optional(),
+  prompt: z.string().trim().min(1).max(4000).optional(),
+  scheduleKind: automationScheduleKindSchema.optional(),
+  enabled: z.boolean().optional(),
+  agentId: z.string().trim().optional()
 });
 
 app.patch("/api/sessions/:sessionId", async (req, res, next) => {
@@ -232,7 +258,13 @@ app.put("/api/runtime/telemetry", async (req, res, next) => {
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    runtimeTelemetry = parsed.data.entries.slice(0, 100);
+    const merged = new Map(runtimeTelemetry.map((entry) => [entry.id, entry]));
+    for (const entry of parsed.data.entries) {
+      merged.set(entry.id, { ...merged.get(entry.id), ...entry });
+    }
+    runtimeTelemetry = Array.from(merged.values())
+      .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())
+      .slice(0, 100);
     await persistRuntimeState();
     res.json({ entries: runtimeTelemetry });
   } catch (error) {
@@ -243,6 +275,91 @@ app.put("/api/runtime/telemetry", async (req, res, next) => {
 app.get("/api/settings", async (_req, res, next) => {
   try {
     res.json(await loadSettings(snapshot.providers));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/automations", async (req, res, next) => {
+  try {
+    const parsed = automationCreateSchema.safeParse(req.body as CreateAutomationRequest);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const job = normalizeAutomationJob({
+      id: `automation-${randomUUID().slice(0, 8)}`,
+      ...parsed.data,
+      enabled: parsed.data.enabled ?? true,
+      schedule: automationScheduleLabel(parsed.data.scheduleKind),
+      nextRun: "",
+      createdAt: now,
+      updatedAt: now
+    });
+    snapshot.automations.unshift(job);
+    const activity = publishActivity({
+      level: "info",
+      title: "Automation created",
+      detail: `${job.name} was scheduled as ${job.schedule}.`
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    res.status(201).json({ automations: snapshot.automations, automationRuns: snapshot.automationRuns, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/automations/:jobId", async (req, res, next) => {
+  try {
+    const parsed = automationUpdateSchema.safeParse(req.body as UpdateAutomationRequest);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+
+    const index = snapshot.automations.findIndex((job) => job.id === req.params.jobId);
+    if (index === -1) {
+      res.status(404).json({ error: "Automation not found" });
+      return;
+    }
+
+    const current = snapshot.automations[index];
+    if (!current) {
+      res.status(404).json({ error: "Automation not found" });
+      return;
+    }
+    const nextJob = normalizeAutomationJob({
+      ...current,
+      ...parsed.data,
+      schedule: parsed.data.scheduleKind ? automationScheduleLabel(parsed.data.scheduleKind) : current.schedule,
+      updatedAt: new Date().toISOString()
+    });
+    snapshot.automations[index] = nextJob;
+    const activity = publishActivity({
+      level: "info",
+      title: "Automation updated",
+      detail: `${nextJob.name} is now ${nextJob.enabled ? "enabled" : "disabled"}.`
+    });
+    snapshot.activity.unshift(activity);
+    await persistRuntimeState();
+    res.json({ automations: snapshot.automations, automationRuns: snapshot.automationRuns, activity });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/automations/:jobId/run", async (req, res, next) => {
+  try {
+    const job = snapshot.automations.find((item) => item.id === req.params.jobId);
+    if (!job) {
+      res.status(404).json({ error: "Automation not found" });
+      return;
+    }
+    const run = await runAutomationJob(job, "manual");
+    res.status(201).json({ automations: snapshot.automations, automationRuns: snapshot.automationRuns, run });
   } catch (error) {
     next(error);
   }
@@ -590,6 +707,27 @@ async function runModelExchange(
         }
   });
 
+  const runtimeStartedMs = Date.now();
+  let firstTokenMs: number | undefined;
+  const telemetryBase: RuntimeTelemetryEntry = {
+    id: assistantMessage.id,
+    sessionId: session.id,
+    providerName: externalEngine ? externalEngine.name : runtime?.provider.name ?? "Unknown Provider",
+    model: externalEngine ? "codex exec" : runtime?.model ?? "unknown",
+    startedAt: assistantMessage.createdAt,
+    inputTokens: estimateTokenCount(input.content),
+    outputTokens: 0,
+    totalTokens: estimateTokenCount(input.content),
+    status: "running",
+    messagePreview: input.content.slice(0, 240)
+  };
+  upsertRuntimeTelemetry(telemetryBase);
+
+  const markFirstToken = () => {
+    firstTokenMs ??= Math.max(0, Date.now() - runtimeStartedMs);
+  };
+
+  try {
   const history = buildRuntimeMessages(session.id, activeAgent, settings);
   let assistantContent = "";
 
@@ -603,7 +741,8 @@ async function runModelExchange(
           cwd: resolveExternalRuntimeCwd(settings)
         }),
         assistantMessage,
-        onEvent
+        onEvent,
+        { onText: markFirstToken }
       );
       assistantContent += result.content;
       nativeToolRequests.push(...result.toolRequests);
@@ -634,7 +773,8 @@ async function runModelExchange(
           messages: history
         }),
         assistantMessage,
-        onEvent
+        onEvent,
+        { onText: markFirstToken }
       );
       assistantContent += result.content;
       nativeToolRequests.push(...result.toolRequests);
@@ -648,7 +788,8 @@ async function runModelExchange(
         messages: history
       }),
       assistantMessage,
-      onEvent
+      onEvent,
+      { onText: markFirstToken }
     );
     assistantContent += result.content;
     nativeToolRequests.push(...result.toolRequests);
@@ -682,11 +823,39 @@ async function runModelExchange(
     title: "模型回答完成",
     detail: activityDetail
   });
+  const outputTokens = estimateTokenCount(assistantMessage.content);
+  upsertRuntimeTelemetry({
+    ...telemetryBase,
+    completedAt: assistantMessage.createdAt,
+    firstTokenMs,
+    durationMs: Math.max(0, Date.now() - runtimeStartedMs),
+    outputTokens,
+    totalTokens: telemetryBase.inputTokens + outputTokens,
+    status: "completed"
+  });
   snapshot.activity.unshift(activity);
   await persistRuntimeState();
   onEvent?.({ type: "assistant_done", message: assistantMessage, activity });
 
   return { messages: [userMessage, assistantMessage], activity };
+  } catch (error) {
+    const message = formatRuntimeError(error);
+    assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
+      tool.name === "model.stream" ? { ...tool, status: "failed", summary: `${tool.summary} · ${message}` } : tool
+    );
+    upsertRuntimeTelemetry({
+      ...telemetryBase,
+      completedAt: new Date().toISOString(),
+      firstTokenMs,
+      durationMs: Math.max(0, Date.now() - runtimeStartedMs),
+      outputTokens: estimateTokenCount(assistantMessage.content),
+      totalTokens: telemetryBase.inputTokens + estimateTokenCount(assistantMessage.content),
+      status: "failed",
+      error: message
+    });
+    await persistRuntimeState();
+    throw error;
+  }
 }
 
 async function resolveRuntime(
@@ -729,7 +898,8 @@ async function resolveRuntime(
 async function collectRuntimeEvents(
   events: AsyncIterable<RuntimeStreamEvent>,
   assistantMessage: ChatMessage,
-  onEvent?: (event: ChatStreamEvent) => void
+  onEvent?: (event: ChatStreamEvent) => void,
+  options: { onText?: (delta: string) => void } = {}
 ) {
   let content = "";
   const toolRequests: AgentToolRequest[] = [];
@@ -737,6 +907,7 @@ async function collectRuntimeEvents(
   for await (const event of events) {
     if (event.type === "text") {
       content += event.delta;
+      options.onText?.(event.delta);
       onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
     } else {
       toolRequests.push(event.request);
@@ -770,6 +941,21 @@ function formatExternalFallbackNotice(
 function formatRuntimeError(error: unknown) {
   const message = error instanceof Error ? error.message : "未知错误";
   return message.length > 240 ? `${message.slice(0, 240)}...` : message;
+}
+
+function estimateTokenCount(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const cjk = trimmed.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const words = trimmed.replace(/[\u3400-\u9fff]/g, " ").split(/\s+/).filter(Boolean).length;
+  const otherChars = Math.max(0, trimmed.length - cjk);
+  return Math.max(1, Math.ceil(cjk * 0.75 + words * 1.3 + otherChars / 5));
+}
+
+function upsertRuntimeTelemetry(entry: RuntimeTelemetryEntry) {
+  runtimeTelemetry = [entry, ...runtimeTelemetry.filter((item) => item.id !== entry.id)].slice(0, 100);
 }
 
 function updateModelStreamSummary(assistantMessage: ChatMessage, summary: string) {
@@ -843,6 +1029,169 @@ function syncSessionAgents() {
     }
   }
   sortSessions();
+}
+
+function normalizeAutomationJob(job: Partial<AutomationJob> & Pick<AutomationJob, "id" | "name">): AutomationJob {
+  const now = new Date();
+  const scheduleKind = job.scheduleKind ?? inferAutomationScheduleKind(job.schedule);
+  const enabled = Boolean(job.enabled);
+  const nextRunTime = job.nextRun ? new Date(job.nextRun).getTime() : Number.NaN;
+  const hasValidFutureRun = Number.isFinite(nextRunTime) && nextRunTime > now.getTime();
+  return {
+    id: job.id,
+    name: job.name,
+    schedule: job.schedule ?? automationScheduleLabel(scheduleKind),
+    enabled,
+    nextRun: enabled && scheduleKind !== "manual" ? (hasValidFutureRun ? job.nextRun ?? "" : computeNextAutomationRun(scheduleKind, now)) : "Not scheduled",
+    prompt: job.prompt ?? `执行自动化任务：${job.name}。请总结目标、检查当前上下文并给出结果。`,
+    agentId: job.agentId,
+    scheduleKind,
+    createdAt: job.createdAt ?? now.toISOString(),
+    updatedAt: job.updatedAt ?? now.toISOString(),
+    lastRunAt: job.lastRunAt,
+    lastStatus: job.lastStatus,
+    failureReason: job.failureReason
+  };
+}
+
+function inferAutomationScheduleKind(schedule?: string): AutomationJob["scheduleKind"] {
+  const text = (schedule ?? "").toLowerCase();
+  if (text.includes("week")) {
+    return "weekly";
+  }
+  if (text.includes("hour")) {
+    return "hourly";
+  }
+  if (text.includes("once")) {
+    return "once";
+  }
+  if (text.includes("manual")) {
+    return "manual";
+  }
+  return "daily";
+}
+
+function automationScheduleLabel(kind: AutomationJob["scheduleKind"]) {
+  const labels: Record<AutomationJob["scheduleKind"], string> = {
+    manual: "Manual only",
+    once: "Run once in 1 minute",
+    hourly: "Every hour",
+    daily: "Every day",
+    weekly: "Every week"
+  };
+  return labels[kind];
+}
+
+function computeNextAutomationRun(kind: AutomationJob["scheduleKind"], from = new Date()) {
+  const offsetMs: Record<AutomationJob["scheduleKind"], number> = {
+    manual: 0,
+    once: 60 * 1000,
+    hourly: 60 * 60 * 1000,
+    daily: 24 * 60 * 60 * 1000,
+    weekly: 7 * 24 * 60 * 60 * 1000
+  };
+  if (kind === "manual") {
+    return "Not scheduled";
+  }
+  return new Date(from.getTime() + offsetMs[kind]).toISOString();
+}
+
+function startAutomationScheduler() {
+  if (automationScheduler) {
+    return;
+  }
+  automationScheduler = setInterval(() => {
+    void runDueAutomations();
+  }, 15_000);
+  void runDueAutomations();
+}
+
+async function runDueAutomations() {
+  const now = Date.now();
+  for (const job of snapshot.automations) {
+    const dueAt = new Date(job.nextRun).getTime();
+    if (
+      job.enabled &&
+      job.scheduleKind !== "manual" &&
+      Number.isFinite(dueAt) &&
+      dueAt <= now &&
+      !runningAutomationJobs.has(job.id)
+    ) {
+      await runAutomationJob(job, "schedule");
+    }
+  }
+}
+
+async function runAutomationJob(job: AutomationJob, trigger: "manual" | "schedule"): Promise<AutomationRun> {
+  if (runningAutomationJobs.has(job.id)) {
+    throw new ProviderRuntimeError(`Automation ${job.name} is already running.`);
+  }
+
+  runningAutomationJobs.add(job.id);
+  const startedAt = new Date();
+  const run: AutomationRun = {
+    id: `run-${randomUUID().slice(0, 8)}`,
+    jobId: job.id,
+    jobName: job.name,
+    agentId: job.agentId,
+    status: "running",
+    startedAt: startedAt.toISOString()
+  };
+  snapshot.automationRuns.unshift(run);
+  snapshot.automationRuns = snapshot.automationRuns.slice(0, 100);
+
+  const activity = publishActivity({
+    level: "info",
+    title: "Automation started",
+    detail: `${job.name} started by ${trigger}.`
+  });
+  snapshot.activity.unshift(activity);
+  await persistRuntimeState();
+
+  try {
+    const session = snapshot.sessions[0];
+    if (!session) {
+      throw new ProviderRuntimeError("No session is available for automation.");
+    }
+
+    const exchange = await runModelExchange(session.id, {
+      content: `【自动化任务：${job.name}】\n${job.prompt}`,
+      agentId: job.agentId
+    });
+    const assistantMessage = exchange.messages.find((message) => message.role === "assistant");
+    run.status = "completed";
+    run.resultSummary = assistantMessage?.content.slice(0, 260) || "Automation completed.";
+    job.lastStatus = "completed";
+    job.failureReason = undefined;
+  } catch (error) {
+    const reason = formatRuntimeError(error);
+    run.status = "failed";
+    run.failureReason = reason;
+    job.lastStatus = "failed";
+    job.failureReason = reason;
+    const failedActivity = publishActivity({
+      level: "error",
+      title: "Automation failed",
+      detail: `${job.name}: ${reason}`
+    });
+    snapshot.activity.unshift(failedActivity);
+  } finally {
+    const finishedAt = new Date();
+    run.finishedAt = finishedAt.toISOString();
+    run.durationMs = Math.max(0, finishedAt.getTime() - startedAt.getTime());
+    job.lastRunAt = run.finishedAt;
+    if (job.scheduleKind === "once") {
+      job.enabled = false;
+      job.nextRun = "Completed";
+    } else {
+      job.nextRun = job.enabled ? computeNextAutomationRun(job.scheduleKind, finishedAt) : "Not scheduled";
+    }
+    job.updatedAt = finishedAt.toISOString();
+    runningAutomationJobs.delete(job.id);
+    await persistRuntimeState();
+  }
+
+  return run;
 }
 
 function sortSessions() {
@@ -1143,6 +1492,8 @@ void startServer().catch((error) => {
 async function startServer() {
   const pendingApprovals = await loadRuntimeState(snapshot);
   runtimeTelemetry = await loadRuntimeTelemetry();
+  snapshot.automations = snapshot.automations.map((job) => normalizeAutomationJob(job));
+  snapshot.automationRuns = snapshot.automationRuns.slice(0, 100);
   pendingToolApprovals.clear();
   for (const pending of pendingApprovals) {
     pendingToolApprovals.set(pending.approvalId, {
@@ -1156,6 +1507,7 @@ async function startServer() {
   app.listen(port, host, () => {
     console.log(`NexaDesk API listening on http://${host}:${port}`);
   });
+  startAutomationScheduler();
 }
 
 async function testMcpServer(
