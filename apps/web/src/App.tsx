@@ -1,7 +1,9 @@
 ﻿import {
   Bot,
+  Brain,
   Check,
   CircleDot,
+  Database,
   FileText,
   Folder,
   KeyRound,
@@ -14,6 +16,7 @@
   Settings,
   ShieldCheck,
   Sparkles,
+  Tag,
   Terminal,
   Trash2,
   Users,
@@ -41,8 +44,13 @@ import {
   type McpServerToolsResult,
   type McpServerTestResult,
   type McpToolDefinition,
+  type McpToolPolicy,
+  type MemoryEntry,
+  type MemoryEntryKind,
+  type SessionSummary,
   type ModelProvider,
   type PermissionRequest,
+  type PermissionPolicy,
   type ProviderModelsResult,
   type ProviderApiMode,
   type ProviderCapability,
@@ -96,7 +104,7 @@ declare global {
 }
 
 type DataMode = "live" | "demo";
-type AppView = "new" | "thread" | "search" | "scheduled" | "runtime" | "skills" | "mcp" | "agents" | "settings";
+type AppView = "new" | "thread" | "search" | "scheduled" | "runtime" | "skills" | "mcp" | "agents" | "memory" | "settings";
 type SettingsTab =
   | "providers"
   | "model"
@@ -1671,6 +1679,14 @@ export function App() {
               </span>
               <b>{snapshot.agents.filter((agent) => agent.enabled).length}</b>
             </button>
+            <button className={activeView === "memory" ? "nav-item nav-button active" : "nav-item nav-button"} onClick={() => handleOpenView("memory")} type="button">
+              <Brain size={17} />
+              <span>
+                <strong>记忆</strong>
+                <small>项目 · 会话 · 长期</small>
+              </span>
+              <b>{(settings.memoryEntries ?? []).length}</b>
+            </button>
           </nav>
         </section>
 
@@ -1891,6 +1907,7 @@ export function App() {
             toolResults={mcpToolResults}
             testingServerId={testingMcpServerId}
             refreshingToolsServerId={refreshingMcpToolsServerId}
+            toolPolicies={settings.permissions.mcpToolPolicies ?? []}
             onCreate={() => setEditingMcpServerId("__new__")}
             onDelete={(serverId) => void handleDeleteMcpServer(serverId)}
             onEdit={(serverId) => setEditingMcpServerId(serverId)}
@@ -1898,8 +1915,38 @@ export function App() {
             onRefreshTools={(server) => void handleRefreshMcpTools(server)}
             onTest={(server) => void handleTestMcpServer(server)}
             onToggle={(serverId, enabled) => void handleToggleMcpServer(serverId, enabled)}
+            onUpdateToolPolicy={(policy) => {
+              const existing = settings.permissions.mcpToolPolicies ?? [];
+              const idx = existing.findIndex((p) => p.toolId === policy.toolId);
+              const updated = idx >= 0
+                ? existing.map((p, i) => i === idx ? policy : p)
+                : [...existing, policy];
+              void handleSaveSettings({
+                ...settings,
+                permissions: { ...settings.permissions, mcpToolPolicies: updated }
+              });
+            }}
           />
-        ) : (
+        ) : activeView === "memory" ? (
+          <MemoryHubView
+            memoryEntries={settings.memoryEntries ?? []}
+            sessionSummaries={settings.sessionSummaries ?? []}
+            memorySettings={settings.memory}
+            onOpenSettings={() => handleOpenSettings("memory")}
+            onAddEntry={(entry) => {
+              const updated = [...(settings.memoryEntries ?? []), entry];
+              void handleSaveSettings({ ...settings, memoryEntries: updated });
+            }}
+            onUpdateEntry={(entryId, patch) => {
+              const updated = (settings.memoryEntries ?? []).map((e) => e.id === entryId ? { ...e, ...patch, updatedAt: new Date().toISOString() } : e);
+              void handleSaveSettings({ ...settings, memoryEntries: updated });
+            }}
+            onDeleteEntry={(entryId) => {
+              const updated = (settings.memoryEntries ?? []).filter((e) => e.id !== entryId);
+              void handleSaveSettings({ ...settings, memoryEntries: updated });
+            }}
+          />
+        ) : activeView === "agents" ? (
           <AgentsHubView
             activeAgent={activeAgent}
             agents={snapshot.agents}
@@ -3918,19 +3965,22 @@ function McpHubView({
   toolResults,
   testingServerId,
   refreshingToolsServerId,
+  toolPolicies,
   onCreate,
   onDelete,
   onEdit,
   onOpenSettings,
   onRefreshTools,
   onTest,
-  onToggle
+  onToggle,
+  onUpdateToolPolicy
 }: {
   servers: McpServerSettings[];
   testResults: Record<string, McpServerTestResult>;
   toolResults: Record<string, McpServerToolsResult>;
   testingServerId: string | null;
   refreshingToolsServerId: string | null;
+  toolPolicies: McpToolPolicy[];
   onCreate: () => void;
   onDelete: (serverId: string) => void;
   onEdit: (serverId: string) => void;
@@ -3938,8 +3988,10 @@ function McpHubView({
   onRefreshTools: (server: McpServerSettings) => void;
   onTest: (server: McpServerSettings) => void;
   onToggle: (serverId: string, enabled: boolean) => void;
+  onUpdateToolPolicy: (policy: McpToolPolicy) => void;
 }) {
   const [selectedServerId, setSelectedServerId] = useState<string | null>(servers[0]?.id ?? null);
+  const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   useEffect(() => {
     if (!selectedServerId || !servers.some((server) => server.id === selectedServerId)) {
       setSelectedServerId(servers[0]?.id ?? null);
@@ -3954,24 +4006,91 @@ function McpHubView({
   const selectedResult = selectedServer ? testResults[selectedServer.id] : undefined;
   const selectedToolsResult = selectedServer ? toolResults[selectedServer.id] : undefined;
   const selectedTarget = selectedServer
-    ? selectedServer.transport === "http"
-      ? selectedServer.url || "未配置 URL"
-      : [selectedServer.command, ...(selectedServer.args ?? [])].filter(Boolean).join(" ") || "未配置命令"
-    : "未选择服务器";
+    ? selectedServer.transport === “http”
+      ? selectedServer.url || “未配置 URL”
+      : [selectedServer.command, ...(selectedServer.args ?? [])].filter(Boolean).join(“ “) || “未配置命令”
+    : “未选择服务器”;
+
+  const selectedTool = selectedToolId ? discoveredTools.find((t) => t.id === selectedToolId) ?? null : null;
+  const toolPolicy = selectedTool ? toolPolicies.find((p) => p.toolId === selectedTool.id) : undefined;
+  const toolPermissionValue: PermissionPolicy = toolPolicy?.permission ?? “ask”;
+
+  function renderSchema(schema: unknown, depth = 0): ReactNode {
+    if (!schema || typeof schema !== “object”) {
+      return <code className=”mcp-schema-primitive”>{String(schema ?? “无”)}</code>;
+    }
+    if (Array.isArray(schema)) {
+      return (
+        <div className=”mcp-schema-block” style={{ marginLeft: depth * 14 }}>
+          [
+          {schema.map((item, i) => (
+            <div key={i}>{renderSchema(item, depth + 1)}</div>
+          ))}
+          ]
+        </div>
+      );
+    }
+    const entries = Object.entries(schema as Record<string, unknown>);
+    if (entries.length === 0) {
+      return <code className=”mcp-schema-primitive”>{'{}'}</code>;
+    }
+    return (
+      <div className=”mcp-schema-block” style={{ marginLeft: depth * 14 }}>
+        {'{'}
+        {entries.map(([key, value]) => (
+          <div className=”mcp-schema-row” key={key}>
+            <span className=”mcp-schema-key”>”{key}”</span>
+            <span className=”mcp-schema-colon”>:</span>
+            {typeof value === “object” && value !== null ? (
+              renderSchema(value, depth + 1)
+            ) : (
+              <span className=”mcp-schema-value”>{JSON.stringify(value)}</span>
+            )}
+          </div>
+        ))}
+        {'}'}
+      </div>
+    );
+  }
+
+  function buildExample(schema: unknown): string {
+    if (!schema || typeof schema !== “object”) return “{}”;
+    const s = schema as Record<string, unknown>;
+    const example: Record<string, unknown> = {};
+    const props = s.properties as Record<string, Record<string, unknown>> | undefined;
+    if (!props) return JSON.stringify(schema, null, 2);
+    const required = new Set((s.required as string[]) ?? []);
+    for (const [key, prop] of Object.entries(props)) {
+      const type = prop.type as string;
+      const desc = (prop.description as string) ?? “”;
+      if (type === “string”) {
+        example[key] = desc.includes(“path”) ? “/example/path” : desc.includes(“url”) ? “https://example.com” : `example_${key}`;
+      } else if (type === “number” || type === “integer”) {
+        example[key] = type === “integer” ? 1 : 1.0;
+      } else if (type === “boolean”) {
+        example[key] = true;
+      } else if (type === “array”) {
+        example[key] = [];
+      } else {
+        example[key] = {};
+      }
+    }
+    return JSON.stringify(example, null, 2);
+  }
 
   return (
-    <section className="workspace module-workspace mcp-workspace">
-      <ModuleHeader eyebrow="MCP" title="MCP 工具服务器" detail="服务器详情和工具市场分开展示，刷新后可查看真实工具清单。" actionLabel="新增 MCP" onAction={onCreate} />
-      <div className="mcp-console-layout">
-        <section className="panel-block mcp-server-list-panel">
-          <div className="panel-heading compact">
+    <section className=”workspace module-workspace mcp-workspace”>
+      <ModuleHeader eyebrow=”MCP” title=”MCP 工具服务器” detail=”服务器详情和工具市场分开展示，刷新后可查看真实工具清单。” actionLabel=”新增 MCP” onAction={onCreate} />
+      <div className=”mcp-console-layout”>
+        <section className=”panel-block mcp-server-list-panel”>
+          <div className=”panel-heading compact”>
             <div>
-              <p className="eyebrow">Servers</p>
+              <p className=”eyebrow”>Servers</p>
               <h3>服务器</h3>
             </div>
             <ShieldCheck size={18} />
           </div>
-          <div className="mcp-gateway-stats">
+          <div className=”mcp-gateway-stats”>
             <span>
               启用 <b>{enabledCount}</b>
             </span>
@@ -3982,18 +4101,18 @@ function McpHubView({
               工具 <b>{discoveredToolCount}</b>
             </span>
           </div>
-          <div className="mcp-server-list">
+          <div className=”mcp-server-list”>
             {servers.map((server) => (
               <button
-                className={selectedServer?.id === server.id ? "mcp-server-row active" : "mcp-server-row"}
+                className={selectedServer?.id === server.id ? “mcp-server-row active” : “mcp-server-row”}
                 key={server.id}
-                onClick={() => setSelectedServerId(server.id)}
-                type="button"
+                onClick={() => { setSelectedServerId(server.id); setSelectedToolId(null); }}
+                type=”button”
               >
                 <Terminal size={16} />
                 <span>
                   <strong>{server.name}</strong>
-                  <small>{server.transport} · {server.enabled ? "启用" : "停用"}</small>
+                  <small>{server.transport} · {server.enabled ? “启用” : “停用”}</small>
                 </span>
                 <b>{toolResults[server.id]?.tools.length ?? 0}</b>
               </button>
@@ -4001,21 +4120,21 @@ function McpHubView({
           </div>
         </section>
 
-        <section className="panel-block mcp-server-detail-panel">
-          <div className="panel-heading compact">
+        <section className=”panel-block mcp-server-detail-panel”>
+          <div className=”panel-heading compact”>
             <div>
-              <p className="eyebrow">Server Detail</p>
-              <h3>{selectedServer?.name ?? "未选择服务器"}</h3>
+              <p className=”eyebrow”>Server Detail</p>
+              <h3>{selectedServer?.name ?? “未选择服务器”}</h3>
             </div>
-            <span className={selectedServer?.enabled ? "status ready" : "status muted-status"}>
-              {selectedServer?.enabled ? "启用" : "停用"}
+            <span className={selectedServer?.enabled ? “status ready” : “status muted-status”}>
+              {selectedServer?.enabled ? “启用” : “停用”}
             </span>
           </div>
           {selectedServer ? (
-            <div className="mcp-detail-body">
+            <div className=”mcp-detail-body”>
               <p>{selectedServer.description}</p>
-              <code className="mcp-server-target">{selectedTarget}</code>
-              <div className="mcp-detail-meta">
+              <code className=”mcp-server-target”>{selectedTarget}</code>
+              <div className=”mcp-detail-meta”>
                 <span>
                   Transport <b>{selectedServer.transport}</b>
                 </span>
@@ -4023,77 +4142,423 @@ function McpHubView({
                   Tools <b>{selectedTools.length}</b>
                 </span>
                 <span>
-                  Test <b>{selectedResult ? (selectedResult.ok ? "通过" : "失败") : "未测试"}</b>
+                  Test <b>{selectedResult ? (selectedResult.ok ? “通过” : “失败”) : “未测试”}</b>
                 </span>
               </div>
               {selectedResult ? (
-                <div className={selectedResult.ok ? "mcp-test-result ok" : "mcp-test-result failed"}>
-                  <strong>{selectedResult.ok ? "连接可用" : "连接失败"}</strong>
+                <div className={selectedResult.ok ? “mcp-test-result ok” : “mcp-test-result failed”}>
+                  <strong>{selectedResult.ok ? “连接可用” : “连接失败”}</strong>
                   <span>
                     {selectedResult.message}
-                    {typeof selectedResult.status === "number" ? ` · HTTP ${selectedResult.status}` : ""}
+                    {typeof selectedResult.status === “number” ? ` · HTTP ${selectedResult.status}` : “”}
                   </span>
                 </div>
               ) : null}
               {selectedToolsResult ? (
-                <div className={selectedToolsResult.ok ? "mcp-tools-result ok" : "mcp-tools-result failed"}>
-                  <strong>{selectedToolsResult.ok ? `已发现 ${selectedToolsResult.tools.length} 个工具` : "工具发现失败"}</strong>
+                <div className={selectedToolsResult.ok ? “mcp-tools-result ok” : “mcp-tools-result failed”}>
+                  <strong>{selectedToolsResult.ok ? `已发现 ${selectedToolsResult.tools.length} 个工具` : “工具发现失败”}</strong>
                   <span>{selectedToolsResult.message}</span>
                 </div>
               ) : null}
-              <div className="mcp-card-actions">
-                <button className="secondary-button" onClick={() => onToggle(selectedServer.id, !selectedServer.enabled)} type="button">
-                  {selectedServer.enabled ? "停用" : "启用"}
+              <div className=”mcp-card-actions”>
+                <button className=”secondary-button” onClick={() => onToggle(selectedServer.id, !selectedServer.enabled)} type=”button”>
+                  {selectedServer.enabled ? “停用” : “启用”}
                 </button>
-                <button className="secondary-button" disabled={testingServerId === selectedServer.id} onClick={() => onTest(selectedServer)} type="button">
-                  {testingServerId === selectedServer.id ? "测试中..." : "测试连接"}
+                <button className=”secondary-button” disabled={testingServerId === selectedServer.id} onClick={() => onTest(selectedServer)} type=”button”>
+                  {testingServerId === selectedServer.id ? “测试中...” : “测试连接”}
                 </button>
-                <button className="secondary-button" disabled={refreshingToolsServerId === selectedServer.id} onClick={() => onRefreshTools(selectedServer)} type="button">
-                  {refreshingToolsServerId === selectedServer.id ? "刷新中..." : "刷新工具"}
+                <button className=”secondary-button” disabled={refreshingToolsServerId === selectedServer.id} onClick={() => onRefreshTools(selectedServer)} type=”button”>
+                  {refreshingToolsServerId === selectedServer.id ? “刷新中...” : “刷新工具”}
                 </button>
-                <button className="secondary-button" onClick={() => onEdit(selectedServer.id)} type="button">
+                <button className=”secondary-button” onClick={() => onEdit(selectedServer.id)} type=”button”>
                   编辑
                 </button>
-                <button className="secondary-button danger-soft-button" onClick={() => onDelete(selectedServer.id)} type="button">
+                <button className=”secondary-button danger-soft-button” onClick={() => onDelete(selectedServer.id)} type=”button”>
                   删除
                 </button>
               </div>
-              <button className="secondary-button" onClick={onOpenSettings} type="button">
+              <button className=”secondary-button” onClick={onOpenSettings} type=”button”>
                 打开权限策略
               </button>
             </div>
           ) : (
-            <EmptyState title="未选择服务器" detail="新增或选择一个 MCP 服务器后查看详情。" />
+            <EmptyState title=”未选择服务器” detail=”新增或选择一个 MCP 服务器后查看详情。” />
           )}
         </section>
 
-        <section className="panel-block mcp-tool-market-panel">
+        <section className=”panel-block mcp-tool-market-panel”>
+          {selectedTool ? (
+            <>
+              <div className=”panel-heading compact”>
+                <div>
+                  <p className=”eyebrow”>Tool Detail</p>
+                  <h3>{selectedTool.title || selectedTool.name}</h3>
+                </div>
+                <button className=”icon-button” onClick={() => setSelectedToolId(null)} type=”button”>
+                  <X size={15} />
+                </button>
+              </div>
+              <div className=”mcp-tool-detail-body”>
+                <div className=”mcp-tool-detail-header”>
+                  <Workflow size={16} />
+                  <div>
+                    <strong>{selectedTool.name}</strong>
+                    <span>{selectedTool.serverName}</span>
+                  </div>
+                </div>
+                <p className=”mcp-tool-detail-desc”>{selectedTool.description || “该工具没有描述。”}</p>
+
+                <div className=”mcp-tool-detail-section”>
+                  <h4>输入 Schema</h4>
+                  <div className=”mcp-schema-viewer”>
+                    {selectedTool.inputSchema
+                      ? renderSchema(selectedTool.inputSchema)
+                      : <span className=”mcp-schema-empty”>该工具没有定义输入 Schema。</span>
+                    }
+                  </div>
+                </div>
+
+                <div className=”mcp-tool-detail-section”>
+                  <h4>参数示例</h4>
+                  <pre className=”mcp-example-code”>
+                    {selectedTool.inputSchema
+                      ? buildExample(selectedTool.inputSchema)
+                      : “{}”}
+                  </pre>
+                </div>
+
+                <div className=”mcp-tool-detail-section”>
+                  <h4>工具权限</h4>
+                  <div className=”mcp-tool-permission-row”>
+                    {([“allow”, “ask”, “deny”] as const).map((perm) => (
+                      <label className={`mcp-perm-radio${toolPermissionValue === perm ? “ active” : “”}`} key={perm}>
+                        <input
+                          checked={toolPermissionValue === perm}
+                          onChange={() => onUpdateToolPolicy({ toolId: selectedTool.id, serverId: selectedTool.serverId, permission: perm })}
+                          name={`mcp-tool-perm-${selectedTool.id}`}
+                          type=”radio”
+                        />
+                        <span>{perm === “allow” ? “允许” : perm === “ask” ? “询问” : “拒绝”}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className=”mcp-perm-hint”>
+                    {toolPermissionValue === “allow” && “该工具将自动执行，不再弹出审批。”}
+                    {toolPermissionValue === “ask” && “每次调用前将弹出审批确认。”}
+                    {toolPermissionValue === “deny” && “该工具将被禁止调用。”}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className=”panel-heading compact”>
+                <div>
+                  <p className=”eyebrow”>Tool Market</p>
+                  <h3>工具市场</h3>
+                </div>
+                <b className=”status ready”>{selectedTools.length}</b>
+              </div>
+              <div className=”mcp-tool-market-grid”>
+                {selectedTools.length === 0 ? (
+                  <EmptyState title=”暂无工具” detail=”点击”刷新工具”后会显示该服务器真实暴露的工具。” />
+                ) : (
+                  selectedTools.map((tool) => {
+                    const tp = toolPolicies.find((p) => p.toolId === tool.id);
+                    const permLabel = tp?.permission === “allow” ? “允许” : tp?.permission === “deny” ? “拒绝” : “询问”;
+                    const permClass = tp?.permission === “allow” ? “status ready” : tp?.permission === “deny” ? “status danger-status” : “status muted-status”;
+                    return (
+                      <article className=”mcp-tool-market-card” key={tool.id}>
+                        <div>
+                          <Workflow size={16} />
+                          <strong>{tool.title || tool.name}</strong>
+                          <span>{tool.serverName}</span>
+                        </div>
+                        <p>{tool.description || “该工具没有描述。”}</p>
+                        <div className=”mcp-card-actions”>
+                          <button className=”secondary-button” onClick={() => setSelectedToolId(tool.id)} type=”button”>
+                            查看详情
+                          </button>
+                          {tp ? <span className={permClass}>{permLabel}</span> : null}
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function MemoryHubView({
+  memoryEntries,
+  sessionSummaries,
+  memorySettings,
+  onOpenSettings,
+  onAddEntry,
+  onUpdateEntry,
+  onDeleteEntry
+}: {
+  memoryEntries: MemoryEntry[];
+  sessionSummaries: SessionSummary[];
+  memorySettings: AppSettings["memory"];
+  onOpenSettings: () => void;
+  onAddEntry: (entry: MemoryEntry) => void;
+  onUpdateEntry: (entryId: string, patch: Partial<MemoryEntry>) => void;
+  onDeleteEntry: (entryId: string) => void;
+}) {
+  const [activeSection, setActiveSection] = useState<"project" | "session" | "long_term">("project");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftContent, setDraftContent] = useState("");
+  const [draftTags, setDraftTags] = useState("");
+
+  const kindLabels: Record<MemoryEntryKind, string> = {
+    project: "项目记忆",
+    session: "会话摘要",
+    long_term: "长期记忆"
+  };
+  const kindIcons: Record<MemoryEntryKind, typeof Brain> = {
+    project: Database,
+    session: FileText,
+    long_term: Brain
+  };
+
+  const filteredEntries = memoryEntries.filter((e) => {
+    if (e.kind !== activeSection) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q) || e.tags.some((t) => t.toLowerCase().includes(q));
+  });
+
+  const filteredSummaries = activeSection === "session"
+    ? sessionSummaries.filter((s) => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.summary.toLowerCase().includes(searchQuery.toLowerCase()))
+    : [];
+
+  function handleStartEdit(entry: MemoryEntry) {
+    setEditingId(entry.id);
+    setDraftTitle(entry.title);
+    setDraftContent(entry.content);
+    setDraftTags(entry.tags.join(", "));
+  }
+
+  function handleSaveEdit() {
+    if (!editingId) return;
+    onUpdateEntry(editingId, {
+      title: draftTitle,
+      content: draftContent,
+      tags: draftTags.split(",").map((t) => t.trim()).filter(Boolean)
+    });
+    setEditingId(null);
+  }
+
+  function handleCreateEntry() {
+    const now = new Date().toISOString();
+    onAddEntry({
+      id: `mem-${Date.now()}`,
+      kind: activeSection,
+      title: draftTitle || "新记忆条目",
+      content: draftContent || "",
+      tags: draftTags.split(",").map((t) => t.trim()).filter(Boolean),
+      createdAt: now,
+      updatedAt: now,
+      source: "手动创建"
+    });
+    setDraftTitle("");
+    setDraftContent("");
+    setDraftTags("");
+  }
+
+  function formatDuration(ms?: number) {
+    if (!ms) return "—";
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins} 分钟`;
+    return `${Math.round(mins / 60)} 小时`;
+  }
+
+  const Icon = kindIcons[activeSection];
+
+  return (
+    <section className="workspace module-workspace memory-workspace">
+      <ModuleHeader
+        eyebrow="Memory"
+        title="记忆管理"
+        detail="浏览和管理项目记忆、会话摘要与长期记忆。"
+        actionLabel="记忆设置"
+        onAction={onOpenSettings}
+      />
+      <div className="memory-layout">
+        <section className="panel-block memory-sidebar-panel">
           <div className="panel-heading compact">
             <div>
-              <p className="eyebrow">Tool Market</p>
-              <h3>工具市场</h3>
+              <p className="eyebrow">Categories</p>
+              <h3>记忆分类</h3>
             </div>
-            <b className="status ready">{selectedTools.length}</b>
+            <Brain size={18} />
           </div>
-          <div className="mcp-tool-market-grid">
-            {selectedTools.length === 0 ? (
-              <EmptyState title="暂无工具" detail="点击“刷新工具”后会显示该服务器真实暴露的工具。" />
-            ) : (
-              selectedTools.map((tool) => (
-                <article className="mcp-tool-market-card" key={tool.id}>
-                  <div>
-                    <Workflow size={16} />
-                    <strong>{tool.title || tool.name}</strong>
-                    <span>{tool.serverName}</span>
-                  </div>
-                  <p>{tool.description || "该工具没有描述。"}</p>
-                  <button className="secondary-button" type="button">
-                    查看 Schema
-                  </button>
-                </article>
-              ))
-            )}
+          <div className="memory-category-list">
+            {(["project", "session", "long_term"] as const).map((kind) => {
+              const KIcon = kindIcons[kind];
+              const count = kind === "session" ? sessionSummaries.length : memoryEntries.filter((e) => e.kind === kind).length;
+              return (
+                <button
+                  className={activeSection === kind ? "memory-category-row active" : "memory-category-row"}
+                  key={kind}
+                  onClick={() => { setActiveSection(kind); setEditingId(null); }}
+                  type="button"
+                >
+                  <KIcon size={16} />
+                  <span>
+                    <strong>{kindLabels[kind]}</strong>
+                    <small>{kind === "project" ? "项目偏好、路径、技术栈" : kind === "session" ? "对话摘要与关键结论" : "长期积累的用户画像与模式"}</small>
+                  </span>
+                  <b>{count}</b>
+                </button>
+              );
+            })}
           </div>
+
+          <div className="memory-stats-card">
+            <div className="memory-stat">
+              <strong>{memorySettings.projectMemory ? "开" : "关"}</strong>
+              <span>项目记忆</span>
+            </div>
+            <div className="memory-stat">
+              <strong>{memorySettings.conversationMemory ? "开" : "关"}</strong>
+              <span>会话记忆</span>
+            </div>
+            <div className="memory-stat">
+              <strong>{memorySettings.longTermMemory ? "开" : "关"}</strong>
+              <span>长期记忆</span>
+            </div>
+            <div className="memory-stat">
+              <strong>{memorySettings.retentionDays}天</strong>
+              <span>保留期限</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel-block memory-main-panel">
+          <div className="panel-heading compact">
+            <div>
+              <p className="eyebrow">{kindLabels[activeSection]}</p>
+              <h3>{activeSection === "session" ? "会话摘要" : kindLabels[activeSection]}</h3>
+            </div>
+            <Icon size={18} />
+          </div>
+
+          <div className="memory-toolbar">
+            <label className="memory-search-label">
+              <Search size={14} />
+              <input
+                placeholder="搜索记忆..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </label>
+          </div>
+
+          {activeSection !== "session" ? (
+            <div className="memory-entry-list">
+              <div className="memory-create-row">
+                <input
+                  placeholder="标题"
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                />
+                <textarea
+                  placeholder="内容"
+                  rows={2}
+                  value={draftContent}
+                  onChange={(e) => setDraftContent(e.target.value)}
+                />
+                <input
+                  placeholder="标签（逗号分隔）"
+                  value={draftTags}
+                  onChange={(e) => setDraftTags(e.target.value)}
+                />
+                <button className="secondary-button" onClick={handleCreateEntry} type="button">
+                  添加记忆
+                </button>
+              </div>
+
+              {filteredEntries.length === 0 ? (
+                <EmptyState title="暂无记忆" detail={`还没有${kindLabels[activeSection]}条目，在上方创建一个。`} />
+              ) : (
+                filteredEntries.map((entry) => (
+                  <article className={entry.pinned ? "memory-entry-card pinned" : "memory-entry-card"} key={entry.id}>
+                    {editingId === entry.id ? (
+                      <div className="memory-edit-form">
+                        <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} />
+                        <textarea value={draftContent} onChange={(e) => setDraftContent(e.target.value)} rows={3} />
+                        <input value={draftTags} onChange={(e) => setDraftTags(e.target.value)} placeholder="标签" />
+                        <div className="mcp-card-actions">
+                          <button className="secondary-button" onClick={handleSaveEdit} type="button">保存</button>
+                          <button className="secondary-button" onClick={() => setEditingId(null)} type="button">取消</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="memory-entry-header">
+                          <strong>{entry.title}</strong>
+                          <div className="memory-entry-actions">
+                            <button className="icon-button" onClick={() => onUpdateEntry(entry.id, { pinned: !entry.pinned })} title={entry.pinned ? "取消置顶" : "置顶"} type="button">
+                              <Pin size={13} />
+                            </button>
+                            <button className="icon-button" onClick={() => handleStartEdit(entry)} title="编辑" type="button">
+                              <Pencil size={13} />
+                            </button>
+                            <button className="icon-button" onClick={() => onDeleteEntry(entry.id)} title="删除" type="button">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="memory-entry-content">{entry.content}</p>
+                        <div className="memory-entry-footer">
+                          <div className="memory-tag-row">
+                            {entry.tags.map((tag) => (
+                              <span className="memory-tag" key={tag}>
+                                <Tag size={10} />
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <small>{entry.source ?? "手动"} · {new Date(entry.updatedAt).toLocaleDateString("zh-CN")}</small>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="memory-entry-list">
+              {filteredSummaries.length === 0 ? (
+                <EmptyState title="暂无摘要" detail="会话结束后会自动生成摘要。" />
+              ) : (
+                filteredSummaries.map((summary) => (
+                  <article className="memory-entry-card" key={summary.id}>
+                    <div className="memory-entry-header">
+                      <strong>{summary.title}</strong>
+                      <small>{new Date(summary.createdAt).toLocaleDateString("zh-CN")}</small>
+                    </div>
+                    <p className="memory-entry-content">{summary.summary}</p>
+                    <div className="memory-entry-footer">
+                      <span className="memory-summary-meta">
+                        {summary.messageCount} 条消息 · {formatDuration(summary.durationMs)}
+                        {summary.agentId ? ` · ${summary.agentId}` : ""}
+                      </span>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          )}
         </section>
       </div>
     </section>
@@ -7238,619 +7703,4 @@ function WorkspaceSearchResults({
   error,
   loading,
   result,
-  onOpenFile,
-  onOpenPath,
-  onAskAgent,
-  sending
-}: {
-  error: string | null;
-  loading: boolean;
-  result: WorkspaceSearchResult | null;
-  onOpenFile: (entry: WorkspaceTreeEntry) => void;
-  onOpenPath: (path: string) => void;
-  onAskAgent: (path: string) => Promise<void>;
-  sending: boolean;
-}) {
-  return (
-    <div className="workspace-search-results">
-      <div className="workspace-search-summary">
-        <strong>搜索结果</strong>
-        <span>
-          {loading
-            ? "正在搜索..."
-            : result
-              ? `${result.matches.length} 项 · ${result.mode === "name" ? "文件名" : "内容"}`
-              : "无结果"}
-        </span>
-      </div>
-      {error ? <p className="workspace-search-error">{error}</p> : null}
-      {result && result.matches.length === 0 && !loading ? (
-        <EmptyState title="没有匹配结果" detail="换一个关键词，或切换文件名/内容搜索。" />
-      ) : null}
-      {result?.matches.map((match) => (
-        <WorkspaceSearchRow
-          key={`${match.path}-${match.line ?? "path"}`}
-          match={match}
-          onAskAgent={onAskAgent}
-          onOpenFile={onOpenFile}
-          onOpenPath={onOpenPath}
-          sending={sending}
-        />
-      ))}
-    </div>
-  );
-}
-
-function WorkspaceSearchRow({
-  match,
-  onAskAgent,
-  onOpenFile,
-  onOpenPath,
-  sending
-}: {
-  match: WorkspaceSearchMatch;
-  onAskAgent: (path: string) => Promise<void>;
-  onOpenFile: (entry: WorkspaceTreeEntry) => void;
-  onOpenPath: (path: string) => void;
-  sending: boolean;
-}) {
-  const entry: WorkspaceTreeEntry = {
-    name: match.name,
-    path: match.path,
-    kind: match.kind,
-    size: match.size,
-    modifiedAt: match.modifiedAt
-  };
-  const open = () => {
-    if (match.kind === "folder") {
-      onOpenPath(match.path);
-      return;
-    }
-    onOpenFile(entry);
-  };
-
-  return (
-    <article className="workspace-search-row">
-      <div>
-        <span>
-          {match.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
-          <strong>{match.name}</strong>
-        </span>
-        <small>{match.line ? `${match.path}:${match.line}` : match.path}</small>
-        {match.preview ? <em>{match.preview}</em> : null}
-      </div>
-      <div className="workspace-search-row-actions">
-        <button className="mini-button" onClick={open} type="button">
-          {match.kind === "folder" ? "进入" : "预览"}
-        </button>
-        {match.kind === "file" ? (
-          <button className="mini-button" disabled={sending} onClick={() => void onAskAgent(match.path)} type="button">
-            {sending ? "发送中" : "让 Agent 分析"}
-          </button>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function WorkspaceEntryRow({
-  entry,
-  onOpenFile,
-  onOpenPath
-}: {
-  entry: WorkspaceTreeEntry;
-  onOpenFile: (entry: WorkspaceTreeEntry) => void;
-  onOpenPath: (path: string) => void;
-}) {
-  const content = (
-    <>
-      <span className="workspace-entry-name">
-        {entry.kind === "folder" ? <Folder size={14} /> : <FileText size={14} />}
-        <span>{entry.name}</span>
-      </span>
-      <small>{entry.kind === "folder" ? "folder" : formatFileSize(entry.size)}</small>
-    </>
-  );
-
-  if (entry.kind === "folder") {
-    return (
-      <button className="file-row workspace-entry-button" onClick={() => onOpenPath(entry.path)} type="button">
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <button
-      className="file-row workspace-entry-button workspace-entry-file"
-      onClick={() => onOpenFile(entry)}
-      title={entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : entry.path}
-      type="button"
-    >
-      {content}
-    </button>
-  );
-}
-
-function WorkspaceFilePreviewDrawer({
-  entry,
-  error,
-  loading,
-  preview,
-  sending,
-  onAskAgent,
-  onClose
-}: {
-  entry: WorkspaceTreeEntry;
-  error: string | null;
-  loading: boolean;
-  preview: WorkspaceFilePreviewResult | null;
-  sending: boolean;
-  onAskAgent: (path: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-  const titleId = `workspace-file-${entry.path.replace(/[^a-z0-9_-]/gi, "-")}`;
-  const canAskAgent = Boolean(preview?.exists && !preview.truncated && !loading);
-
-  async function copyPreviewContent() {
-    if (!preview?.content) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(preview.content);
-      setCopyState("copied");
-      window.setTimeout(() => setCopyState("idle"), 1800);
-    } catch {
-      setCopyState("failed");
-      window.setTimeout(() => setCopyState("idle"), 2200);
-    }
-  }
-
-  return (
-    <div className="tool-result-drawer-backdrop" onClick={onClose} role="presentation">
-      <aside
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="tool-result-drawer file-preview-drawer"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <div className="tool-result-drawer-heading">
-          <div>
-            <p className="eyebrow">Workspace file</p>
-            <h3 id={titleId}>{preview?.name ?? entry.name}</h3>
-          </div>
-          <button aria-label="关闭文件预览" className="icon-button" onClick={onClose} type="button">
-            <X size={16} />
-          </button>
-        </div>
-        <dl className="tool-result-meta">
-          <div>
-            <dt>路径</dt>
-            <dd>{preview?.path ?? entry.path}</dd>
-          </div>
-          <div>
-            <dt>大小</dt>
-            <dd>{formatFileSize(preview?.size ?? entry.size)}</dd>
-          </div>
-          <div>
-            <dt>修改时间</dt>
-            <dd>{preview?.modifiedAt ? new Date(preview.modifiedAt).toLocaleString() : "未知"}</dd>
-          </div>
-        </dl>
-        {loading ? <EmptyState title="正在读取文件" detail="正在从本地 API 读取文件预览。" /> : null}
-        {!loading && error ? <p className="file-preview-error">{error}</p> : null}
-        {!loading && preview?.content ? (
-          <pre className="tool-result-drawer-body file-preview-body">{preview.content}</pre>
-        ) : null}
-        {!loading && preview?.exists && !preview.content && !error ? (
-          <EmptyState title="文件为空" detail="这个文件没有可预览的文本内容。" />
-        ) : null}
-        <div className="tool-result-drawer-actions">
-          <button className="secondary-button" disabled={!preview?.content} onClick={() => void copyPreviewContent()} type="button">
-            {copyState === "copied" ? "已复制" : copyState === "failed" ? "复制失败" : "复制内容"}
-          </button>
-          <button className="secondary-button" disabled={sending || !canAskAgent} onClick={() => void onAskAgent(entry.path)} type="button">
-            {sending ? "发送中..." : "让 Agent 读取"}
-          </button>
-          <button className="primary-button" onClick={onClose} type="button">
-            关闭
-          </button>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function parentWorkspacePath(path: string) {
-  const parts = path.split(/[\\/]+/).filter(Boolean);
-  parts.pop();
-  return parts.length ? parts.join("/") : ".";
-}
-
-function formatFileSize(size: number | undefined) {
-  if (size === undefined) {
-    return "file";
-  }
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function TaskCard({
-  task,
-  agents
-}: {
-  task: (typeof taskBoard)[number];
-  agents: AgentProfile[];
-}) {
-  const owner = agents.find((agent) => agent.id === task.ownerId);
-  return (
-    <article className="task-card">
-      <div className="task-topline">
-        <span className="status muted-status">{task.status}</span>
-        <span>{owner?.name ?? "Unassigned"}</span>
-      </div>
-      <h4>{task.title}</h4>
-      <p>{task.detail}</p>
-    </article>
-  );
-}
-
-function ApprovalCard({
-  approval,
-  agent,
-  onResolve
-}: {
-  approval: PermissionRequest;
-  agent?: AgentProfile;
-  onResolve: (approval: PermissionRequest, approved: boolean, reason?: string) => void;
-}) {
-  const [reason, setReason] = useState("");
-  const risk = approvalRiskInfo(approval.risk);
-
-  return (
-    <article className="approval-card">
-      <span className={`risk ${approval.risk}`}>{risk.label}</span>
-      <h4>{approval.action}</h4>
-      <p>
-        {agent?.name ?? "Unknown agent"} · {approval.toolName ?? "tool"}
-      </p>
-      <div className={`approval-risk-note ${approval.risk}`}>
-        <strong>{risk.title}</strong>
-        <span>{risk.description}</span>
-        <small>{risk.recommendation}</small>
-      </div>
-      <dl className="approval-meta-grid">
-        <div>
-          <dt>工具</dt>
-          <dd>{approval.toolName ?? "未知工具"}</dd>
-        </div>
-        <div>
-          <dt>请求时间</dt>
-          <dd>{new Date(approval.requestedAt).toLocaleString()}</dd>
-        </div>
-      </dl>
-      <label className="approval-reason">
-        <span>拒绝原因</span>
-        <input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="可选，拒绝时会写入历史"
-        />
-      </label>
-      <div className="approval-actions">
-        <button className="icon-button approve" onClick={() => onResolve(approval, true)} aria-label="Approve action">
-          <Check size={15} />
-        </button>
-        <button
-          className="icon-button reject"
-          onClick={() => onResolve(approval, false, reason)}
-          aria-label="Reject action"
-        >
-          <X size={15} />
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function approvalRiskInfo(risk: PermissionRequest["risk"]) {
-  const labels: Record<PermissionRequest["risk"], { label: string; title: string; description: string; recommendation: string }> = {
-    low: {
-      label: "低风险",
-      title: "只读或可回滚动作",
-      description: "通常只读取目录、文件或搜索结果，不会改动本地文件和系统状态。",
-      recommendation: "确认目标路径正确后可以放行，也可以等待 Agent 说明用途。"
-    },
-    medium: {
-      label: "中风险",
-      title: "可能影响任务上下文",
-      description: "可能访问较大范围数据、调用网络，或产生后续操作依赖。",
-      recommendation: "建议检查工具名、目标和请求来源，再决定是否批准。"
-    },
-    high: {
-      label: "高风险",
-      title: "会写入、执行或外部访问",
-      description: "可能写文件、执行命令、打开浏览器、生成图片或影响工作区状态。",
-      recommendation: "必须逐条确认，不支持批量批准；不确定时先拒绝并要求 Agent 解释。"
-    }
-  };
-  return labels[risk];
-}
-
-function ApprovalHistoryCard({ history, agent }: { history: ApprovalHistoryEntry; agent?: AgentProfile }) {
-  return (
-    <article className={`approval-card history ${history.decision}`}>
-      <span className={`risk ${history.risk}`}>{history.decision}</span>
-      <h4>{history.action}</h4>
-      <p>
-        {agent?.name ?? "Unknown agent"} · {history.toolName ?? "tool"} ·{" "}
-        {new Date(history.resolvedAt).toLocaleString()}
-      </p>
-      {history.reason ? <p className="history-reason">原因：{history.reason}</p> : null}
-      {history.decision === "rejected" && !history.reason ? <p className="history-reason">原因：未填写</p> : null}
-      {history.resultSummary ? <p className="history-result">结果：{history.resultSummary}</p> : null}
-    </article>
-  );
-}
-
-function ActivityItem({ event }: { event: ActivityEvent }) {
-  return (
-    <article className={`activity-item ${event.level}`}>
-      <span />
-      <div>
-        <strong>{event.title}</strong>
-        <p>{event.detail}</p>
-        <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
-      </div>
-    </article>
-  );
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleString();
-}
-
-function formatDuration(value?: number) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "-";
-  }
-  return value < 1000 ? `${Math.round(value)}ms` : `${(value / 1000).toFixed(1)}s`;
-}
-
-function runtimeStatusLabel(status: RuntimeTelemetryEntry["status"]) {
-  const labels: Record<RuntimeTelemetryEntry["status"], string> = {
-    running: "运行中",
-    completed: "完成",
-    failed: "失败"
-  };
-  return labels[status];
-}
-
-function automationRunStatusLabel(status: AppSnapshot["automationRuns"][number]["status"]) {
-  const labels: Record<AppSnapshot["automationRuns"][number]["status"], string> = {
-    running: "运行中",
-    completed: "完成",
-    failed: "失败"
-  };
-  return labels[status];
-}
-
-function automationScheduleKindLabel(kind: AutomationScheduleKind) {
-  const labels: Record<AutomationScheduleKind, string> = {
-    manual: "手动运行",
-    once: "仅运行一次",
-    hourly: "每小时",
-    daily: "每天",
-    weekly: "每周"
-  };
-  return labels[kind];
-}
-
-function formatRuntimeEntryTps(entry: RuntimeTelemetryEntry) {
-  const durationSeconds = Math.max(0.1, ((entry.durationMs ?? 0) - (entry.firstTokenMs ?? 0)) / 1000);
-  if (!entry.outputTokens || !Number.isFinite(durationSeconds)) {
-    return "-";
-  }
-  const value = entry.outputTokens / durationSeconds;
-  return value >= 100 ? value.toFixed(0) : value.toFixed(1);
-}
-
-function formatRelativeTime(value: string) {
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) {
-    return "未知时间";
-  }
-  const diffMs = Date.now() - timestamp;
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diffMs < minute) {
-    return "刚刚";
-  }
-  if (diffMs < hour) {
-    return `${Math.floor(diffMs / minute)}分钟前`;
-  }
-  if (diffMs < day) {
-    return `${Math.floor(diffMs / hour)}小时前`;
-  }
-  return `${Math.floor(diffMs / day)}天前`;
-}
-
-function estimateTokenCount(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return 0;
-  }
-  const cjk = trimmed.match(/[\u3400-\u9fff]/g)?.length ?? 0;
-  const words = trimmed.replace(/[\u3400-\u9fff]/g, " ").split(/\s+/).filter(Boolean).length;
-  const otherChars = Math.max(0, trimmed.length - cjk);
-  return Math.max(1, Math.ceil(cjk * 0.75 + words * 1.3 + otherChars / 5));
-}
-
-function buildRuntimeDashboardStats(
-  messages: ChatMessage[],
-  telemetry: RuntimeTelemetryEntry[],
-  activeSessionId: string | null
-): RuntimeDashboardStats {
-  const modelMessages = messages.filter((message) =>
-    message.toolCalls?.some((tool) => tool.name === "model.stream")
-  );
-  const modelTools = modelMessages.flatMap((message) => message.toolCalls?.filter((tool) => tool.name === "model.stream") ?? []);
-  const totalCalls = Math.max(modelTools.length, telemetry.length);
-  const completedCalls =
-    telemetry.length > 0
-      ? telemetry.filter((entry) => entry.status === "completed").length
-      : modelTools.filter((tool) => tool.status === "completed" || tool.status === "approved").length;
-  const failedCalls =
-    telemetry.length > 0
-      ? telemetry.filter((entry) => entry.status === "failed").length
-      : modelTools.filter((tool) => tool.status === "failed" || tool.status === "rejected").length;
-  const successBase = Math.max(1, telemetry.length || modelTools.length || totalCalls);
-  const successRateLabel = totalCalls === 0 ? "-" : `${Math.round((Math.max(0, completedCalls - failedCalls) / successBase) * 100)}%`;
-
-  const sortedMessages = [...messages].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
-  const completionDurations: number[] = [];
-  const lastUserBySession = new Map<string, ChatMessage>();
-  for (const message of sortedMessages) {
-    if (message.role === "user") {
-      lastUserBySession.set(message.sessionId, message);
-      continue;
-    }
-    if (message.role === "assistant") {
-      const userMessage = lastUserBySession.get(message.sessionId);
-      if (userMessage) {
-        const duration = new Date(message.createdAt).getTime() - new Date(userMessage.createdAt).getTime();
-        if (duration >= 0 && duration < 60 * 60 * 1000) {
-          completionDurations.push(duration);
-        }
-        lastUserBySession.delete(message.sessionId);
-      }
-    }
-  }
-
-  const completedTelemetry = telemetry.filter((entry) => entry.status === "completed" && entry.durationMs && entry.durationMs > 0);
-  const firstTokenValues = telemetry
-    .map((entry) => entry.firstTokenMs)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  const totalTokens = Math.max(
-    telemetry.reduce((sum, entry) => sum + entry.totalTokens, 0),
-    messages.reduce((sum, message) => sum + estimateTokenCount(message.content), 0)
-  );
-  const activeSessionMessages = activeSessionId ? messages.filter((message) => message.sessionId === activeSessionId) : messages;
-  const contextTokens = activeSessionMessages.reduce((sum, message) => sum + estimateTokenCount(message.content), 0);
-  const outputTpsValues = completedTelemetry
-    .map((entry) => {
-      const durationSeconds = Math.max(0.1, ((entry.durationMs ?? 0) - (entry.firstTokenMs ?? 0)) / 1000);
-      return entry.outputTokens / durationSeconds;
-    })
-    .filter((value) => Number.isFinite(value));
-  const modelTpsValues = completedTelemetry
-    .map((entry) => entry.totalTokens / Math.max(0.1, (entry.durationMs ?? 0) / 1000))
-    .filter((value) => Number.isFinite(value));
-  const trendBars = bucketRuntimeTrend([
-    ...modelMessages.map((message) => ({ createdAt: message.createdAt })),
-    ...telemetry.map((entry) => ({ createdAt: entry.startedAt }))
-  ]);
-
-  return {
-    totalCalls,
-    successRateLabel,
-    averageCompletionLabel: formatAverageMs([...completionDurations, ...completedTelemetry.map((entry) => entry.durationMs ?? 0)]),
-    averageFirstTokenLabel: formatAverageMs(firstTokenValues),
-    outputTpsLabel: formatTps(outputTpsValues),
-    modelTpsLabel: formatTps(modelTpsValues),
-    totalTokens,
-    contextTokens,
-    telemetrySourceLabel: telemetry.length > 0 ? "真实流式 telemetry + 历史消息" : "历史消息派生",
-    trendBars
-  };
-}
-
-function bucketRuntimeTrend(items: Array<{ createdAt: string }>) {
-  const bucketCount = 12;
-  const now = Date.now();
-  const windowMs = 24 * 60 * 60 * 1000;
-  const bucketMs = windowMs / bucketCount;
-  const buckets = Array.from({ length: bucketCount }, () => 0);
-  for (const item of items) {
-    const time = new Date(item.createdAt).getTime();
-    if (!Number.isFinite(time)) {
-      continue;
-    }
-    const age = now - time;
-    if (age < 0 || age > windowMs) {
-      continue;
-    }
-    const index = Math.min(bucketCount - 1, Math.max(0, bucketCount - 1 - Math.floor(age / bucketMs)));
-    buckets[index] = (buckets[index] ?? 0) + 1;
-  }
-  const max = Math.max(1, ...buckets);
-  return buckets.map((count) => (count === 0 ? 8 : Math.max(18, Math.round((count / max) * 88))));
-}
-
-function formatAverageMs(values: number[]) {
-  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
-  if (valid.length === 0) {
-    return "-";
-  }
-  const average = valid.reduce((sum, value) => sum + value, 0) / valid.length;
-  return average < 1000 ? `${Math.round(average)}ms` : `${(average / 1000).toFixed(1)}s`;
-}
-
-function formatTps(values: number[]) {
-  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
-  if (valid.length === 0) {
-    return "-";
-  }
-  const average = valid.reduce((sum, value) => sum + value, 0) / valid.length;
-  return average >= 100 ? average.toFixed(0) : average.toFixed(1);
-}
-
-function formatCompactNumber(value: number) {
-  if (!Number.isFinite(value)) {
-    return "-";
-  }
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`;
-  }
-  return String(value);
-}
-
-function Metric({ hint, label, value }: { hint?: string; label: string; value: string }) {
-  return (
-    <div className="metric">
-      <strong>{value}</strong>
-      <span>{label}</span>
-      {hint ? <small>{hint}</small> : null}
-    </div>
-  );
-}
-
-function EmptyState({ title, detail }: { title: string; detail: string }) {
-  return (
-    <div className="empty-state">
-      <strong>{title}</strong>
-      <span>{detail}</span>
-    </div>
-  );
-}
-
-function LoadingScreen() {
-  return (
-    <main className="loading-screen">
-      <Workflow size={24} />
-      <strong>Starting NexaDesk</strong>
-      <span>Loading workspace snapshot...</span>
-    </main>
-  );
-}
+  onO

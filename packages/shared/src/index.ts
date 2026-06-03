@@ -24,6 +24,38 @@ export type ProviderCapability =
 export type PermissionRisk = "low" | "medium" | "high";
 export type ApprovalDecision = "approved" | "rejected" | "failed";
 
+export type McpToolPolicy = {
+  toolId: string;
+  serverId: string;
+  permission: PermissionPolicy;
+  note?: string;
+};
+
+export type MemoryEntryKind = "project" | "session" | "long_term";
+
+export interface MemoryEntry {
+  id: string;
+  kind: MemoryEntryKind;
+  title: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  source?: string;
+  pinned?: boolean;
+}
+
+export interface SessionSummary {
+  id: string;
+  sessionId: string;
+  title: string;
+  summary: string;
+  agentId?: string;
+  createdAt: string;
+  durationMs?: number;
+  messageCount: number;
+}
+
 export type AgentToolName =
   | "list_dir"
   | "read_file"
@@ -136,6 +168,7 @@ export interface PermissionSettings {
   mcp: PermissionPolicy;
   automation: PermissionPolicy;
   autoApproveLowRisk: boolean;
+  mcpToolPolicies: McpToolPolicy[];
 }
 
 export type McpServerTransport = "stdio" | "http";
@@ -246,6 +279,8 @@ export interface AppSettings {
   permissions: PermissionSettings;
   mcp: McpSettings;
   memory: MemorySettings;
+  memoryEntries: MemoryEntry[];
+  sessionSummaries: SessionSummary[];
   shortcuts: ShortcutSettings;
   about: AboutSettings;
   app: DesktopAppSettings;
@@ -1123,7 +1158,8 @@ export function createDefaultSettings(
       browser: "ask",
       mcp: "ask",
       automation: "deny",
-      autoApproveLowRisk: false
+      autoApproveLowRisk: false,
+      mcpToolPolicies: []
     },
     mcp: {
       servers: createDefaultMcpServers()
@@ -1135,6 +1171,51 @@ export function createDefaultSettings(
       retentionDays: 30,
       notes: "保留项目偏好、常用路径和最近任务摘要；高敏感信息不要写入长期记忆。"
     },
+    memoryEntries: [
+      {
+        id: "mem-demo-1",
+        kind: "project",
+        title: "项目偏好：中文界面和正式输出",
+        content: "用户偏好中文界面，文档和报告使用正式中文。代码注释也倾向中文。",
+        tags: ["偏好", "语言"],
+        createdAt: now,
+        updatedAt: now,
+        source: "自动提取",
+        pinned: true
+      },
+      {
+        id: "mem-demo-2",
+        kind: "project",
+        title: "常用工作区路径",
+        content: "默认工作区：C:/Projects/demo-workspace，导出目录：C:/Projects/demo-workspace/exports。",
+        tags: ["路径", "工作区"],
+        createdAt: now,
+        updatedAt: now,
+        source: "设置"
+      },
+      {
+        id: "mem-demo-3",
+        kind: "long_term",
+        title: "技术栈偏好",
+        content: "前端使用 React + TypeScript，样式用纯 CSS。Electron 桌面端，Express 后端。Monorepo 结构用 npm workspaces。",
+        tags: ["技术栈", "架构"],
+        createdAt: now,
+        updatedAt: now,
+        source: "会话总结"
+      }
+    ],
+    sessionSummaries: [
+      {
+        id: "summary-demo-1",
+        sessionId: "session-1",
+        title: "NexaDesk 多智能体工作台设计",
+        summary: "讨论了多智能体工作台架构：模型中心、助手系统、技能市场、权限审批网关。确定了四阶段路线图。",
+        agentId: "cowork",
+        createdAt: now,
+        durationMs: 1800000,
+        messageCount: 4
+      }
+    ],
     shortcuts: {
       sendMessage: "Ctrl+Enter",
       commandPalette: "Ctrl+K",
@@ -1205,80 +1286,4 @@ export function createDemoSnapshot(now = new Date().toISOString()): AppSnapshot 
             id: "tool-2",
             name: "read_file",
             status: "completed",
-            risk: "low",
-            summary: "读取文件：docs/roadmap.md"
-          }
-        ]
-      },
-      {
-        id: "msg-tool-1",
-        sessionId: "session-1",
-        role: "tool",
-        author: "read_file",
-        content:
-          "Phase 1 - Model Center\nPhase 2 - Cowork Agent\nPhase 3 - Assistants and Skills\nPhase 4 - Desktop Packaging",
-        createdAt: now
-      },
-      {
-        id: "msg-3",
-        sessionId: "session-1",
-        role: "assistant",
-        author: "Word 助手",
-        content:
-          "Office workflows should be represented as first-class assistants, not hidden tools: PPT, Word, Excel, and report generation can each become reusable presets.",
-        createdAt: now
-      }
-    ],
-    files: [
-      { path: "README.md", kind: "file", changed: true },
-      { path: "apps/web/src/App.tsx", kind: "file", changed: true },
-      { path: "apps/web/src/styles.css", kind: "file", changed: true },
-      { path: "apps/server/src/index.ts", kind: "file", changed: true },
-      { path: "packages/shared/src/index.ts", kind: "file", changed: true },
-      { path: "docs", kind: "folder", changed: false }
-    ],
-    approvals: [
-      {
-        id: "approval-1",
-        sessionId: "session-1",
-        agentId: "reviewer",
-        action: "Run typecheck and build in workspace",
-        risk: "medium",
-        requestedAt: now
-      },
-      {
-        id: "approval-2",
-        sessionId: "session-1",
-        agentId: "cowork",
-        action: "Allow shell command for runtime adapter probe",
-        risk: "high",
-        requestedAt: now
-      }
-    ],
-    approvalHistory: [],
-    automations: [
-      {
-        id: "daily-check",
-        name: "Daily workspace check",
-        schedule: "Every day at 09:00",
-        enabled: false,
-        nextRun: "Not scheduled",
-        prompt: "检查默认工作区的最近变化，列出风险、待办和建议。",
-        agentId: "cowork",
-        scheduleKind: "daily",
-        createdAt: now,
-        updatedAt: now
-      }
-    ],
-    automationRuns: [],
-    activity: [
-      {
-        id: "activity-1",
-        level: "info",
-        title: "Workbench started",
-        detail: "Demo data loaded and local API is ready.",
-        createdAt: now
-      }
-    ]
-  };
-}
+           

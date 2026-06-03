@@ -48,26 +48,22 @@ child.on("exit", (code) => {
   void finish(code ?? 1);
 });
 
-async function finish(code) {
-  if (finished) {
-    return;
-  }
-  finished = true;
-  clearTimeout(timeout);
-  await removeUserDataDir();
-  process.exit(code);
-}
+const healthCheckPort = apiPort;
+const healthCheckUrl = `http://127.0.0.1:${healthCheckPort}/health`;
+const pollInterval = 1_000;
+const pollTimeout = 90_000;
+const pollStart = Date.now();
 
-async function removeUserDataDir() {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+async function pollHealthCheck() {
+  while (!finished && Date.now() - pollStart < pollTimeout) {
     try {
-      await rm(userDataDir, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      if (attempt === 4) {
-        console.warn(`Desktop smoke could not remove temporary user data: ${error.message}`);
+      const res = await fetch(healthCheckUrl);
+      if (res.ok) {
+        console.log(`NexaDesk desktop smoke test passed on port ${healthCheckPort}.`);
+        child.kill();
+        void finish(0);
+        return;
       }
-    }
-  }
-}
+    } catch {
+      // server not ready yet
+  
