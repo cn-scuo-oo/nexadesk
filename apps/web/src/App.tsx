@@ -195,6 +195,83 @@ const fontOptions = [
   "Custom"
 ];
 
+/* ── Theme System ── */
+type ThemeAppearance = "light" | "dark";
+type ThemeId = "honey-warm" | "classic-dark" | "midnight" | "nord" | "emerald" | "sakura" | "rose" | "cyber" | "paper" | "mocha" | "ocean" | "dawn" | "sunset" | "daylight";
+type ThemeMode = "light" | "dark" | "system";
+interface ThemeMeta { id: ThemeId; name: string; description: string; appearance: ThemeAppearance; preview: string[] }
+const THEMES: ThemeMeta[] = [
+  { id: "honey-warm", name: "蜂蜜暖光", description: "NexaDesk 默认暖色主题", appearance: "light", preview: ["#fff4c8", "#1f6b50", "#d97800", "#2e6f55"] },
+  { id: "daylight", name: "日光清透", description: "清爽蓝调浅色主题", appearance: "light", preview: ["#f0f4f8", "#1f6b50", "#0ea5e9", "#2e6f55"] },
+  { id: "paper", name: "纸墨淡雅", description: "仿纸质感温暖浅色", appearance: "light", preview: ["#f5f0e8", "#1f6b50", "#b8860b", "#2e6f55"] },
+  { id: "sakura", name: "樱花粉白", description: "柔和粉色主题", appearance: "light", preview: ["#fdf2f8", "#ec4899", "#a855f7", "#10b981"] },
+  { id: "classic-dark", name: "经典深色", description: "纯净近黑暗色主题", appearance: "dark", preview: ["#0f1117", "#1f6b50", "#d97800", "#3daa7a"] },
+  { id: "midnight", name: "午夜深蓝", description: "深邃冷调暗色主题", appearance: "dark", preview: ["#0f172a", "#14b8a6", "#d97800", "#14b8a6"] },
+  { id: "nord", name: "Nord 极光", description: "受 Nord 配色启发", appearance: "dark", preview: ["#2e3440", "#88c0d0", "#ebcb8b", "#a3be8c"] },
+  { id: "emerald", name: "翡翠暗绿", description: "自然灵动翡翠绿", appearance: "dark", preview: ["#0a1a14", "#10b981", "#67e8f9", "#10b981"] },
+  { id: "rose", name: "暗夜玫红", description: "深邃浪漫玫红", appearance: "dark", preview: ["#1a0f14", "#f472b6", "#c084fc", "#34d399"] },
+  { id: "cyber", name: "赛博霓虹", description: "科技感霓虹暗色", appearance: "dark", preview: ["#0a0a14", "#818cf8", "#22d3ee", "#34d399"] },
+  { id: "mocha", name: "摩卡棕韵", description: "温暖棕调暗色主题", appearance: "dark", preview: ["#1a1410", "#d97800", "#c084fc", "#8fbc6a"] },
+  { id: "ocean", name: "深海蔚蓝", description: "深邃海洋蓝调", appearance: "dark", preview: ["#0a1628", "#38bdf8", "#f59e0b", "#34d399"] },
+  { id: "dawn", name: "黎明暖橙", description: "破晓暖橙暗色", appearance: "dark", preview: ["#1a1018", "#f97316", "#e879f9", "#4ade80"] },
+  { id: "sunset", name: "落日余晖", description: "夕阳暖金色调", appearance: "dark", preview: ["#1a1008", "#f59e0b", "#ef4444", "#84cc16"] },
+];
+const themeStorageKey = "nexadesk.theme.id";
+const themeModeStorageKey = "nexadesk.theme.mode";
+
+/* ── Toast ── */
+interface ToastMessage { id: string; message: string; level: "info" | "success" | "error" }
+
+/* ── Slash Commands ── */
+const SLASH_COMMANDS = [
+  { cmd: "/model", label: "切换模型", desc: "选择 Provider 和模型" },
+  { cmd: "/context", label: "工作区上下文", desc: "查看实时工作区" },
+  { cmd: "/clear", label: "清空对话", desc: "清除当前会话消息" },
+  { cmd: "/new", label: "新建任务", desc: "开始新的协作" },
+  { cmd: "/settings", label: "打开设置", desc: "进入设置面板" },
+  { cmd: "/mcp", label: "MCP 工具", desc: "查看 MCP 工具服务器" },
+  { cmd: "/agents", label: "Agent 列表", desc: "查看和管理 Agent" },
+  { cmd: "/skills", label: "技能市场", desc: "查看可用技能" },
+  { cmd: "/memory", label: "记忆管理", desc: "查看和管理记忆" },
+  { cmd: "/runtime", label: "运行监控", desc: "查看运行时指标" },
+];
+
+/* ── Quick Actions ── */
+const QUICK_ACTIONS = [
+  { id: "code-review", label: "代码审查", icon: "🔍" },
+  { id: "write-doc", label: "写文档", icon: "📄" },
+  { id: "analyze", label: "数据分析", icon: "📊" },
+  { id: "debug", label: "调试问题", icon: "🐛" },
+  { id: "refactor", label: "重构代码", icon: "♻️" },
+];
+
+/* ── i18n ── */
+type Lang = "zh" | "en";
+const I18N: Record<string, Record<Lang, string>> = {
+  "nav.newTask": { zh: "新建任务", en: "New Task" },
+  "nav.search": { zh: "搜索任务", en: "Search" },
+  "nav.scheduled": { zh: "定时任务", en: "Scheduled" },
+  "nav.runtime": { zh: "运行监控", en: "Runtime" },
+  "nav.skills": { zh: "技能", en: "Skills" },
+  "nav.mcp": { zh: "MCP", en: "MCP" },
+  "nav.agents": { zh: "我的 Agent", en: "Agents" },
+  "nav.memory": { zh: "记忆", en: "Memory" },
+  "settings.title": { zh: "设置", en: "Settings" },
+  "settings.appearance": { zh: "外观", en: "Appearance" },
+  "settings.theme": { zh: "主题", en: "Theme" },
+  "settings.darkMode": { zh: "深色模式", en: "Dark Mode" },
+  "settings.language": { zh: "语言", en: "Language" },
+  "toast.saved": { zh: "已保存", en: "Saved" },
+  "toast.error": { zh: "操作失败", en: "Operation failed" },
+  "dashboard.calls": { zh: "总调用", en: "Total Calls" },
+  "dashboard.success": { zh: "成功率", en: "Success Rate" },
+  "dashboard.tokens": { zh: "总 Tokens", en: "Total Tokens" },
+  "dashboard.cost": { zh: "预估费用", en: "Est. Cost" },
+};
+
+/* ── Agent Teams ── */
+interface AgentTeam { id: string; name: string; emoji: string; description: string; agentIds: string[]; workflow: "sequential" | "parallel" | "round_robin" }
+
 const defaultProviderIds = new Set(createDefaultProviders().map((provider) => provider.id));
 
 const domesticProviderMatrix: ProviderMatrixItem[] = [
@@ -505,6 +582,60 @@ export function App() {
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetryEntry[]>(() => readStoredRuntimeTelemetry());
   const [runtimeTelemetryLoaded, setRuntimeTelemetryLoaded] = useState(false);
   const runtimeTelemetryRuntimeRef = useRef(new Map<string, { startedMs: number; outputTokens: number }>());
+
+  /* ── Theme State ── */
+  const [themeId, setThemeId] = useState<ThemeId>(() => {
+    try { return (localStorage.getItem(themeStorageKey) as ThemeId) || "honey-warm"; } catch { return "honey-warm"; }
+  });
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    try { return (localStorage.getItem(themeModeStorageKey) as ThemeMode) || "light"; } catch { return "light"; }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    let effectiveId = themeId;
+    if (themeMode === "system") {
+      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const match = THEMES.find((t) => t.appearance === (isDark ? "dark" : "light"));
+      effectiveId = match?.id ?? themeId;
+    }
+    root.setAttribute("data-theme", effectiveId);
+    const meta = THEMES.find((t) => t.id === effectiveId);
+    if (meta?.appearance === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+    try { localStorage.setItem(themeStorageKey, themeId); } catch {}
+    try { localStorage.setItem(themeModeStorageKey, themeMode); } catch {}
+  }, [themeId, themeMode]);
+
+  /* ── Toast State ── */
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  function showToast(message: string, level: ToastMessage["level"] = "info") {
+    const id = `toast-${Date.now()}`;
+    setToasts((prev) => [...prev, { id, message, level }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }
+
+  /* ── Language State ── */
+  const [lang, setLang] = useState<Lang>("zh");
+  function t(key: string): string { return I18N[key]?.[lang] ?? key; }
+
+  /* ── Slash Command State ── */
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState("");
+  const [slashHighlight, setSlashHighlight] = useState(0);
+  const filteredSlashCommands = SLASH_COMMANDS.filter((c) => c.cmd.includes(slashFilter) || c.label.includes(slashFilter));
+
+  /* ── Image Attachments State ── */
+  const [imageAttachments, setImageAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
+
+  /* ── Teams State ── */
+  const [teams, setTeams] = useState<AgentTeam[]>([
+    { id: "team-code", name: "代码团队", emoji: "💻", description: "代码助手 + 代码审查 + 终端", agentIds: ["code", "cowork"], workflow: "sequential" },
+    { id: "team-office", name: "办公团队", emoji: "📋", description: "Word + Excel + PPT + 报告", agentIds: ["word", "excel", "ppt", "report"], workflow: "parallel" },
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2215,6 +2346,21 @@ export function App() {
           onSave={(server) => void handleSaveMcpServer(server)}
         />
       ) : null}
+
+      {toasts.map((toast) => (
+        <div className="toast-backdrop" key={toast.id} onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}>
+          <div className="toast-card" onClick={(e) => e.stopPropagation()}>
+            <div className="toast-icon">
+              {toast.level === "success" ? <Check size={16} /> : toast.level === "error" ? <X size={16} /> : <Sparkles size={16} />}
+            </div>
+            <span className="toast-message">{toast.message}</span>
+            <button className="toast-close" onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))} type="button">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      ))}
+
     </main>
   );
 }
@@ -5547,46 +5693,68 @@ function SettingsCenter({
           <div className="panel-heading compact">
             <div>
               <p className="eyebrow">界面</p>
-              <h3>外观与字体</h3>
+              <h3>外观与主题</h3>
             </div>
             <Settings size={18} />
           </div>
           <div className="settings-form">
             <div className="field-grid">
               <label className="field-label">
-                <span>主题</span>
+                <span>语言</span>
                 <select
-                  value={draft.appearance.theme}
-                  onChange={(event) =>
-                    updateDraft({
-                      appearance: { ...draft.appearance, theme: event.target.value as AppSettings["appearance"]["theme"] }
-                    })
-                  }
+                  value={lang}
+                  onChange={(event) => setLang(event.target.value as Lang)}
                 >
-                  <option value="system">跟随系统</option>
-                  <option value="light">浅色</option>
-                  <option value="dark">深色</option>
+                  <option value="zh">简体中文</option>
+                  <option value="en">English</option>
                 </select>
               </label>
               <label className="field-label">
-                <span>语言</span>
+                <span>界面密度</span>
                 <select
-                  value={draft.appearance.language}
+                  value={draft.appearance.density}
                   onChange={(event) =>
                     updateDraft({
-                      appearance: {
-                        ...draft.appearance,
-                        language: event.target.value as AppSettings["appearance"]["language"]
-                      }
+                      appearance: { ...draft.appearance, density: event.target.value as AppSettings["appearance"]["density"] }
                     })
                   }
                 >
-                  <option value="en">English</option>
-                  <option value="zh-CN">简体中文</option>
+                  <option value="comfortable">舒适</option>
+                  <option value="compact">紧凑</option>
                 </select>
               </label>
             </div>
-            <div className="field-grid">
+
+            <h4 style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-text)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "12px 0 6px" }}>主题模式</h4>
+            <div className="theme-mode-row">
+              {(["light", "dark", "system"] as const).map((m) => (
+                <button className={themeMode === m ? "theme-mode-btn active" : "theme-mode-btn"} key={m} onClick={() => setThemeMode(m)} type="button">
+                  {m === "light" ? "☀️ 浅色" : m === "dark" ? "🌙 深色" : "💻 跟随系统"}
+                </button>
+              ))}
+            </div>
+
+            <h4 style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-text)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "12px 0 6px" }}>主题配色</h4>
+            <div className="theme-gallery">
+              {THEMES.filter((t) => themeMode === "system" || t.appearance === themeMode || themeMode === themeMode).map((theme) => (
+                <button
+                  className={themeId === theme.id ? "theme-swatch active" : "theme-swatch"}
+                  key={theme.id}
+                  onClick={() => setThemeId(theme.id)}
+                  type="button"
+                  title={theme.description}
+                >
+                  <div className="theme-preview-strip">
+                    {theme.preview.map((color, i) => (
+                      <span key={i} style={{ background: color }} />
+                    ))}
+                  </div>
+                  <small>{theme.name}</small>
+                </button>
+              ))}
+            </div>
+
+            <div className="field-grid" style={{ marginTop: 12 }}>
               <label className="field-label">
                 <span>字体预设</span>
                 <select
@@ -5617,30 +5785,6 @@ function SettingsCenter({
                 />
               </label>
             </div>
-            <label className="field-label">
-              <span>自定义字体栈</span>
-              <input
-                value={draft.appearance.fontFamily}
-                onChange={(event) =>
-                  updateDraft({ appearance: { ...draft.appearance, fontFamily: event.target.value } })
-                }
-                placeholder="Inter, Microsoft YaHei, sans-serif"
-              />
-            </label>
-            <label className="field-label">
-              <span>界面密度</span>
-              <select
-                value={draft.appearance.density}
-                onChange={(event) =>
-                  updateDraft({
-                    appearance: { ...draft.appearance, density: event.target.value as AppSettings["appearance"]["density"] }
-                  })
-                }
-              >
-                <option value="comfortable">舒适</option>
-                <option value="compact">紧凑</option>
-              </select>
-            </label>
           </div>
         </section>
         ) : null}
@@ -7438,269 +7582,4 @@ function ToolResultDrawer({
             <X size={16} />
           </button>
         </div>
-        <dl className="tool-result-meta">
-          <div>
-            <dt>工具标识</dt>
-            <dd>{message.author}</dd>
-          </div>
-          <div>
-            <dt>消息时间</dt>
-            <dd>{new Date(message.createdAt).toLocaleString()}</dd>
-          </div>
-        </dl>
-        <pre className="tool-result-drawer-body">{message.content || "工具没有返回内容。"}</pre>
-        <div className="tool-result-drawer-actions">
-          <button className="secondary-button" onClick={onCopy} type="button">
-            {copyLabel}
-          </button>
-          <button className="primary-button" onClick={onClose} type="button">
-            关闭
-          </button>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function toolNameLabel(name: ToolCall["name"] | string) {
-  const labels: Record<string, string> = {
-    "model.stream": "模型流式输出",
-    list_dir: "列目录",
-    read_file: "读文件",
-    write_file: "写文件",
-    run_command: "执行命令",
-    search: "工作区搜索",
-    browser: "浏览器",
-    image_generate: "图片生成"
-  };
-  return labels[name] ?? name;
-}
-
-function toolStatusLabel(status: ToolCall["status"]) {
-  const labels: Record<ToolCall["status"], string> = {
-    queued: "待审批",
-    running: "执行中",
-    approved: "已批准",
-    rejected: "已拒绝",
-    completed: "已完成",
-    failed: "失败"
-  };
-  return labels[status];
-}
-
-function WorkspaceFilePanel({
-  configuredWorkspace,
-  currentPath,
-  error,
-  fallbackFiles,
-  loading,
-  recentFiles,
-  result,
-  onClearRecentFiles,
-  onOpenFile,
-  onOpenPath,
-  onRefresh,
-  onAskAgent,
-  sending
-}: {
-  configuredWorkspace: string;
-  currentPath: string;
-  error: string | null;
-  fallbackFiles: WorkspaceFile[];
-  loading: boolean;
-  recentFiles: WorkspaceTreeEntry[];
-  result: WorkspaceListResult | null;
-  onClearRecentFiles: () => void;
-  onOpenFile: (entry: WorkspaceTreeEntry) => void;
-  onOpenPath: (path: string) => void;
-  onRefresh: () => void;
-  onAskAgent: (path: string) => Promise<void>;
-  sending: boolean;
-}) {
-  const visiblePath = result?.path ?? currentPath;
-  const canGoUp = visiblePath !== ".";
-  const [activeView, setActiveView] = useState<WorkspaceContextView>(() => readStoredWorkspaceContextView());
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<WorkspaceSearchMode>("name");
-  const [searchResult, setSearchResult] = useState<WorkspaceSearchResult | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    writeStoredWorkspaceContextView(activeView);
-  }, [activeView]);
-
-  async function runWorkspaceSearch(event?: FormEvent) {
-    event?.preventDefault();
-    setActiveView("search");
-    const query = searchQuery.trim();
-    if (!query) {
-      setSearchResult(null);
-      setSearchError(null);
-      return;
-    }
-
-    setSearchLoading(true);
-    setSearchError(null);
-    try {
-      const nextResult = await fetchWorkspaceSearch({ query, mode: searchMode, path: visiblePath });
-      setSearchResult(nextResult);
-      setSearchError(nextResult.error ?? null);
-    } catch (reason) {
-      setSearchResult(null);
-      setSearchError(reason instanceof Error ? reason.message : "工作区搜索失败。");
-    } finally {
-      setSearchLoading(false);
-    }
-  }
-
-  return (
-    <div className="workspace-file-panel">
-      <div className="workspace-status-card">
-        <span>当前根目录</span>
-        <strong title={result?.root ?? configuredWorkspace}>{result?.root ?? (configuredWorkspace || "未设置工作区")}</strong>
-        <small>{result?.exists ? `当前：${visiblePath}` : error || "等待工作区状态..."}</small>
-      </div>
-      <div className="workspace-file-actions">
-        <button className="mini-button" onClick={onRefresh} type="button">
-          刷新
-        </button>
-        <button className="mini-button" disabled={!canGoUp} onClick={() => onOpenPath(parentWorkspacePath(visiblePath))} type="button">
-          上级
-        </button>
-      </div>
-      <div className="workspace-context-tabs" role="tablist" aria-label="工作区上下文">
-        <button
-          aria-pressed={activeView === "files"}
-          className={`workspace-context-tab${activeView === "files" ? " active" : ""}`}
-          onClick={() => setActiveView("files")}
-          type="button"
-        >
-          文件树
-        </button>
-        <button
-          aria-pressed={activeView === "search"}
-          className={`workspace-context-tab${activeView === "search" ? " active" : ""}`}
-          onClick={() => setActiveView("search")}
-          type="button"
-        >
-          搜索
-        </button>
-      </div>
-      {activeView === "search" ? (
-        <div className="workspace-context-section">
-          <form className="workspace-search-form" onSubmit={(event) => void runWorkspaceSearch(event)}>
-            <label>
-              <span>搜索工作区</span>
-              <input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="文件名或内容关键词"
-              />
-            </label>
-            <div className="workspace-search-actions">
-              <select value={searchMode} onChange={(event) => setSearchMode(event.target.value as WorkspaceSearchMode)}>
-                <option value="name">文件名</option>
-                <option value="content">内容</option>
-              </select>
-              <button className="mini-button" disabled={searchLoading || !searchQuery.trim()} type="submit">
-                <Search size={13} />
-                {searchLoading ? "搜索中" : "搜索"}
-              </button>
-            </div>
-            <p>搜索结果可预览，也可让 Agent 分析文件。</p>
-          </form>
-          {searchResult || searchError || searchLoading ? (
-            <WorkspaceSearchResults
-              error={searchError}
-              loading={searchLoading}
-              result={searchResult}
-              onOpenFile={onOpenFile}
-              onOpenPath={onOpenPath}
-              onAskAgent={onAskAgent}
-              sending={sending}
-            />
-          ) : (
-            <EmptyState title="输入关键词搜索" detail="可按文件名或文件内容查找，再预览或交给 Agent 分析。" />
-          )}
-        </div>
-      ) : (
-        <div className="workspace-context-section">
-          <WorkspaceRecentFiles files={recentFiles} onClear={onClearRecentFiles} onOpenFile={onOpenFile} />
-          <div className="file-list workspace-tree-list">
-            {loading ? <EmptyState title="正在读取工作区" detail="正在从本地 API 获取目录列表。" /> : null}
-            {!loading && result?.exists && result.entries.length === 0 ? (
-              <EmptyState title="目录为空" detail="当前工作区目录没有可显示的文件。" />
-            ) : null}
-            {!loading && result?.exists
-              ? result.entries.map((entry) => (
-                  <WorkspaceEntryRow entry={entry} key={entry.path} onOpenFile={onOpenFile} onOpenPath={onOpenPath} />
-                ))
-              : null}
-            {!loading && !result?.exists && error ? (
-              <EmptyState title="工作区不可用" detail={error} />
-            ) : null}
-            {!loading && !result && !error
-              ? fallbackFiles.map((file) => (
-                  <div className="file-row" key={file.path}>
-                    <span>{file.path}</span>
-                    {file.changed ? <b>changed</b> : null}
-                  </div>
-                ))
-              : null}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WorkspaceRecentFiles({
-  files,
-  onClear,
-  onOpenFile
-}: {
-  files: WorkspaceTreeEntry[];
-  onClear: () => void;
-  onOpenFile: (entry: WorkspaceTreeEntry) => void;
-}) {
-  return (
-    <section className="workspace-recent-files" aria-label="最近文件">
-      <div className="workspace-context-subheading">
-        <strong>最近文件</strong>
-        {files.length > 0 ? (
-          <button className="mini-button" onClick={onClear} type="button">
-            清空
-          </button>
-        ) : null}
-      </div>
-      {files.length === 0 ? (
-        <p>最近预览过的文件会显示在这里。</p>
-      ) : (
-        <div className="workspace-recent-list">
-          {files.slice(0, 4).map((file) => (
-            <button
-              className="workspace-recent-file"
-              key={file.path}
-              onClick={() => onOpenFile(file)}
-              title={file.path}
-              type="button"
-            >
-              <span>
-                <FileText size={13} />
-                <strong>{file.name}</strong>
-              </span>
-              <small>{file.path}</small>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function WorkspaceSearchResults({
-  error,
-  loading,
-  result,
-  onO
+        <dl className="tool
