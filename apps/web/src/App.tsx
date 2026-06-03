@@ -115,6 +115,8 @@ type SettingsTab =
   | "workspace"
   | "permissions"
   | "memory"
+  | "im"
+  | "email"
   | "shortcuts"
   | "about"
   | "desktop";
@@ -248,25 +250,115 @@ const QUICK_ACTIONS = [
 /* ── i18n ── */
 type Lang = "zh" | "en";
 const I18N: Record<string, Record<Lang, string>> = {
+  "app.title": { zh: "NexaDesk", en: "NexaDesk" },
+  "app.subtitle": { zh: "AI 智能体工作台", en: "AI Agentic Workspace" },
   "nav.newTask": { zh: "新建任务", en: "New Task" },
+  "nav.newTask.desc": { zh: "开始一次协作", en: "Start a session" },
   "nav.search": { zh: "搜索任务", en: "Search" },
+  "nav.search.desc": { zh: "会话与文件", en: "Sessions & files" },
   "nav.scheduled": { zh: "定时任务", en: "Scheduled" },
+  "nav.scheduled.desc": { zh: "计划与自动化", en: "Automation" },
   "nav.runtime": { zh: "运行监控", en: "Runtime" },
+  "nav.runtime.desc": { zh: "调用与成本", en: "Calls & cost" },
   "nav.skills": { zh: "技能", en: "Skills" },
+  "nav.skills.desc": { zh: "市场与启用", en: "Marketplace" },
   "nav.mcp": { zh: "MCP", en: "MCP" },
+  "nav.mcp.desc": { zh: "工具服务器", en: "Tool servers" },
   "nav.agents": { zh: "我的 Agent", en: "Agents" },
+  "nav.agents.desc": { zh: "助手与团队", en: "Assistants" },
   "nav.memory": { zh: "记忆", en: "Memory" },
+  "nav.memory.desc": { zh: "项目 · 会话 · 长期", en: "Project · Session · Long-term" },
+  "nav.history": { zh: "任务记录", en: "History" },
   "settings.title": { zh: "设置", en: "Settings" },
   "settings.appearance": { zh: "外观", en: "Appearance" },
   "settings.theme": { zh: "主题", en: "Theme" },
   "settings.darkMode": { zh: "深色模式", en: "Dark Mode" },
   "settings.language": { zh: "语言", en: "Language" },
+  "settings.providers": { zh: "模型服务", en: "Providers" },
+  "settings.model": { zh: "模型中心", en: "Model" },
+  "settings.engines": { zh: "Agent 引擎", en: "Engines" },
+  "settings.assistants": { zh: "内置助手", en: "Assistants" },
+  "settings.skills": { zh: "技能系统", en: "Skills" },
+  "settings.workspace": { zh: "工作区", en: "Workspace" },
+  "settings.permissions": { zh: "权限审批", en: "Permissions" },
+  "settings.memory": { zh: "记忆", en: "Memory" },
+  "settings.im": { zh: "IM 集成", en: "IM Integration" },
+  "settings.email": { zh: "邮件", en: "Email" },
+  "settings.shortcuts": { zh: "快捷键", en: "Shortcuts" },
+  "settings.about": { zh: "关于", en: "About" },
+  "settings.desktop": { zh: "桌面诊断", en: "Desktop" },
   "toast.saved": { zh: "已保存", en: "Saved" },
   "toast.error": { zh: "操作失败", en: "Operation failed" },
+  "toast.success": { zh: "操作成功", en: "Success" },
+  "toast.copy": { zh: "已复制到剪贴板", en: "Copied to clipboard" },
+  "dashboard.title": { zh: "AI Runtime Dashboard", en: "AI Runtime Dashboard" },
   "dashboard.calls": { zh: "总调用", en: "Total Calls" },
   "dashboard.success": { zh: "成功率", en: "Success Rate" },
   "dashboard.tokens": { zh: "总 Tokens", en: "Total Tokens" },
   "dashboard.cost": { zh: "预估费用", en: "Est. Cost" },
+  "dashboard.trend": { zh: "调用趋势", en: "Call Trend" },
+  "dashboard.ttft": { zh: "平均首字", en: "Avg TTFT" },
+  "dashboard.tps": { zh: "输出 TPS", en: "Output TPS" },
+  "mcp.servers": { zh: "MCP 工具服务器", en: "MCP Tool Servers" },
+  "mcp.installed": { zh: "已安装", en: "Installed" },
+  "mcp.marketplace": { zh: "市场", en: "Marketplace" },
+  "mcp.custom": { zh: "自定义", en: "Custom" },
+  "mcp.testConnection": { zh: "测试连接", en: "Test Connection" },
+  "mcp.refreshTools": { zh: "刷新工具", en: "Refresh Tools" },
+  "mcp.addServer": { zh: "新增 MCP", en: "Add MCP" },
+  "mcp.schema": { zh: "输入 Schema", en: "Input Schema" },
+  "mcp.example": { zh: "参数示例", en: "Parameter Example" },
+  "mcp.permission": { zh: "工具权限", en: "Tool Permission" },
+  "mcp.allow": { zh: "允许", en: "Allow" },
+  "mcp.ask": { zh: "询问", en: "Ask" },
+  "mcp.deny": { zh: "拒绝", en: "Deny" },
+  "skills.title": { zh: "技能", en: "Skills" },
+  "skills.installed": { zh: "已安装技能", en: "Installed Skills" },
+  "skills.marketplace": { zh: "技能市场", en: "Skill Marketplace" },
+  "skills.enable": { zh: "启用", en: "Enable" },
+  "skills.disable": { zh: "停用", en: "Disable" },
+  "skills.import": { zh: "导入技能包", en: "Import Skill" },
+  "agents.title": { zh: "我的 Agent", en: "My Agents" },
+  "agents.teams": { zh: "团队", en: "Teams" },
+  "agents.create": { zh: "新建 Agent", en: "New Agent" },
+  "agents.activate": { zh: "切换到工作台", en: "Switch to Workspace" },
+  "memory.title": { zh: "记忆管理", en: "Memory Management" },
+  "memory.project": { zh: "项目记忆", en: "Project Memory" },
+  "memory.session": { zh: "会话摘要", en: "Session Summaries" },
+  "memory.longTerm": { zh: "长期记忆", en: "Long-term Memory" },
+  "memory.add": { zh: "添加记忆", en: "Add Memory" },
+  "memory.search": { zh: "搜索记忆...", en: "Search memories..." },
+  "chat.send": { zh: "发送", en: "Send" },
+  "chat.placeholder": { zh: "输入消息或 / 查看命令...", en: "Type a message or / for commands..." },
+  "chat.newTask": { zh: "新建任务", en: "New Task" },
+  "common.save": { zh: "保存", en: "Save" },
+  "common.cancel": { zh: "取消", en: "Cancel" },
+  "common.delete": { zh: "删除", en: "Delete" },
+  "common.edit": { zh: "编辑", en: "Edit" },
+  "common.close": { zh: "关闭", en: "Close" },
+  "common.search": { zh: "搜索", en: "Search" },
+  "common.loading": { zh: "加载中...", en: "Loading..." },
+  "common.empty": { zh: "暂无数据", en: "No data" },
+  "common.enabled": { zh: "启用", en: "Enabled" },
+  "common.disabled": { zh: "停用", en: "Disabled" },
+  "status.online": { zh: "在线", en: "Online" },
+  "status.offline": { zh: "离线", en: "Offline" },
+  "status.running": { zh: "运行中", en: "Running" },
+  "status.idle": { zh: "空闲", en: "Idle" },
+  "status.error": { zh: "错误", en: "Error" },
+  "im.title": { zh: "即时通讯集成", en: "IM Integration" },
+  "im.desc": { zh: "连接飞书、钉钉、Telegram 等平台", en: "Connect Feishu, DingTalk, Telegram, etc." },
+  "email.title": { zh: "邮件集成", en: "Email Integration" },
+  "email.desc": { zh: "IMAP/SMTP 邮箱配置", en: "IMAP/SMTP email config" },
+  "update.available": { zh: "有新版本", en: "Update Available" },
+  "update.download": { zh: "下载更新", en: "Download" },
+  "update.later": { zh: "稍后", en: "Later" },
+  "privacy.title": { zh: "欢迎使用 NexaDesk", en: "Welcome to NexaDesk" },
+  "privacy.accept": { zh: "同意并继续", en: "Accept & Continue" },
+  "privacy.reject": { zh: "不同意", en: "Decline" },
+  "pet.greeting": { zh: "你好！", en: "Hello!" },
+  "pet.help": { zh: "需要帮忙吗？", en: "Need help?" },
+  "pet.working": { zh: "我在工作中~", en: "Working hard~" },
 };
 
 /* ── Agent Teams ── */
@@ -337,6 +429,8 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
   { id: "workspace", label: "工作区", detail: "目录、导出、访问范围" },
   { id: "permissions", label: "权限审批", detail: "工具风险策略" },
   { id: "memory", label: "记忆", detail: "项目、会话、长期记忆" },
+  { id: "im", label: "IM 集成", detail: "飞书、钉钉、Telegram" },
+  { id: "email", label: "邮件", detail: "IMAP/SMTP 配置" },
   { id: "shortcuts", label: "快捷键", detail: "键盘操作与自定义" },
   { id: "about", label: "关于", detail: "版本、许可证、仓库" },
   { id: "desktop", label: "桌面诊断", detail: "安装、日志、安全存储" }
@@ -345,6 +439,7 @@ const settingsTabs: Array<{ id: SettingsTab; label: string; detail: string }> = 
 const settingsTabGroups: Array<{ title: string; tabs: SettingsTab[] }> = [
   { title: "模型与运行", tabs: ["providers", "model", "engines"] },
   { title: "助手与工具", tabs: ["assistants", "skills", "permissions", "memory"] },
+  { title: "通讯与集成", tabs: ["im", "email"] },
   { title: "应用", tabs: ["appearance", "workspace", "shortcuts", "about", "desktop"] }
 ];
 
@@ -636,6 +731,21 @@ export function App() {
     { id: "team-code", name: "代码团队", emoji: "💻", description: "代码助手 + 代码审查 + 终端", agentIds: ["code", "cowork"], workflow: "sequential" },
     { id: "team-office", name: "办公团队", emoji: "📋", description: "Word + Excel + PPT + 报告", agentIds: ["word", "excel", "ppt", "report"], workflow: "parallel" },
   ]);
+
+  /* ── Privacy Dialog State ── */
+  const [privacyAccepted, setPrivacyAccepted] = useState(() => {
+    try { return localStorage.getItem("nexadesk.privacy.accepted") === "true"; } catch { return true; }
+  });
+
+  /* ── Activity Sidebar State ── */
+  const [activitySidebarOpen, setActivitySidebarOpen] = useState(false);
+
+  /* ── Desktop Pet State ── */
+  const [petVisible, setPetVisible] = useState(false);
+  const [petVariant, setPetVariant] = useState("nexabot");
+
+  /* ── Update Modal State ── */
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1708,10 +1818,21 @@ export function App() {
     return <LoadingScreen />;
   }
 
+  if (!privacyAccepted) {
+    return (
+      <PrivacyDialog
+        onAccept={() => { setPrivacyAccepted(true); try { localStorage.setItem("nexadesk.privacy.accepted", "true"); } catch {} }}
+        onReject={() => {}}
+      />
+    );
+  }
+
   return (
     <main
       className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}`}
     >
+      <WindowTitleBar title={`NexaDesk — ${activeAgent?.name ?? "Cowork 助手"}`} />
+
       <aside className="rail">
         <div className="brand-mark">
           <Workflow size={22} />
@@ -1942,6 +2063,7 @@ export function App() {
         </section>
 
         <div className="sidebar-user-bar">
+          <UpdateBadge onClick={() => setUpdateModalOpen(true)} />
           <button className="sidebar-user-button" onClick={() => handleOpenSettings("desktop")} type="button">
             <span className="sidebar-user-avatar">N</span>
             <span>
@@ -2361,6 +2483,18 @@ export function App() {
           </div>
         </div>
       ))}
+
+      {activitySidebarOpen && activeView === "thread" ? (
+        <ActivitySidebar activities={snapshot.activity} onClose={() => setActivitySidebarOpen(false)} />
+      ) : null}
+
+      {petVisible ? (
+        <DesktopPet variant={petVariant} mood="idle" taskTitle={activeSession?.title} onClose={() => setPetVisible(false)} />
+      ) : null}
+
+      {updateModalOpen ? (
+        <UpdateModal state="info" onClose={() => setUpdateModalOpen(false)} onDownload={() => {}} onInstall={() => {}} />
+      ) : null}
 
     </main>
   );
@@ -6105,6 +6239,14 @@ function SettingsCenter({
         </section>
         ) : null}
 
+        {activeTab === "im" ? (
+          <IMSettingsPanel onClose={() => {}} />
+        ) : null}
+
+        {activeTab === "email" ? (
+          <EmailConfigPanel onClose={() => {}} />
+        ) : null}
+
         {activeTab === "shortcuts" ? (
         <section className="panel-block settings-section">
           <div className="panel-heading compact">
@@ -7221,224 +7363,4 @@ function sanitizeImportedSettings(value: unknown, fallback: AppSettings): AppSet
     typeof model.activeProviderId === "string" && providers.some((provider) => provider.id === model.activeProviderId)
       ? model.activeProviderId
       : firstProvider.id;
-  const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? firstProvider;
-  const importedMcpServers =
-    isRecord(value.mcp) && Array.isArray(value.mcp.servers)
-      ? value.mcp.servers.map((item) => sanitizeImportedMcpServer(item)).filter((item): item is McpServerSettings => Boolean(item))
-      : fallback.mcp.servers;
-
-  return {
-    ...fallback,
-    ...(value as Partial<AppSettings>),
-    providers,
-    model: {
-      activeProviderId,
-      activeModel:
-        typeof model.activeModel === "string" && model.activeModel
-          ? model.activeModel
-          : activeProvider.defaultModel || activeProvider.models[0] || ""
-    },
-    mcp: {
-      servers: importedMcpServers.length ? importedMcpServers : fallback.mcp.servers
-    },
-    updatedAt: new Date().toISOString()
-  };
-}
-
-function sanitizeImportedMcpServer(value: unknown): McpServerSettings | null {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
-    return null;
-  }
-  const transport = value.transport === "http" ? "http" : "stdio";
-  const args = Array.isArray(value.args)
-    ? value.args.filter((arg): arg is string => typeof arg === "string" && Boolean(arg.trim()))
-    : [];
-
-  return {
-    id: value.id,
-    name: value.name.trim() || "Custom MCP",
-    description: typeof value.description === "string" && value.description.trim() ? value.description : "Custom MCP server.",
-    transport,
-    enabled: Boolean(value.enabled),
-    command: transport === "stdio" && typeof value.command === "string" ? value.command : undefined,
-    args: transport === "stdio" ? args : undefined,
-    url: transport === "http" && typeof value.url === "string" ? value.url : undefined
-  };
-}
-
-function sanitizeImportedProvider(value: unknown): ProviderSettings | null {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
-    return null;
-  }
-
-  const models = Array.isArray(value.models)
-    ? value.models.filter((model): model is string => typeof model === "string" && Boolean(model.trim()))
-    : [];
-  const apiMode = apiModeOptions.some((option) => option.value === value.apiMode)
-    ? (value.apiMode as ProviderApiMode)
-    : "chat_completions";
-  const capabilities = Array.isArray(value.capabilities)
-    ? value.capabilities.filter((capability): capability is ProviderCapability =>
-        capabilityOptions.some((option) => option.value === capability)
-      )
-    : [];
-
-  return {
-    id: value.id,
-    name: value.name,
-    kind:
-      value.kind === "local" || value.kind === "openai_compatible" || value.kind === "anthropic" || value.kind === "google"
-        ? value.kind
-        : "custom",
-    apiMode,
-    connected: Boolean(value.connected),
-    baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : undefined,
-    models: models.length ? models : ["model-name"],
-    defaultModel:
-      typeof value.defaultModel === "string" && value.defaultModel
-        ? value.defaultModel
-        : models[0] ?? "model-name",
-    apiKeyConfigured: false,
-    capabilities: capabilities.length ? capabilities : ["streaming"]
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function renderProviderNote(
-  draft: ProviderDraft,
-  savedProviderId: string | null,
-  testResult: ProviderTestResult | undefined,
-  refreshResult: ProviderModelsResult | undefined
-) {
-  if (testResult) {
-    return `${testResult.ok ? "Test passed" : "Test failed"}${formatProviderCheckSuffix(testResult)}: ${testResult.message}${
-      testResult.checkedUrl ? ` (${testResult.checkedUrl})` : ""
-    }`;
-  }
-  if (refreshResult) {
-    return `${refreshResult.ok ? "Models refreshed" : "Refresh failed"}${formatProviderCheckSuffix(refreshResult)}: ${refreshResult.message}${
-      refreshResult.checkedUrl ? ` (${refreshResult.checkedUrl})` : ""
-    }`;
-  }
-  if (savedProviderId === draft.id) {
-    return "已保存到本地设置。API Key 只记录已配置状态，不会回传给前端。";
-  }
-  return "建议先点击“测试连接”确认服务可用，也可以用“刷新模型”从 /models 自动拉取模型名。";
-}
-
-function inspectProviderMatrixItem(item: ProviderMatrixItem, draft: ProviderDraft | null) {
-  if (!draft) {
-    return {
-      status: "missing" as const,
-      label: "缺少预设",
-      issues: ["默认 Provider 不存在"]
-    };
-  }
-
-  const issues: string[] = [];
-  const models = parseModels(draft.modelsText);
-  const missingModels = item.requiredModels.filter((model) => !models.includes(model));
-  const missingCapabilities = item.requiredCapabilities.filter((capability) => !draft.capabilities[capability]);
-
-  if (normalizeProviderUrl(draft.baseUrl) !== normalizeProviderUrl(item.baseUrl)) {
-    issues.push("Base URL 不一致");
-  }
-  if (draft.apiMode !== item.apiMode) {
-    issues.push("接口类型不一致");
-  }
-  if (missingModels.length) {
-    issues.push(`缺少模型 ${missingModels.slice(0, 2).join(", ")}${missingModels.length > 2 ? "..." : ""}`);
-  }
-  if (missingCapabilities.length) {
-    issues.push(`缺少能力 ${missingCapabilities.join(", ")}`);
-  }
-
-  if (issues.length) {
-    return {
-      status: "warning" as const,
-      label: "有偏差",
-      issues
-    };
-  }
-
-  return {
-    status: "ok" as const,
-    label: "已对齐",
-    issues: []
-  };
-}
-
-function providerTestLabel(result: ProviderTestResult | undefined) {
-  if (!result) {
-    return "未测试";
-  }
-  return result.ok ? "测试通过" : "测试失败";
-}
-
-function providerTestTone(result: ProviderTestResult | undefined) {
-  if (!result) {
-    return "pending";
-  }
-  return result.ok ? "ok" : "fail";
-}
-
-function normalizeProviderUrl(url: string) {
-  return url.trim().replace(/\/+$/, "");
-}
-
-function resultToProviderStatusRecord(result: ProviderTestResult) {
-  return {
-    ok: result.ok,
-    status: result.status,
-    message: result.message,
-    checkedUrl: result.checkedUrl,
-    checkedAt: result.checkedAt ?? new Date().toISOString()
-  };
-}
-
-function resultToProviderModelsStatusRecord(result: ProviderModelsResult) {
-  return {
-    ...resultToProviderStatusRecord(result),
-    models: result.models
-  };
-}
-
-function buildProviderStatus(
-  base: ProviderStatusSettings,
-  testResults: Record<string, ProviderTestResult>,
-  refreshResults: Record<string, ProviderModelsResult>,
-  patch: {
-    test?: [string, ReturnType<typeof resultToProviderStatusRecord>];
-    modelRefresh?: [string, ReturnType<typeof resultToProviderModelsStatusRecord>];
-  } = {}
-): ProviderStatusSettings {
-  return {
-    tests: {
-      ...base.tests,
-      ...Object.fromEntries(
-        Object.entries(testResults).map(([providerId, result]) => [providerId, resultToProviderStatusRecord(result)])
-      ),
-      ...(patch.test ? { [patch.test[0]]: patch.test[1] } : {})
-    },
-    modelRefreshes: {
-      ...base.modelRefreshes,
-      ...Object.fromEntries(
-        Object.entries(refreshResults).map(([providerId, result]) => [
-          providerId,
-          resultToProviderModelsStatusRecord(result)
-        ])
-      ),
-      ...(patch.modelRefresh ? { [patch.modelRefresh[0]]: patch.modelRefresh[1] } : {})
-    }
-  };
-}
-
-function pruneProviderStatus(providerStatus: ProviderStatusSettings, providerIds: string[]) {
-  const allowed = new Set(providerIds);
-  return {
-    tests: Object.fromEntries(Object.entries(providerStatus.tests).filter(([providerId]) => allowed.has(providerId))),
-    modelRefreshes: Object.fromEntries(
-      Object.entries(providerStatus.modelRefreshes).filter(([providerId]) =>
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? fi
