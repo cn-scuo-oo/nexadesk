@@ -258,7 +258,7 @@ try {
 
   console.log(`NexaDesk settings persistence smoke test passed on port ${port}.`);
 } finally {
-  child.kill();
+  await stopApi();
   await rm(dataDir, { recursive: true, force: true });
 }
 
@@ -299,4 +299,15 @@ function assert(condition, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function stopApi() {
+  if (child.exitCode !== null) {
+    return;
+  }
+  await new Promise((resolve) => {
+    child.once("exit", resolve);
+    child.kill();
+    setTimeout(resolve, 2000).unref();
+  });
 }

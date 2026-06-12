@@ -14,9 +14,9 @@ import type {
 import type { AgentToolRequest } from "./agent-tools.js";
 import { getEnv } from "./server-utils.js";
 import {
-  getAllMessages,
   getAllSessions,
   getAllTelemetry,
+  getRecentMessages,
   initDatabase,
   insertTelemetry,
   replaceMessages,
@@ -66,7 +66,7 @@ export async function loadRuntimeState(snapshot: AppSnapshot): Promise<PendingTo
   ensureSqliteReady();
   const saved = await readRuntimeState();
   const persistedSessions = getAllSessions();
-  const persistedMessages = getAllMessages();
+  const persistedMessages = getRecentMessages();
 
   if (persistedSessions.length) {
     snapshot.sessions = persistedSessions;
