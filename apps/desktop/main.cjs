@@ -11,12 +11,14 @@ const {
 } = require("node:fs");
 const { Menu } = require("electron");
 const { ipcMain } = require("electron");
+const { spawn } = require("node:child_process");
 const { createServer } = require("node:net");
 const http = require("node:http");
 const { join } = require("node:path");
 const crypto = require("node:crypto");
 
 let mainWindow;
+let serverProcess;
 
 app.commandLine.appendSwitch("allow-file-access-from-files");
 app.setName("NexaDesk");
@@ -62,6 +64,7 @@ app.whenReady().then(async () => {
       await runSmokeTest(apiPort);
       await runRendererSmokeTest(apiPort);
       appendStartupLog(userData, "smoke passed");
+      await stopBundledServer();
       app.exit(0);
       return;
     }
@@ -69,6 +72,7 @@ app.whenReady().then(async () => {
       appendStartupLog(userData, "retention smoke mode");
       await runDesktopRetentionSmoke(apiPort, userData);
       appendStartupLog(userData, "retention smoke passed");
+      await stopBundledServer();
       app.exit(0);
       return;
     }
@@ -78,8 +82,13 @@ app.whenReady().then(async () => {
     appendStartupLog(app.getPath("userData"), "startup failed: " + message);
     writeFile(process.env.NEXADESK_CRASH_LOG_PATH || join(app.getPath("userData"), "crash.log"), message + "\n", function(){});
     dialog.showErrorBox("NexaDesk 启动失败", message);
+    await stopBundledServer();
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  void stopBundledServer();
 });
 
 app.on("window-all-closed", () => {
@@ -127,7 +136,69 @@ async function startBundledServer() {
       "目录文件: " + files.join(", ")
     );
   }
+
+  const nodeExecPath = process.env.NEXADESK_NODE_EXEC_PATH || (!app.isPackaged ? "node" : "");
+  if (nodeExecPath) {
+    await startBundledServerProcess(nodeExecPath, serverEntry);
+    return;
+  }
+
   require(serverEntry);
+}
+
+function startBundledServerProcess(nodeExecPath, serverEntry) {
+  const userData = app.getPath("userData");
+  const child = spawn(nodeExecPath, [serverEntry], {
+    cwd: app.getAppPath(),
+    env: {
+      ...process.env,
+      NEXADESK_NODE_CHILD_SERVER: "1"
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true
+  });
+
+  serverProcess = child;
+  child.stdout.on("data", (chunk) => {
+    process.stdout.write(chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+  });
+  child.on("exit", (code, signal) => {
+    appendStartupLog(userData, "server process exited code=" + code + " signal=" + signal);
+    if (serverProcess === child) {
+      serverProcess = undefined;
+    }
+  });
+
+  return new Promise((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", (error) => {
+      if (serverProcess === child) {
+        serverProcess = undefined;
+      }
+      reject(error);
+    });
+  });
+}
+
+function stopBundledServer() {
+  const child = serverProcess;
+  if (!child || child.exitCode !== null) {
+    return Promise.resolve();
+  }
+
+  serverProcess = undefined;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, 2000);
+    timeout.unref();
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    child.kill();
+  });
 }
 
 function createMainWindow(apiPort) {
@@ -751,4 +822,3 @@ function findFreePort() {
     });
   });
 }
-

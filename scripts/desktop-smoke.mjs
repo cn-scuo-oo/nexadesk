@@ -13,6 +13,7 @@ const child = spawn(electronPath, ["."], {
     ...process.env,
     NEXADESK_PORT: apiPort,
     NEXADESK_INTERNAL_TEST_RUN: "1",
+    NEXADESK_NODE_EXEC_PATH: process.execPath,
     NEXADESK_USER_DATA_DIR: userDataDir,
     NEXADESK_SMOKE_TEST: "1"
   },
@@ -61,9 +62,7 @@ async function pollHealthCheck() {
     try {
       const res = await fetch(healthCheckUrl);
       if (res.ok) {
-        console.log(`NexaDesk desktop smoke test passed on port ${healthCheckPort}.`);
-        child.kill();
-        await finish(0);
+        console.log(`NexaDesk desktop smoke health check responded on port ${healthCheckPort}.`);
         return;
       }
     } catch {
