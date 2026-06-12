@@ -333,7 +333,7 @@ const SLASH_COMMANDS = [
 ];
 
 /* ── Quick Actions ── */
-const QUICK_ACTIONS = [
+const _QUICK_ACTIONS = [
   { id: "code-review", label: "代码审查", icon: "🔍" },
   { id: "write-doc", label: "写文档", icon: "📄" },
   { id: "analyze", label: "数据分析", icon: "📊" },
@@ -697,14 +697,14 @@ export function App() {
   const runtimeTelemetryRuntimeRef = useRef(new Map<string, { startedMs: number; outputTokens: number }>());
 
   /* ── Theme State ── */
-  const [themeId, setThemeId] = useState<ThemeId>(() => {
+  const [themeId, _setThemeId] = useState<ThemeId>(() => {
     try {
       return (localStorage.getItem(themeStorageKey) as ThemeId) || "honey-warm";
     } catch {
       return "honey-warm";
     }
   });
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+  const [themeMode, _setThemeMode] = useState<ThemeMode>(() => {
     try {
       return (localStorage.getItem(themeModeStorageKey) as ThemeMode) || "light";
     } catch {
@@ -737,31 +737,31 @@ export function App() {
 
   /* ── Toast State ── */
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  function showToast(message: string, level: ToastMessage["level"] = "info") {
+  function _showToast(message: string, level: ToastMessage["level"] = "info") {
     const id = `toast-${Date.now()}`;
     setToasts((prev) => [...prev, { id, message, level }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   }
 
   /* ── Language State ── */
-  const [lang, setLang] = useState<Lang>("zh");
-  function t(key: string): string {
+  const [lang, _setLang] = useState<Lang>("zh");
+  function _t(key: string): string {
     return I18N[key]?.[lang] ?? key;
   }
 
   /* ── Slash Command State ── */
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
-  const [slashFilter, setSlashFilter] = useState("");
-  const [slashHighlight, setSlashHighlight] = useState(0);
-  const filteredSlashCommands = SLASH_COMMANDS.filter(
-    (c) => c.cmd.includes(slashFilter) || c.label.includes(slashFilter)
+  const [_slashMenuOpen, _setSlashMenuOpen] = useState(false);
+  const [_slashFilter, _setSlashFilter] = useState("");
+  const [_slashHighlight, _setSlashHighlight] = useState(0);
+  const _filteredSlashCommands = SLASH_COMMANDS.filter(
+    (c) => c.cmd.includes(_slashFilter) || c.label.includes(_slashFilter)
   );
 
   /* ── Image Attachments State ── */
-  const [imageAttachments, setImageAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
+  const [_imageAttachments, _setImageAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
 
   /* ── Teams State ── */
-  const [teams, setTeams] = useState<AgentTeam[]>([
+  const [_teams, _setTeams] = useState<AgentTeam[]>([
     {
       id: "team-code",
       name: "代码团队",
@@ -794,7 +794,7 @@ export function App() {
 
   /* ── Desktop Pet State ── */
   const [petVisible, setPetVisible] = useState(false);
-  const [petVariant, setPetVariant] = useState("nexabot");
+  const [_petVariant, _setPetVariant] = useState("nexabot");
 
   /* ── Update Modal State ── */
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -4819,7 +4819,7 @@ function McpHubView({
     const example: Record<string, unknown> = {};
     const props = s.properties as Record<string, Record<string, unknown>> | undefined;
     if (!props) return JSON.stringify(schema, null, 2);
-    const required = new Set((s.required as string[]) ?? []);
+    const _required = new Set((s.required as string[]) ?? []);
     for (const [key, prop] of Object.entries(props)) {
       const type = prop.type as string;
       const desc = (prop.description as string) ?? "";
@@ -6488,7 +6488,7 @@ function SettingsCenter({
                   <div className="field-grid">
                     <label className="field-label">
                       <span>语言</span>
-                      <select value={lang} onChange={(event) => setLang(event.target.value as Lang)}>
+                      <select value={lang} onChange={(event) => _setLang(event.target.value as Lang)}>
                         <option value="zh">简体中文</option>
                         <option value="en">English</option>
                       </select>
@@ -6529,7 +6529,7 @@ function SettingsCenter({
                       <button
                         className={themeMode === m ? "theme-mode-btn active" : "theme-mode-btn"}
                         key={m}
-                        onClick={() => setThemeMode(m)}
+                        onClick={() => _setThemeMode(m)}
                         type="button"
                       >
                         {m === "light" ? "☀️ 浅色" : m === "dark" ? "🌙 深色" : "💻 跟随系统"}
@@ -6556,7 +6556,7 @@ function SettingsCenter({
                       <button
                         className={themeId === theme.id ? "theme-swatch active" : "theme-swatch"}
                         key={theme.id}
-                        onClick={() => setThemeId(theme.id)}
+                        onClick={() => _setThemeId(theme.id)}
                         type="button"
                         title={theme.description}
                       >
@@ -7968,7 +7968,7 @@ function providerDraftToSettings(draft: ProviderDraft): ProviderSettings {
   };
 }
 
-function buildProviderStatus(test?: ProviderTestResult, models?: ProviderModelsResult): ProviderStatusRecord {
+function buildProviderStatus(test?: ProviderTestResult, _models?: ProviderModelsResult): ProviderStatusRecord {
   return {
     ok: test?.ok ?? false,
     status: test?.status,
@@ -8220,7 +8220,7 @@ function DesktopPet({
   );
 }
 
-function EngineSelectorBar({
+function _EngineSelectorBar({
   engines,
   activeEngineId,
   onSelect
@@ -8423,7 +8423,7 @@ function TaskCard({ task, agents }: TaskCardProps) {
 
 function ApprovalCard({
   approval,
-  agent,
+  agent: _agent,
   onResolve
 }: {
   approval: PermissionRequest;
