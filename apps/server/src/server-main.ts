@@ -13,7 +13,6 @@ import {
   type AgentEngineId,
   type AgentEngineSettings,
   type ActivityEvent,
-  type ApprovalHistoryEntry,
   type AppSettings,
   type AgentProfile,
   type AutomationJob,
@@ -35,14 +34,12 @@ import {
   type ProviderTestResult,
   type RecoverSettingsRequest,
   type RuntimeTelemetryEntry,
-  type ResolveApprovalRequest,
   type SaveSettingsRequest,
   type SendMessageRequest,
   type UpdateAutomationRequest,
   createDefaultSettings
 } from "@nexadesk/shared";
 import {
-  executeToolRequest,
   parseToolRequests,
   prepareToolRequest,
   summarizeToolRequest,
@@ -69,6 +66,7 @@ import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "
 import { createLocalOnlyCorsOptions } from "./cors-policy.js";
 import { registerConnectivityRoutes } from "./routes/connectivity-routes.js";
 import { registerMaintenanceRoutes } from "./routes/maintenance-routes.js";
+import { registerSessionRoutes } from "./routes/session-routes.js";
 import { registerWorkspaceRoutes } from "./routes/workspace-routes.js";
 import {
   automationScheduleLabel,
@@ -107,6 +105,15 @@ registerMaintenanceRoutes(app, {
     await saveCurrentSettings();
   },
   publishActivity
+});
+registerSessionRoutes(app, {
+  snapshot,
+  runtimeTelemetry,
+  pendingToolApprovals,
+  loadSettings,
+  persistRuntimeState,
+  publishActivity,
+  syncSessionAgents
 });
 
 // ── Additional server helpers ──
@@ -212,138 +219,6 @@ app.get("/api/skills", async (_req, res, next) => {
     const settings = await loadSettings(snapshot.providers);
     snapshot.skills = settings.assistant.skills;
     res.json(settings.assistant.skills);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get("/api/sessions", (_req, res) => {
-  res.json(snapshot.sessions);
-});
-
-app.get("/api/skills/hub", async (_req, res, next) => {
-  try {
-    const settings = await loadSettings(snapshot.providers);
-    snapshot.skills = settings.assistant.skills;
-    res.json({ listings: buildSkillHub(snapshot.skills) });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get("/api/im/channels", (_req, res) => {
-  res.json({ channels: createDefaultImChannels(snapshot.agents) });
-});
-
-app.get("/api/workspace/artifacts", (_req, res) => {
-  res.json({ artifacts: buildWorkspaceArtifacts(snapshot.messages) });
-});
-
-const sessionPatchSchema = z.object({
-  title: z.string().trim().min(1).max(140).optional(),
-  pinned: z.boolean().optional()
-});
-
-const runtimeTelemetryEntrySchema = z.object({
-  id: z.string().trim().min(1).max(120),
-  sessionId: z.string().trim().min(1).max(120),
-  providerName: z.string().trim().min(1).max(160),
-  model: z.string().trim().min(1).max(160),
-  startedAt: z.string().trim().min(1).max(80),
-  completedAt: z.string().trim().min(1).max(80).optional(),
-  firstTokenMs: z.number().finite().nonnegative().optional(),
-  durationMs: z.number().finite().nonnegative().optional(),
-  inputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  totalTokens: z.number().int().nonnegative(),
-  status: z.enum(["running", "completed", "failed"]),
-  error: z.string().trim().max(1000).optional(),
-  messagePreview: z.string().trim().max(500).optional()
-});
-
-const runtimeTelemetrySchema = z.object({
-  entries: z.array(runtimeTelemetryEntrySchema).max(100)
-});
-
-const automationScheduleKindSchema = z.enum(["manual", "once", "hourly", "daily", "weekly"]);
-
-const automationCreateSchema = z.object({
-  name: z.string().trim().min(1).max(140),
-  prompt: z.string().trim().min(1).max(4000),
-  scheduleKind: automationScheduleKindSchema,
-  enabled: z.boolean().optional(),
-  agentId: z.string().trim().optional()
-});
-
-const automationUpdateSchema = z.object({
-  name: z.string().trim().min(1).max(140).optional(),
-  prompt: z.string().trim().min(1).max(4000).optional(),
-  scheduleKind: automationScheduleKindSchema.optional(),
-  enabled: z.boolean().optional(),
-  agentId: z.string().trim().optional()
-});
-
-app.patch("/api/sessions/:sessionId", async (req, res, next) => {
-  try {
-    const parsed = sessionPatchSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
-      return;
-    }
-
-    const session = snapshot.sessions.find((item) => item.id === req.params.sessionId);
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
-      return;
-    }
-
-    if (parsed.data.title !== undefined) {
-      session.title = parsed.data.title;
-    }
-    if (parsed.data.pinned !== undefined) {
-      session.pinned = parsed.data.pinned;
-    }
-    session.updatedAt = new Date().toISOString();
-    sortSessions();
-    const activity = publishActivity({
-      level: "info",
-      title: "Session updated",
-      detail: `${session.title} was updated.`
-    });
-    snapshot.activity.unshift(activity);
-    await persistRuntimeState();
-    res.json({ sessions: snapshot.sessions, activity });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.delete("/api/sessions/:sessionId", async (req, res, next) => {
-  try {
-    const sessionIndex = snapshot.sessions.findIndex((item) => item.id === req.params.sessionId);
-    if (sessionIndex === -1) {
-      res.status(404).json({ error: "Session not found" });
-      return;
-    }
-    if (snapshot.sessions.length <= 1) {
-      res.status(400).json({ error: "At least one session must remain." });
-      return;
-    }
-
-    const [removed] = snapshot.sessions.splice(sessionIndex, 1);
-    snapshot.messages = snapshot.messages.filter((message) => message.sessionId !== req.params.sessionId);
-    snapshot.approvals = snapshot.approvals.filter((approval) => approval.sessionId !== req.params.sessionId);
-    snapshot.approvalHistory = snapshot.approvalHistory.filter(
-      (approval) => approval.sessionId !== req.params.sessionId
-    );
-    const activity = publishActivity({
-      level: "warning",
-      title: "Session deleted",
-      detail: `${removed?.title ?? "Session"} was removed.`
-    });
-    snapshot.activity.unshift(activity);
-    await persistRuntimeState();
-    res.json({ sessions: snapshot.sessions, activity });
   } catch (error) {
     next(error);
   }
@@ -651,64 +526,6 @@ app.post("/api/providers/models", async (req, res, next) => {
     res.json(result);
   } catch (error) {
     next(error);
-  }
-});
-
-const messageSchema = z.object({
-  content: z.string().trim().min(1).max(8000),
-  providerId: z.string().trim().optional(),
-  model: z.string().trim().optional(),
-  agentId: z.string().trim().optional()
-});
-
-app.post("/api/sessions/:sessionId/messages", async (req, res, next) => {
-  const parsed = messageSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-
-  const session = snapshot.sessions.find((item) => item.id === req.params.sessionId);
-  if (!session) {
-    res.status(404).json({ error: "Session not found" });
-    return;
-  }
-
-  try {
-    const exchange = await runModelExchange(session.id, parsed.data);
-    res.status(201).json(exchange);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/sessions/:sessionId/messages/stream", async (req, res, _next) => {
-  const parsed = messageSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-
-  const session = snapshot.sessions.find((item) => item.id === req.params.sessionId);
-  if (!session) {
-    res.status(404).json({ error: "Session not found" });
-    return;
-  }
-
-  res.writeHead(200, {
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "Content-Type": "text/event-stream"
-  });
-
-  try {
-    await runModelExchange(session.id, parsed.data, (event) => writeChatEvent(res, event));
-  } catch (error) {
-    const message =
-      error instanceof ProviderRuntimeError || error instanceof Error ? error.message : "模型调用失败：未知错误";
-    writeChatEvent(res, { type: "error", message });
-  } finally {
-    res.end();
   }
 });
 
@@ -1328,10 +1145,6 @@ function stripToolBlocks(content: string) {
   return content.replace(/```(?:nexadesk-tool|aion-tool)\s*[\s\S]*?```/g, "").trim();
 }
 
-function writeChatEvent(res: express.Response, event: ChatStreamEvent) {
-  res.write(`event: chat\ndata: ${JSON.stringify(event)}\n\n`);
-}
-
 function createDesktopStatus(): DesktopStatus {
   return {
     appName: "NexaDesk",
@@ -1368,134 +1181,6 @@ function pendingToolApprovalRecords(): PendingToolApprovalRecord[] {
     approvalId,
     ...pending
   }));
-}
-
-const approvalSchema = z.object({
-  approved: z.boolean(),
-  reason: z.string().trim().max(1000).optional()
-});
-
-app.post("/api/approvals/:approvalId/resolve", async (req, res, next) => {
-  const parsed = approvalSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-
-  const approvalIndex = snapshot.approvals.findIndex((item) => item.id === req.params.approvalId);
-  if (approvalIndex === -1) {
-    res.status(404).json({ error: "Approval not found" });
-    return;
-  }
-
-  const [approval] = snapshot.approvals.splice(approvalIndex, 1);
-  if (!approval) {
-    res.status(404).json({ error: "Approval not found" });
-    return;
-  }
-
-  try {
-    const pending = pendingToolApprovals.get(req.params.approvalId);
-    const messages: ChatMessage[] = [];
-    const body = parsed.data as ResolveApprovalRequest;
-    const reason = body.reason?.trim();
-
-    if (!parsed.data.approved) {
-      if (pending) {
-        updateToolCall(pending.messageId, pending.toolCallId, "rejected");
-        pendingToolApprovals.delete(req.params.approvalId);
-      }
-      const history = pushApprovalHistory(approval, "rejected", {
-        reason
-      });
-      const activity = publishActivity({
-        level: "warning",
-        title: "审批已拒绝",
-        detail: `${approval.action}${reason ? `；原因：${reason}` : "；未填写拒绝原因"}`
-      });
-      snapshot.activity.unshift(activity);
-      await persistRuntimeState();
-      res.json({ approval, history, activity, messages });
-      return;
-    }
-
-    if (!pending) {
-      const history = pushApprovalHistory(approval, "failed", {
-        reason: "审批请求的执行上下文不存在，可能来自旧版本状态或服务重启前未保存的请求。"
-      });
-      const activity = publishActivity({
-        level: "error",
-        title: "审批无法执行",
-        detail: `${approval.action}；执行上下文不存在。`
-      });
-      snapshot.activity.unshift(activity);
-      await persistRuntimeState();
-      res.json({ approval, history, activity, messages });
-      return;
-    }
-
-    if (pending) {
-      updateToolCall(pending.messageId, pending.toolCallId, "running");
-      const settings = await loadSettings(snapshot.providers);
-      const result = await executeToolRequest(pending.request, await createToolContext(settings));
-      const toolMessage = appendToolMessage(pending.sessionId, pending.request.tool, result);
-      messages.push(toolMessage);
-      updateToolCall(pending.messageId, pending.toolCallId, "completed");
-      pendingToolApprovals.delete(req.params.approvalId);
-      const history = pushApprovalHistory(approval, "approved", {
-        resultSummary: result.slice(0, 500)
-      });
-      const activity = publishActivity({
-        level: "info",
-        title: "审批已通过",
-        detail: approval.action
-      });
-      snapshot.activity.unshift(activity);
-      await persistRuntimeState();
-      res.json({ approval, history, activity, messages });
-      return;
-    }
-  } catch (error) {
-    if (approval?.messageId && approval.toolCallId) {
-      updateToolCall(approval.messageId, approval.toolCallId, "failed");
-    }
-    if (approval) {
-      pushApprovalHistory(approval, "failed", {
-        reason: error instanceof Error ? error.message : "审批执行失败。"
-      });
-      await persistRuntimeState();
-    }
-    next(error);
-  }
-});
-
-function pushApprovalHistory(
-  approval: PermissionRequest,
-  decision: ApprovalHistoryEntry["decision"],
-  options: { reason?: string; resultSummary?: string } = {}
-) {
-  const history: ApprovalHistoryEntry = {
-    ...approval,
-    decision,
-    resolvedAt: new Date().toISOString(),
-    reason: options.reason,
-    resultSummary: options.resultSummary
-  };
-  snapshot.approvalHistory.unshift(history);
-  snapshot.approvalHistory = snapshot.approvalHistory.slice(0, 100);
-  return history;
-}
-
-function updateToolCall(
-  messageId: string,
-  toolCallId: string,
-  status: NonNullable<ChatMessage["toolCalls"]>[number]["status"]
-) {
-  const message = snapshot.messages.find((item) => item.id === messageId);
-  if (!message?.toolCalls) {
-    return;
-  }
-  message.toolCalls = message.toolCalls.map((tool) => (tool.id === toolCallId ? { ...tool, status } : tool));
 }
 
 setInterval(() => {
