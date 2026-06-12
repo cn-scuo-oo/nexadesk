@@ -1,10 +1,12 @@
 # Roadmap
 
+This roadmap tracks the current private-incubation plan for NexaDesk. The goal is to keep the agent workbench stable, inspectable, and easy to test while the local runtime and desktop shell keep improving.
+
 ## Phase 1 - Model Center
 
 - Status: complete
 - Provider configuration supports base URL, API key, model names, capabilities, connection testing, and local save.
-- Workbench messages use the selected Provider and model with streaming output.
+- Workbench messages use the selected provider and model with streaming output.
 - OpenAI-compatible, Ollama, OpenAI Responses, and Anthropic-style runtime paths are represented.
 
 ## Phase 2 - Cowork Agent
@@ -20,11 +22,11 @@
 - Status: complete
 - Built-in assistants include Cowork, Code, Word, Excel, PPT, File Organizer, and Report.
 - Skills can be enabled, disabled, edited, and extended with user-created custom skills.
-- Active assistant and enabled skills influence the runtime system prompt.
+- The active assistant and enabled skills influence the runtime system prompt.
 
 ## Phase 4 - Desktop Packaging
 
-- Status: first pass complete
+- Status: complete for the first pass
 - Electron packages the web app and bundled local API into a Windows desktop app.
 - Desktop mode stores settings in Electron's user data directory.
 - Provider API keys are encrypted at rest with an Electron `safeStorage`-protected master key.
@@ -45,45 +47,44 @@
 - Settings save prunes orphaned provider secrets so deleted custom providers do not leave stale key records.
 - Settings smoke tests cover API key persistence, clearing, and deleted-provider secret pruning.
 - Corrupted settings can be recovered through a local API and UI action that backs up the broken file before rebuilding defaults.
-- Desktop diagnostics can be copied from Settings without exposing Provider API keys.
+- Desktop diagnostics can be copied from Settings without exposing provider API keys.
 - User-facing mojibake in the workbench, tool execution, and model runtime errors has been cleaned up.
 - Sessions, chat messages, activity, and automation state are saved to a local runtime state file and restored after server restart.
 - Runtime state persistence is covered by a smoke test with a fake streaming model provider.
 - Desktop mode exposes a safe native directory picker for default workspace, export directory, and allowed workspace roots.
-- Settings pages now use collapsible sections for long Provider, assistant, and skill configuration surfaces.
+- Settings pages now use collapsible sections for long provider, assistant, and skill configuration surfaces.
 - Approval history records approved, rejected, and failed tool decisions with optional rejection reasons and restart persistence.
-- Domestic Provider defaults are documented in a verification matrix and checked by `npm run provider:matrix`.
-- The Model Center surfaces the domestic Provider matrix with default-alignment and latest connection-test status.
-- The Model Center can refresh model names from a Provider's `/models` endpoint and stage them for review before saving.
+- Domestic provider defaults are documented in a verification matrix and checked by `npm run provider:matrix`.
+- The Model Center surfaces the domestic provider matrix with default-alignment and latest connection-test status.
+- The Model Center can refresh model names from a provider's `/models` endpoint and stage them for review before saving.
 - Provider connection-test and model-refresh results are persisted in local settings and restored after restart.
-- The Model Center layout is tightened into a two-pane desktop workbench with Provider overview cards, side selection, and focused editing.
-- Desktop data retention is covered by a smoke test that simulates reinstall/upgrade by launching Electron twice against the same user data directory.
+- The Model Center layout is tightened into a two-pane desktop workbench with provider overview cards, side selection, and focused editing.
+- Desktop data retention is covered by a smoke test that simulates reinstall or upgrade by launching Electron twice against the same user data directory.
 - Workbench tool calls render as readable status cards, and completed low-risk tool results stream into chat as dedicated tool messages.
 - Tool result messages can be copied or opened in a full-height detail drawer, with desktop smoke coverage for the controls.
-- The approval queue explains action risk and supports batch rejection plus low/medium-risk batch approval while keeping high-risk approvals manual.
+- The approval queue explains action risk and supports batch rejection plus low- and medium-risk batch approval while keeping high-risk approvals manual.
 - The workbench shows the configured workspace root and a real read-only file tree backed by the local API.
-- Workspace files can be opened in a preview drawer and sent to the active Agent as a read-file task.
+- Workspace files can be opened in a preview drawer and sent to the active agent as a read-file task.
 - Packaged desktop startup ignores stray smoke-test environment flags, and desktop smoke tests run against isolated user data.
 - The workbench can search workspace files by name or content and open matching files from the results.
-- Workspace search results can send matching files directly to the active Agent for analysis.
+- Workspace search results can send matching files directly to the active agent for analysis.
 - The workbench workspace file tree and search are grouped into a compact context panel with switchable views.
 - The workspace context panel can be collapsed, and its collapsed/view state is remembered locally.
 - Recently opened workspace files are remembered locally and surfaced in the context panel for quick preview.
-- Agent-bound Provider overrides take priority over the global default Provider when no explicit runtime override is requested, with runtime smoke coverage.
+- Agent-bound provider overrides take priority over the global default provider when no explicit runtime override is requested, with runtime smoke coverage.
 
-## Phase 7 - Private Installer QA
+## Phase 7 - Private Installer QA And Agent Engine Shell
 
 - Status: in progress
 - A manual private GitHub Actions workflow can build the Windows NSIS installer after typecheck, runtime, desktop, and data-retention smoke tests pass.
 - Installer builds explicitly disable electron-builder publishing; artifacts are uploaded only as short-lived private workflow artifacts.
 - Packaged desktop smoke coverage validates the built `release/win-unpacked/NexaDesk.exe` before installer artifacts are shared.
 - Desktop smoke scripts tolerate slower GitHub runners and transient Windows user-data cleanup locks.
-- The workbench layout has started moving toward a WeSight-inspired AI Agentic Workspace shell: task navigation, project/session sidebar, central Cowork execution area, and live right-side context.
-- The WeSight-inspired workbench shell now keeps the central stage bounded, hides the live context dock on settings pages, supports right-context collapse, and guards against desktop-width horizontal overflow in smoke tests.
-- The shell now uses WeSight-style single-purpose views: New Task, Task Thread, Search, Scheduled Tasks, Runtime Dashboard, Skills, MCP, Agents, and Settings render as separate main surfaces rather than one long scroll page.
-- Agent Engine Center has started adopting the WeSight-style split between model Providers and Agent runtimes, with configurable built-in, Codex CLI, Claude Code, OpenClaw, Hermes, Qwen Code, DeepSeek-TUI, and OpenCode engine profiles.
-- Agent Engine Center can detect local CLI/runtime availability and common config paths, then persist installed/setup status for built-in and external Agent engines.
-- Code Assistant can route through a ready Codex CLI engine with read-only `codex exec --json` output, then fall back to the configured model Provider if the external engine is unavailable.
+- The workbench layout is moving toward a WeSight-inspired AI agentic workspace shell: task navigation, project or session sidebar, central Cowork execution area, and live right-side context.
+- The shell uses WeSight-style single-purpose views: New Task, Task Thread, Search, Scheduled Tasks, Runtime Dashboard, Skills, MCP, Agents, and Settings render as separate main surfaces rather than one long scroll page.
+- Agent Engine Center splits model providers from agent runtimes, with configurable built-in, Codex CLI, Claude Code, OpenClaw, Hermes, Qwen Code, DeepSeek-TUI, and OpenCode engine profiles.
+- Agent Engine Center detects local CLI or runtime availability and common config paths, then persists installed or setup status for built-in and external agent engines.
+- Code Assistant can route through a ready Codex CLI engine with read-only `codex exec --json` output, then fall back to the configured model provider if the external engine is unavailable.
 - Phase 7 focuses on clean install, reinstall, upgrade, shortcut, uninstall entry, data retention, and trusted-tester handoff checks.
 
 ## Later Phases
@@ -94,3 +95,7 @@
 - Durable session database
 - Plugin marketplace and skill import/export
 - Remote access and mobile pairing
+
+## Working Rule
+
+The roadmap should stay aligned with the architecture document: UI observes, API governs, runtime plans, and the approval gate controls risky tool actions.
