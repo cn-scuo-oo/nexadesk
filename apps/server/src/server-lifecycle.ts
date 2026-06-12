@@ -1,4 +1,4 @@
-import type { AutomationJob, AutomationRun, AppSnapshot, RuntimeTelemetryEntry } from "@nexadesk/shared";
+import type { ActivityEvent, AutomationJob, AutomationRun, AppSnapshot, RuntimeTelemetryEntry } from "@nexadesk/shared";
 import type { PendingToolApprovalRecord } from "./runtime-state-store.js";
 
 export type ServerLifecycleContext = {
@@ -39,6 +39,21 @@ export function startAutomationScheduler(context: Pick<ServerLifecycleContext, "
     void runDueAutomations(context);
   }, 15_000);
   void runDueAutomations(context);
+}
+
+export function startActivityHeartbeat(context: {
+  snapshot: AppSnapshot;
+  publishActivity: (input: { level: "info" | "warning" | "error"; title: string; detail: string }) => ActivityEvent;
+}) {
+  setInterval(() => {
+    const event = context.publishActivity({
+      level: "info",
+      title: "Heartbeat",
+      detail: "Local API is still connected to the workbench."
+    });
+    context.snapshot.activity.unshift(event);
+    context.snapshot.activity = context.snapshot.activity.slice(0, 20);
+  }, 20000).unref();
 }
 
 async function runDueAutomations(context: Pick<ServerLifecycleContext, "snapshot" | "runningAutomationJobs" | "runAutomationJob">) {
