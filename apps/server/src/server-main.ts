@@ -68,6 +68,7 @@ import {
 import { getProviderApiKey, loadSettings, recoverSettings, saveSettings } from "./settings-store.js";
 import { createLocalOnlyCorsOptions } from "./cors-policy.js";
 import { registerConnectivityRoutes } from "./routes/connectivity-routes.js";
+import { registerMaintenanceRoutes } from "./routes/maintenance-routes.js";
 import { registerWorkspaceRoutes } from "./routes/workspace-routes.js";
 import {
   automationScheduleLabel,
@@ -99,6 +100,14 @@ registerConnectivityRoutes(app, {
   syncSessionAgents
 });
 registerWorkspaceRoutes(app, { snapshot, loadSettings });
+registerMaintenanceRoutes(app, {
+  getCurrentSettings: () => currentSettings,
+  setCurrentSettings: async (nextSettings) => {
+    currentSettings = nextSettings;
+    await saveCurrentSettings();
+  },
+  publishActivity
+});
 
 // ── Additional server helpers ──
 function buildProviderModelHeaders(apiKey?: string): Record<string, string> {
@@ -673,7 +682,7 @@ app.post("/api/sessions/:sessionId/messages", async (req, res, next) => {
   }
 });
 
-app.post("/api/sessions/:sessionId/messages/stream", async (req, res, next) => {
+app.post("/api/sessions/:sessionId/messages/stream", async (req, res, _next) => {
   const parsed = messageSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -1524,162 +1533,6 @@ async function startServer() {
       toolCallId: pending.toolCallId
     });
   }
-  /* ── MCP Bridge: callback endpoint for external MCP tools ── */
-  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
-    try {
-      const {
-        toolName,
-        arguments: toolArgs,
-        serverId
-      } = req.body as { toolName: string; arguments: Record<string, unknown>; serverId: string };
-      if (!toolName || !serverId) {
-        res.status(400).json({ ok: false, message: "Missing toolName or serverId" });
-        return;
-      }
-      publishActivity({ level: "info", title: "MCP Bridge 调用", detail: `${serverId}/${toolName}` });
-      res.json({ ok: true, message: `Bridge executed ${toolName}`, toolName, serverId, result: null });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  /* ── MCP Bridge: health check ── */
-  app.get("/api/mcp-bridge/health", (_req, res) => {
-    res.json({ ok: true, bridge: "nexadesk", version: "0.1.0" });
-  });
-
-  /* ── Skill Security Scan ── */
-  app.post("/api/skills/scan", async (req, res, next) => {
-    try {
-      const { skillId } = req.body as { skillId: string };
-      const skills = currentSettings.assistant.skills;
-      const skill = skills.find((s) => s.id === skillId);
-      if (!skill) {
-        res.status(404).json({ ok: false, message: "Skill not found" });
-        return;
-      }
-      const instr = skill.instructions.toLowerCase();
-      const findings = [];
-      findings.push({
-        dimension: "文件系统",
-        status: instr.includes("file") || instr.includes("write") ? "warning" : "safe",
-        detail: instr.includes("file") ? "包含文件操作" : "无文件操作"
-      });
-      findings.push({
-        dimension: "命令执行",
-        status: instr.includes("command") || instr.includes("exec") ? "risk" : "safe",
-        detail: instr.includes("command") ? "包含命令执行" : "无命令执行"
-      });
-      findings.push({
-        dimension: "网络请求",
-        status: instr.includes("http") || instr.includes("api") ? "warning" : "safe",
-        detail: instr.includes("http") ? "包含网络请求" : "无网络请求"
-      });
-      findings.push({
-        dimension: "数据收集",
-        status: instr.includes("collect") ? "risk" : "safe",
-        detail: instr.includes("collect") ? "可能收集数据" : "无数据收集"
-      });
-      findings.push({
-        dimension: "代码注入",
-        status: instr.includes("eval") ? "risk" : "safe",
-        detail: instr.includes("eval") ? "包含动态代码" : "无动态代码"
-      });
-      const riskCount = findings.filter((f) => f.status === "risk").length;
-      const warnCount = findings.filter((f) => f.status === "warning").length;
-      const score = Math.max(0, 100 - riskCount * 25 - warnCount * 10);
-      const level = score >= 80 ? "high" : score >= 50 ? "medium" : "low";
-      res.json({ ok: true, skillId, score, level, findings, scannedAt: new Date().toISOString() });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  /* ── Memory CRUD ── */
-  app.get("/api/memory", (_req, res) => {
-    res.json({
-      entries: currentSettings.memoryEntries ?? [],
-      summaries: currentSettings.sessionSummaries ?? [],
-      settings: currentSettings.memory
-    });
-  });
-
-  app.post("/api/memory/entries", async (req, res, next) => {
-    try {
-      const entry = req.body;
-      const entries = [
-        ...(currentSettings.memoryEntries ?? []),
-        {
-          ...entry,
-          id: entry.id || `mem-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
-      currentSettings = { ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
-      await saveCurrentSettings();
-      res.json({ ok: true, entry });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.delete("/api/memory/entries/:entryId", async (req, res, next) => {
-    try {
-      const entries = (currentSettings.memoryEntries ?? []).filter((e) => e.id !== req.params.entryId);
-      currentSettings = { ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
-      await saveCurrentSettings();
-      res.json({ ok: true });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  /* ── Encryption ── */
-  app.post("/api/encrypt", async (req, res, next) => {
-    try {
-      const { plaintext, password } = req.body as { plaintext: string; password: string };
-      if (!plaintext || !password) {
-        res.status(400).json({ ok: false, message: "Missing plaintext or password" });
-        return;
-      }
-      const { createCipheriv, randomBytes, pbkdf2Sync } = await import("node:crypto");
-      const salt = randomBytes(16);
-      const iv = randomBytes(12);
-      const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
-      const cipher = createCipheriv("aes-256-gcm", key, iv);
-      const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-      const tag = cipher.getAuthTag();
-      const combined = Buffer.concat([salt, iv, tag, encrypted]);
-      res.json({ ok: true, ciphertext: combined.toString("base64") });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post("/api/decrypt", async (req, res, next) => {
-    try {
-      const { ciphertext, password } = req.body as { ciphertext: string; password: string };
-      if (!ciphertext || !password) {
-        res.status(400).json({ ok: false, message: "Missing ciphertext or password" });
-        return;
-      }
-      const { createDecipheriv, pbkdf2Sync } = await import("node:crypto");
-      const combined = Buffer.from(ciphertext, "base64");
-      const salt = combined.subarray(0, 16);
-      const iv = combined.subarray(16, 28);
-      const tag = combined.subarray(28, 44);
-      const encrypted = combined.subarray(44);
-      const key = pbkdf2Sync(password, salt, 100000, 32, "sha256");
-      const decipher = createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
-      res.json({ ok: true, plaintext: decrypted });
-    } catch (error) {
-      next(error);
-    }
-  });
-
   app.listen(port, host, () => {
     console.log(`NexaDesk API listening on http://${host}:${port}`);
   });
@@ -2294,14 +2147,4 @@ async function resolveCommandCandidate(command: string): Promise<{ resolvedPath?
     return { installed: false, message: `${command} not found in PATH` };
   }
   return { installed: true, message: `${command} found`, resolvedPath: result.stdout.trim() };
-}
-
-function collectModelNames(models: string[] | undefined, names: Set<string>) {
-  if (!models) return;
-  for (const model of models) addModelName(names, model);
-}
-
-function addModelName(names: Set<string>, value: string) {
-  const name = value.trim();
-  if (name) names.add(name);
 }
