@@ -22,6 +22,7 @@ const child = spawn(electronPath, ["."], {
 
 let output = "";
 let finished = false;
+let forcedExitCode = null;
 child.stdout.on("data", (chunk) => {
   const text = chunk.toString();
   output += text;
@@ -34,13 +35,20 @@ child.stderr.on("data", (chunk) => {
 });
 
 const timeout = setTimeout(() => {
-  child.kill();
-  console.error(`Desktop smoke test timed out.\n${output}`);
-  void finish(1);
+  forcedExitCode = 1;
+  void (async () => {
+    await stopElectron();
+    console.error(`Desktop smoke test timed out.\n${output}`);
+    await finish(1);
+  })();
 }, 120_000);
 
 child.on("exit", (code) => {
   clearTimeout(timeout);
+  if (forcedExitCode !== null) {
+    void finish(forcedExitCode);
+    return;
+  }
   if (code === 0) {
     console.log(`NexaDesk desktop smoke test passed on port ${apiPort}.`);
     void finish(0);
@@ -62,7 +70,10 @@ async function pollHealthCheck() {
     try {
       const res = await fetch(healthCheckUrl);
       if (res.ok) {
-        console.log(`NexaDesk desktop smoke health check responded on port ${healthCheckPort}.`);
+        forcedExitCode = 0;
+        console.log(`NexaDesk desktop smoke test passed on port ${healthCheckPort}.`);
+        await stopElectron();
+        await finish(0);
         return;
       }
     } catch {
@@ -73,10 +84,45 @@ async function pollHealthCheck() {
   }
 
   if (!finished) {
-    child.kill();
+    forcedExitCode = 1;
+    await stopElectron();
     console.error(`Desktop smoke test failed: health endpoint did not respond at ${healthCheckUrl}.\n${output}`);
     await finish(1);
   }
+}
+
+function stopElectron() {
+  if (child.exitCode !== null) {
+    return Promise.resolve();
+  }
+
+  const exitPromise = new Promise((resolve) => {
+    const exitTimeout = setTimeout(resolve, 5000);
+    exitTimeout.unref();
+    child.once("exit", () => {
+      clearTimeout(exitTimeout);
+      resolve();
+    });
+  });
+
+  if (process.platform === "win32" && child.pid) {
+    return new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true
+      });
+      killer.on("exit", () => {
+        void exitPromise.then(resolve);
+      });
+      killer.on("error", () => {
+        child.kill();
+        void exitPromise.then(resolve);
+      });
+    });
+  }
+
+  child.kill();
+  return exitPromise;
 }
 
 async function finish(exitCode) {
@@ -86,12 +132,24 @@ async function finish(exitCode) {
 
   finished = true;
   clearTimeout(timeout);
-  try {
-    await rm(userDataDir, { recursive: true, force: true });
-  } catch (error) {
-    console.warn(`Failed to remove smoke test user data directory: ${error instanceof Error ? error.message : error}`);
-  }
+  await removeUserDataDir();
   process.exitCode = exitCode;
+}
+
+async function removeUserDataDir() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (attempt > 0) {
+      await delay(300);
+    }
+    try {
+      await rm(userDataDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 4) {
+        console.warn(`Failed to remove smoke test user data directory: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
 }
 
 void pollHealthCheck();
