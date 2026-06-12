@@ -264,8 +264,14 @@ export function deleteSessionById(id: string): void {
 }
 
 export function getAllMessages(limit = 500): ChatMessage[] {
-  const rows = getDb().prepare("SELECT * FROM messages ORDER BY datetime(created_at) ASC LIMIT ?").all(limit) as any[];
-  return rows.map(rowToMessage);
+  return getRecentMessages(limit);
+}
+
+export function getRecentMessages(limit = 500): ChatMessage[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM messages ORDER BY created_at DESC, rowid DESC LIMIT ?")
+    .all(limit) as any[];
+  return rows.reverse().map(rowToMessage);
 }
 
 export function getMessagesBySession(sessionId: string): ChatMessage[] {
