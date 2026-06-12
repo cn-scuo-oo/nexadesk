@@ -68,6 +68,7 @@ import { registerConnectivityRoutes } from "./routes/connectivity-routes.js";
 import { registerMaintenanceRoutes } from "./routes/maintenance-routes.js";
 import { registerSessionRoutes } from "./routes/session-routes.js";
 import { registerWorkspaceRoutes } from "./routes/workspace-routes.js";
+import { bootstrapServerRuntime, startAutomationScheduler } from "./server-lifecycle.js";
 import {
   automationScheduleLabel,
   computeNextAutomationRun,
@@ -81,7 +82,6 @@ const port = Number(getEnv("NEXADESK_PORT", "AION_LITE_PORT") ?? 3939);
 const snapshot = createDemoSnapshot();
 let runtimeTelemetry: RuntimeTelemetryEntry[] = [];
 const runningAutomationJobs = new Set<string>();
-let automationScheduler: ReturnType<typeof setInterval> | null = null;
 const app = express();
 const pendingToolApprovals = new Map<string, Omit<PendingToolApprovalRecord, "approvalId">>();
 
@@ -940,32 +940,6 @@ function normalizeAutomationJob(job: Partial<AutomationJob> & Pick<AutomationJob
   };
 }
 
-function startAutomationScheduler() {
-  if (automationScheduler) {
-    return;
-  }
-  automationScheduler = setInterval(() => {
-    void runDueAutomations();
-  }, 15_000);
-  void runDueAutomations();
-}
-
-async function runDueAutomations() {
-  const now = Date.now();
-  for (const job of snapshot.automations) {
-    const dueAt = new Date(job.nextRun).getTime();
-    if (
-      job.enabled &&
-      job.scheduleKind !== "manual" &&
-      Number.isFinite(dueAt) &&
-      dueAt <= now &&
-      !runningAutomationJobs.has(job.id)
-    ) {
-      await runAutomationJob(job, "schedule");
-    }
-  }
-}
-
 async function runAutomationJob(job: AutomationJob, trigger: "manual" | "schedule"): Promise<AutomationRun> {
   if (runningAutomationJobs.has(job.id)) {
     throw new ProviderRuntimeError(`Automation ${job.name} is already running.`);
@@ -1198,31 +1172,28 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error" });
 });
 
-void startServer().catch((error) => {
+void bootstrapServerRuntime({
+  snapshot,
+  pendingToolApprovals,
+  setRuntimeTelemetry: (entries) => {
+    runtimeTelemetry = entries;
+  },
+  loadRuntimeState,
+  loadRuntimeTelemetry,
+  normalizeAutomationJob,
+  runningAutomationJobs,
+  runAutomationJob
+})
+  .then(() => {
+    app.listen(port, host, () => {
+      console.log(`NexaDesk API listening on http://${host}:${port}`);
+    });
+    startAutomationScheduler({ snapshot, runningAutomationJobs, runAutomationJob });
+  })
+  .catch((error) => {
   console.error(error);
   process.exit(1);
-});
-
-async function startServer() {
-  const pendingApprovals = await loadRuntimeState(snapshot);
-  runtimeTelemetry = await loadRuntimeTelemetry();
-  snapshot.automations = snapshot.automations.map((job) => normalizeAutomationJob(job));
-  snapshot.automationRuns = snapshot.automationRuns.slice(0, 100);
-  pendingToolApprovals.clear();
-  for (const pending of pendingApprovals) {
-    pendingToolApprovals.set(pending.approvalId, {
-      request: pending.request,
-      sessionId: pending.sessionId,
-      agentId: pending.agentId,
-      messageId: pending.messageId,
-      toolCallId: pending.toolCallId
-    });
-  }
-  app.listen(port, host, () => {
-    console.log(`NexaDesk API listening on http://${host}:${port}`);
   });
-  startAutomationScheduler();
-}
 
 async function testMcpServer(server: McpServerTestRequest["server"], timeoutMs: number): Promise<McpServerTestResult> {
   const checkedAt = new Date().toISOString();

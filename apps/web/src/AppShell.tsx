@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   Bot,
   Brain,
@@ -107,7 +106,7 @@ import {
   automationRunStatusLabel,
   automationScheduleKindLabel,
   policyLabel,
-  runtimeStatusLabel,
+  runtimeStatusLabel as runtimeTelemetryStatusLabel,
   toolNameLabel,
   toolStatusLabel
 } from "./lib/labels";
@@ -146,6 +145,21 @@ type ProviderMatrixItem = {
   requiredCapabilities: ProviderCapability[];
   envKey: string;
   officialUrl: string;
+};
+
+type ProviderMatrixInspection = {
+  status: "ok" | "warn" | "missing";
+  label: string;
+  issues: string[];
+};
+
+type ProviderCheckOutcome = {
+  ok: boolean;
+  status?: number;
+  message: string;
+  checkedAt?: string;
+  checkedUrl?: string;
+  models?: string[];
 };
 
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
@@ -761,7 +775,7 @@ export function App() {
   const [_imageAttachments, _setImageAttachments] = useState<Array<{ name: string; dataUrl: string }>>([]);
 
   /* ── Teams State ── */
-  const [_teams, _setTeams] = useState<AgentTeam[]>([
+  const [teams, _setTeams] = useState<AgentTeam[]>([
     {
       id: "team-code",
       name: "代码团队",
@@ -794,7 +808,7 @@ export function App() {
 
   /* ── Desktop Pet State ── */
   const [petVisible, setPetVisible] = useState(false);
-  const [_petVariant, _setPetVariant] = useState("nexabot");
+  const [petVariant, _setPetVariant] = useState("nexabot");
 
   /* ── Update Modal State ── */
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -2571,6 +2585,12 @@ export function App() {
             settings={settings}
             status={settingsStatus}
             onSave={handleSaveSettings}
+            lang={lang}
+            onLangChange={_setLang}
+            themeMode={themeMode}
+            onThemeModeChange={_setThemeMode}
+            themeId={themeId}
+            onThemeIdChange={_setThemeId}
           />
         </SettingsModal>
       ) : null}
@@ -4295,7 +4315,7 @@ function RuntimeDashboardView({
                           {entry.providerName} · {formatRelativeTime(entry.startedAt)}
                         </small>
                       </span>
-                      <b>{runtimeStatusLabel(entry.status)}</b>
+                      <b>{runtimeTelemetryStatusLabel(entry.status)}</b>
                     </button>
                   ))
                 )}
@@ -4310,7 +4330,7 @@ function RuntimeDashboardView({
                         <span>{selectedTelemetry.providerName}</span>
                       </div>
                       <span className={selectedTelemetry.status === "failed" ? "status muted-status" : "status ready"}>
-                        {runtimeStatusLabel(selectedTelemetry.status)}
+                        {runtimeTelemetryStatusLabel(selectedTelemetry.status)}
                       </span>
                     </div>
                     <div className="runtime-call-metrics">
@@ -5828,12 +5848,24 @@ function SettingsCenter({
   initialTab,
   settings,
   status,
-  onSave
+  onSave,
+  lang,
+  onLangChange,
+  themeMode,
+  onThemeModeChange,
+  themeId,
+  onThemeIdChange
 }: {
   initialTab: SettingsTab;
   settings: AppSettings;
   status: string | null;
   onSave: (settings: AppSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<AppSettings>;
+  lang: Lang;
+  onLangChange: (value: Lang) => void;
+  themeMode: ThemeMode;
+  onThemeModeChange: (value: ThemeMode) => void;
+  themeId: ThemeId;
+  onThemeIdChange: (value: ThemeId) => void;
 }) {
   const [draft, setDraft] = useState(settings);
   const [localStatus, setLocalStatus] = useState<string | null>(status);
@@ -6488,7 +6520,7 @@ function SettingsCenter({
                   <div className="field-grid">
                     <label className="field-label">
                       <span>语言</span>
-                      <select value={lang} onChange={(event) => _setLang(event.target.value as Lang)}>
+                      <select value={lang} onChange={(event) => onLangChange(event.target.value as Lang)}>
                         <option value="zh">简体中文</option>
                         <option value="en">English</option>
                       </select>
@@ -6529,7 +6561,7 @@ function SettingsCenter({
                       <button
                         className={themeMode === m ? "theme-mode-btn active" : "theme-mode-btn"}
                         key={m}
-                        onClick={() => _setThemeMode(m)}
+                        onClick={() => onThemeModeChange(m)}
                         type="button"
                       >
                         {m === "light" ? "☀️ 浅色" : m === "dark" ? "🌙 深色" : "💻 跟随系统"}
@@ -6551,12 +6583,12 @@ function SettingsCenter({
                   </h4>
                   <div className="theme-gallery">
                     {THEMES.filter(
-                      (t) => themeMode === "system" || t.appearance === themeMode || themeMode === themeMode
+                      (t) => themeMode === "system" || t.appearance === themeMode || themeMode === t.appearance
                     ).map((theme) => (
                       <button
                         className={themeId === theme.id ? "theme-swatch active" : "theme-swatch"}
                         key={theme.id}
-                        onClick={() => _setThemeId(theme.id)}
+                        onClick={() => onThemeIdChange(theme.id)}
                         type="button"
                         title={theme.description}
                       >
@@ -6831,9 +6863,9 @@ function SettingsCenter({
               </section>
             ) : null}
 
-            {activeTab === "im" ? <IMSettingsPanel onClose={() => {}} /> : null}
+            {activeTab === "im" ? <IMSettingsPanel /> : null}
 
-            {activeTab === "email" ? <EmailConfigPanel onClose={() => {}} /> : null}
+            {activeTab === "email" ? <EmailConfigPanel /> : null}
 
             {activeTab === "shortcuts" ? (
               <section className="panel-block settings-section">
@@ -7924,7 +7956,7 @@ function ProviderCheckLine({
   emptyText
 }: {
   label: string;
-  result: ProviderTestResult | ProviderModelsResult | undefined;
+  result: ProviderCheckOutcome | undefined;
   emptyText: string;
 }) {
   if (!result) {
@@ -7937,7 +7969,7 @@ function ProviderCheckLine({
     );
   }
 
-  const modelCount = "models" in result ? result.models.length : undefined;
+  const modelCount = Array.isArray(result.models) ? result.models.length : undefined;
   return (
     <div className={result.ok ? "provider-check-line ok" : "provider-check-line fail"}>
       <span>{label}</span>
@@ -7968,7 +8000,36 @@ function providerDraftToSettings(draft: ProviderDraft): ProviderSettings {
   };
 }
 
-function buildProviderStatus(test?: ProviderTestResult, _models?: ProviderModelsResult): ProviderStatusRecord {
+function pruneProviderStatus(providerStatus: ProviderStatusSettings, providerIds: string[]): ProviderStatusSettings {
+  const allowedIds = new Set(providerIds);
+  return {
+    tests: Object.fromEntries(
+      Object.entries(providerStatus.tests).filter(([providerId]) => allowedIds.has(providerId))
+    ),
+    modelRefreshes: Object.fromEntries(
+      Object.entries(providerStatus.modelRefreshes).filter(([providerId]) => allowedIds.has(providerId))
+    )
+  };
+}
+
+function buildProviderStatus(
+  current: ProviderStatusSettings,
+  _tests: Record<string, ProviderTestResult>,
+  _models: Record<string, ProviderModelsResult>,
+  updates?: {
+    test?: [string, ProviderStatusRecord];
+    modelRefresh?: [string, ProviderModelsStatusRecord];
+  }
+): ProviderStatusSettings {
+  return {
+    tests: updates?.test ? { ...current.tests, [updates.test[0]]: updates.test[1] } : current.tests,
+    modelRefreshes: updates?.modelRefresh
+      ? { ...current.modelRefreshes, [updates.modelRefresh[0]]: updates.modelRefresh[1] }
+      : current.modelRefreshes
+  };
+}
+
+function _buildProviderStatusRecord(test?: ProviderTestResult, _models?: ProviderModelsResult): ProviderStatusRecord {
   return {
     ok: test?.ok ?? false,
     status: test?.status,
@@ -7985,16 +8046,16 @@ function resultToProviderModelsStatusRecord(result: ProviderModelsResult): Provi
     message: result.message,
     checkedUrl: result.checkedAt,
     checkedAt: result.checkedAt ?? new Date().toISOString(),
-    models: result.models
+    models: result.models ?? []
   };
 }
 
-function providerTestTone(result?: ProviderStatusRecord): string {
+function providerTestTone(result?: ProviderCheckOutcome): string {
   if (!result) return "未检查";
   return result.ok ? "通过" : "失败";
 }
 
-function providerTestLabel(result?: ProviderStatusRecord): string {
+function providerTestLabel(result?: ProviderCheckOutcome): string {
   if (!result) return "未检查";
   return result.ok
     ? `通过 ${result.checkedAt ? formatProviderCheckTime(result.checkedAt) : ""}`
@@ -8030,7 +8091,7 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diff / 86400000)}天前`;
 }
 
-function runtimeStatusLabel(status: string): string {
+function _runtimeStatusLabel(status: string): string {
   return status === "completed" ? "完成" : status === "failed" ? "失败" : status === "running" ? "运行中" : status;
 }
 
@@ -8071,8 +8132,40 @@ function appSettingLabel(key: string): string {
   return map[key] ?? key;
 }
 
-function inspectProviderMatrixItem(item: ProviderMatrixItem): string {
+function _inspectProviderMatrixItemLabel(item: ProviderMatrixItem): string {
   return `${item.label} (${item.baseUrl})`;
+}
+
+function inspectProviderMatrixItem(item: ProviderMatrixItem, draft: ProviderDraft | null): ProviderMatrixInspection {
+  if (!draft) {
+    return {
+      status: "missing",
+      label: "未配置",
+      issues: ["尚未添加该 Provider"]
+    };
+  }
+
+  const issues: string[] = [];
+  if (draft.apiMode !== item.apiMode) {
+    issues.push(`API 模式应为 ${item.apiMode}`);
+  }
+
+  const modelNames = parseModels(draft.modelsText);
+  const missingModels = item.requiredModels.filter((model) => !modelNames.includes(model));
+  if (missingModels.length > 0) {
+    issues.push(`缺少模型: ${missingModels.slice(0, 2).join("、")}${missingModels.length > 2 ? "..." : ""}`);
+  }
+
+  const missingCapabilities = item.requiredCapabilities.filter((capability) => !draft.capabilities[capability]);
+  if (missingCapabilities.length > 0) {
+    issues.push(`缺少能力: ${missingCapabilities.join("、")}`);
+  }
+
+  return {
+    status: issues.length === 0 ? "ok" : "warn",
+    label: issues.length === 0 ? "已对齐" : "需调整",
+    issues
+  };
 }
 
 function resultToProviderStatusRecord(result: ProviderTestResult): ProviderStatusRecord {
@@ -8257,7 +8350,7 @@ const IM_PLATFORMS = [
 ];
 
 function IMSettingsPanel() {
-  const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   return (
     <section className="panel-block settings-section">
       <div className="panel-heading compact">
@@ -8325,7 +8418,7 @@ const EMAIL_PROVIDERS = [
 
 function EmailConfigPanel() {
   const [selectedProvider, setSelectedProvider] = useState("gmail");
-  const provider = EMAIL_PROVIDERS.find((p) => p.id === selectedProvider) ?? EMAIL_PROVIDERS[0];
+  const provider = EMAIL_PROVIDERS.find((p) => p.id === selectedProvider) ?? EMAIL_PROVIDERS[0]!;
   return (
     <section className="panel-block settings-section">
       <div className="panel-heading compact">
@@ -8479,7 +8572,7 @@ function WorkspaceFilePanel({
   recentFiles: WorkspaceTreeEntry[];
   result: WorkspaceListResult | null;
   sending: boolean;
-  onAskAgent: (path?: string) => void;
+  onAskAgent: (path: string) => void | Promise<void>;
   onClearRecentFiles: () => void;
   onOpenFile: (entry: WorkspaceTreeEntry) => void;
   onOpenPath: (path: string) => void;
@@ -8549,7 +8642,7 @@ function WorkspaceFilePreviewDrawer({
   loading: boolean;
   preview: WorkspaceFilePreviewResult | null;
   sending: boolean;
-  onAskAgent: () => void;
+  onAskAgent: (path: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   if (!preview) return null;
@@ -8560,7 +8653,7 @@ function WorkspaceFilePreviewDrawer({
       {error ? <small>{error}</small> : null}
       <pre>{preview.content}</pre>
       <div className="workspace-file-preview-actions">
-        <button disabled={sending} onClick={onAskAgent} type="button">
+        <button disabled={sending} onClick={() => void onAskAgent(entry.path)} type="button">
           ????????
         </button>
         <button onClick={onClose} type="button">
@@ -8592,7 +8685,7 @@ function MessageBubble({
 
 function renderProviderNote(
   draft: ProviderDraft,
-  savedId?: string,
+  savedId?: string | null,
   test?: ProviderTestResult,
   refresh?: ProviderModelsResult
 ): string {
