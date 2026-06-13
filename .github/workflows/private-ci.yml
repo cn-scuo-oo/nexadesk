@@ -13,7 +13,7 @@ jobs:
   validate:
     name: Validate private build
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -48,3 +48,9 @@ jobs:
 
       - name: Desktop data retention smoke
         run: npm run desktop:retention-smoke
+
+      - name: Build Windows installer
+        run: npm run dist:win
+
+      - name: Packaged desktop smoke
+        run: npm run desktop:packaged-smoke
