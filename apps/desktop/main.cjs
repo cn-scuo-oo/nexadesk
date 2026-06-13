@@ -64,16 +64,14 @@ app.whenReady().then(async () => {
       await runSmokeTest(apiPort);
       await runRendererSmokeTest(apiPort);
       appendStartupLog(userData, "smoke passed");
-      await stopBundledServer();
-      app.exit(0);
+      await exitAfterSmoke(0);
       return;
     }
     if (isSmokeModeRequested("NEXADESK_RETENTION_SMOKE")) {
       appendStartupLog(userData, "retention smoke mode");
       await runDesktopRetentionSmoke(apiPort, userData);
       appendStartupLog(userData, "retention smoke passed");
-      await stopBundledServer();
-      app.exit(0);
+      await exitAfterSmoke(0);
       return;
     }
     createMainWindow(apiPort);
@@ -192,14 +190,52 @@ function stopBundledServer() {
 
   serverProcess = undefined;
   return new Promise((resolve) => {
-    const timeout = setTimeout(resolve, 2000);
-    timeout.unref();
-    child.once("exit", () => {
+    let settled = false;
+    let forceTimeout;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timeout);
+      if (forceTimeout) {
+        clearTimeout(forceTimeout);
+      }
       resolve();
-    });
+    };
+    const forceKill = () => {
+      if (child.exitCode !== null) {
+        finish();
+        return;
+      }
+      if (process.platform === "win32" && child.pid) {
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true
+        });
+        killer.once("error", finish);
+        killer.once("exit", finish);
+      } else {
+        child.kill("SIGKILL");
+      }
+      forceTimeout = setTimeout(finish, 2000);
+      forceTimeout.unref();
+    };
+    const timeout = setTimeout(forceKill, 2000);
+    timeout.unref();
+    child.once("exit", finish);
     child.kill();
   });
+}
+
+async function exitAfterSmoke(exitCode) {
+  await stopBundledServer();
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.destroy();
+  }
+  const forceExitTimer = setTimeout(() => process.exit(exitCode), 1000);
+  forceExitTimer.unref();
+  app.exit(exitCode);
 }
 
 function createMainWindow(apiPort) {
@@ -283,6 +319,7 @@ async function runRendererSmokeTest(apiPort) {
   if (!firstSession) {
     throw new Error("Renderer smoke test failed: no session was available for session management checks.");
   }
+  await configureRendererSmokeWorkspace(apiPort);
   const sessionUpdate = await requestJson(apiPort, "/api/sessions/" + encodeURIComponent(firstSession.id), {
     method: "PATCH",
     body: JSON.stringify({ title: "Renderer smoke task", pinned: true })
@@ -409,7 +446,7 @@ async function runRendererSmokeTest(apiPort) {
     );
   }
 
-  if (!app.isPackaged) {
+  if (process.env.NEXADESK_SKIP_THREAD_SMOKE !== "1") {
     appendStartupLog(app.getPath("userData"), "renderer smoke: thread");
     const threadText = await renderAndReadText(apiPort, "thread");
     if (!threadText.trim()) {
@@ -447,7 +484,7 @@ async function runRendererSmokeTest(apiPort) {
     const workspaceInteraction = await renderAndEvaluate(
       apiPort,
       "thread",
-      "(() => new Promise((resolve) => { const toggle = document.querySelector('[data-testid=\"workspace-context-toggle\"]'); if (!toggle) { resolve({ hasToggle: false }); return; } const before = toggle.getAttribute('aria-expanded'); toggle.click(); setTimeout(() => { const collapsed = toggle.getAttribute('aria-expanded'); toggle.click(); setTimeout(() => { const panel = document.querySelector('[data-testid=\"workspace-file-panel\"]'); const listButton = document.querySelector('[data-testid=\"workspace-file-panel-list\"] button'); if (listButton) { listButton.click(); } setTimeout(() => { const preview = document.querySelector('[data-testid=\"workspace-file-preview-drawer\"]'); resolve({ hasToggle: true, before, collapsed, expanded: toggle.getAttribute('aria-expanded'), hasPanel: Boolean(panel), hasPreview: Boolean(preview), previewText: preview?.textContent || '' }); }, 250); }, 120); }, 120); }))()"
+      "(() => new Promise((resolve) => { const started = Date.now(); const toggle = document.querySelector('[data-testid=\"workspace-context-toggle\"]'); if (!toggle) { resolve({ hasToggle: false }); return; } const before = toggle.getAttribute('aria-expanded'); toggle.click(); setTimeout(() => { const collapsed = toggle.getAttribute('aria-expanded'); toggle.click(); const pollForFile = () => { const panel = document.querySelector('[data-testid=\"workspace-file-panel\"]'); const listButton = Array.from(document.querySelectorAll('[data-testid=\"workspace-file-panel-list\"] button')).find((button) => /renderer-smoke\\.txt/.test(button.textContent || '')); if (!panel || !listButton) { if (Date.now() - started > 6000) { resolve({ hasToggle: true, before, collapsed, expanded: toggle.getAttribute('aria-expanded'), hasPanel: Boolean(panel), hasFileButton: Boolean(listButton), hasPreview: false, previewText: '', panelText: panel?.textContent || '' }); return; } setTimeout(pollForFile, 150); return; } listButton.click(); const pollForPreview = () => { const preview = document.querySelector('[data-testid=\"workspace-file-preview-drawer\"]'); if (preview) { resolve({ hasToggle: true, before, collapsed, expanded: toggle.getAttribute('aria-expanded'), hasPanel: true, hasFileButton: true, hasPreview: true, previewText: preview.textContent || '', panelText: panel.textContent || '' }); return; } if (Date.now() - started > 8000) { resolve({ hasToggle: true, before, collapsed, expanded: toggle.getAttribute('aria-expanded'), hasPanel: true, hasFileButton: true, hasPreview: false, previewText: '', panelText: panel.textContent || '' }); return; } setTimeout(pollForPreview, 150); }; pollForPreview(); }; setTimeout(pollForFile, 120); }, 120); }))()"
     );
     if (
       !workspaceInteraction.hasToggle ||
@@ -455,9 +492,13 @@ async function runRendererSmokeTest(apiPort) {
       workspaceInteraction.collapsed !== "false" ||
       workspaceInteraction.expanded !== "true" ||
       !workspaceInteraction.hasPanel ||
+      !workspaceInteraction.hasFileButton ||
       !workspaceInteraction.hasPreview
     ) {
-      throw new Error("Renderer smoke test failed: workspace context panel did not toggle or preview a file.");
+      throw new Error(
+        "Renderer smoke test failed: workspace context panel did not toggle or preview a file. State: " +
+          JSON.stringify(workspaceInteraction)
+      );
     }
     if (!workspaceInteraction.previewText.trim()) {
       throw new Error("Renderer smoke test failed: workspace file preview did not render any text.");
@@ -655,6 +696,39 @@ async function runDesktopRetentionSmoke(apiPort, userData) {
   }
 
   console.log("NexaDesk desktop data retention smoke passed on port " + apiPort);
+}
+
+async function configureRendererSmokeWorkspace(apiPort) {
+  const workspaceRoot = join(app.getPath("userData"), "smoke-workspace");
+  const exportDirectory = join(workspaceRoot, "exports");
+  const smokeFilePath = join(workspaceRoot, "renderer-smoke.txt");
+  mkdirSync(exportDirectory, { recursive: true });
+  writeFileSync(
+    smokeFilePath,
+    [
+      "Renderer smoke workspace file.",
+      "This file is generated inside the temporary smoke user data directory.",
+      "It gives the thread workspace preview test a deterministic target."
+    ].join("\n"),
+    "utf8"
+  );
+
+  const settings = await requestJson(apiPort, "/api/settings");
+  const allowedRoots = Array.from(new Set([workspaceRoot, ...(settings.workspace?.allowedRoots ?? [])]));
+  await requestJson(apiPort, "/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({
+      settings: {
+        ...settings,
+        workspace: {
+          ...settings.workspace,
+          defaultWorkspace: workspaceRoot,
+          exportDirectory,
+          allowedRoots
+        }
+      }
+    })
+  });
 }
 
 async function renderAndReadText(apiPort, hash) {

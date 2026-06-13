@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 const executable = resolve("release", "win-unpacked", process.platform === "win32" ? "NexaDesk.exe" : "NexaDesk");
 const userDataDir = await mkdtemp(join(tmpdir(), "nexadesk-packaged-smoke-"));
 const apiPort = "49396";
+let smokePassed = false;
 
 if (!existsSync(executable)) {
   console.error(`Packaged smoke test could not find ${executable}. Run npm run dist:win first.`);
@@ -15,9 +16,14 @@ if (!existsSync(executable)) {
 
 try {
   await runPackagedSmoke();
+  smokePassed = true;
   console.log(`NexaDesk packaged smoke test passed using ${executable}.`);
 } finally {
-  await removeUserDataDir();
+  if (smokePassed) {
+    await removeUserDataDir();
+  } else {
+    printSmokeDiagnostics();
+  }
 }
 
 function runPackagedSmoke() {
@@ -76,5 +82,17 @@ async function removeUserDataDir() {
         console.warn(`Packaged smoke could not remove temporary user data: ${error.message}`);
       }
     }
+  }
+}
+
+function printSmokeDiagnostics() {
+  console.warn(`Packaged smoke kept temporary user data at ${userDataDir}`);
+  for (const fileName of ["startup.log", "crash.log", "console.log"]) {
+    const filePath = join(userDataDir, fileName);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+    console.warn(`\n--- ${fileName} ---`);
+    console.warn(readFileSync(filePath, "utf8"));
   }
 }
