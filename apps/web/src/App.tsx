@@ -25,7 +25,9 @@ import {
   X,
   Zap,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen
 } from "lucide-react";
 import { FormEvent, type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -152,6 +154,7 @@ type ProviderMatrixItem = {
 
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
 const sidebarCollapsedStorageKey = "nexadesk.sidebar.collapsed";
+const contextPanelStorageKey = "nexadesk.contextPanel.open";
 const workspaceRecentFilesStorageKey = "nexadesk.workspaceContext.recentFiles";
 const runtimeTelemetryStorageKey = "nexadesk.runtime.telemetry";
 const maxWorkspaceRecentFiles = 8;
@@ -694,6 +697,9 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     readStoredBoolean(sidebarCollapsedStorageKey, false)
   );
+  const [contextPanelOpen, setContextPanelOpen] = useState(() =>
+    readStoredBoolean(contextPanelStorageKey, true)
+  );
   const [threadContextOpen, setThreadContextOpen] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
     readStoredWorkspaceRecentFiles()
@@ -878,6 +884,10 @@ export function App() {
   useEffect(() => {
     writeStoredBoolean(sidebarCollapsedStorageKey, sidebarCollapsed);
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    writeStoredBoolean(contextPanelStorageKey, contextPanelOpen);
+  }, [contextPanelOpen]);
 
   useEffect(() => {
     writeStoredWorkspaceRecentFiles(recentWorkspaceFiles);
@@ -1913,7 +1923,7 @@ export function App() {
   }
 
   return (
-    <main className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+    <main className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${contextPanelOpen ? " context-open" : ""}`}>
       <WindowTitleBar title={`NexaDesk — ${activeAgent?.name ?? "Cowork 助手"}`} />
 
       <aside className="rail">
@@ -2226,6 +2236,17 @@ export function App() {
             type="button"
           >
             {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        </div>
+
+        <div className="context-panel-trigger">
+          <button
+            aria-label={contextPanelOpen ? "收起上下文面板" : "展开上下文面板"}
+            className="icon-button"
+            onClick={() => setContextPanelOpen((current) => !current)}
+            type="button"
+          >
+            {contextPanelOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
           </button>
         </div>
         {activeView === "new" ? (
@@ -2576,6 +2597,33 @@ export function App() {
           </aside>
         </>
       ) : null}
+
+      <aside className="context-panel" aria-label="常驻上下文面板">
+        <div className="context-panel-header">
+          <strong>上下文</strong>
+          <button
+            aria-label="收起上下文面板"
+            className="icon-button"
+            onClick={() => setContextPanelOpen(false)}
+            type="button"
+          >
+            <PanelRightClose size={16} />
+          </button>
+        </div>
+        <div className="context-panel-body">
+          <section className="panel-block">
+            <div className="panel-heading compact">
+              <div>
+                <p className="eyebrow">快捷</p>
+                <h3>工作区</h3>
+              </div>
+              <Folder size={16} />
+            </div>
+            <p className="context-hint">这里后续可承载工作区、活动流、任务看板等常驻信息。</p>
+          </section>
+        </div>
+      </aside>
+
       {selectedWorkspaceFile ? (
         <WorkspaceFilePreviewDrawer
           entry={selectedWorkspaceFile}
