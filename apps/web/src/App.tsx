@@ -698,7 +698,7 @@ export function App() {
     readStoredBoolean(sidebarCollapsedStorageKey, false)
   );
   const [contextPanelOpen, setContextPanelOpen] = useState(() =>
-    readStoredBoolean(contextPanelStorageKey, true)
+    readStoredBoolean(contextPanelStorageKey, false)
   );
   const [threadContextOpen, setThreadContextOpen] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
