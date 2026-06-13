@@ -117,6 +117,7 @@ import {
   toolStatusLabel
 } from "./lib/labels";
 import { buildRuntimeDashboardStats, estimateTokenCount } from "./lib/runtime-metrics";
+import { Sidebar } from "./components/Sidebar";
 
 declare global {
   interface Window {
@@ -1968,261 +1969,42 @@ export function App() {
         </button>
       </aside>
 
-      <aside className="sidebar">
-        <div className="product-title">
-          <p className="eyebrow">智能体工作台</p>
-          <h1>NexaDesk</h1>
-          <span>AI Agentic Workspace</span>
-        </div>
-
-        <section className="sidebar-section">
-          <div className="section-heading">
-            <span>导航</span>
-          </div>
-          <nav className="nav-list workspace-nav-list" aria-label="Workspace sections">
-            <button
-              className={
-                activeView === "new" || activeView === "thread" ? "nav-item nav-button active" : "nav-item nav-button"
-              }
-              onClick={() => handleOpenView("new")}
-              type="button"
-            >
-              <Sparkles size={17} />
-              <span>
-                <strong>新建任务</strong>
-                <small>开始一次协作</small>
-              </span>
-            </button>
-            <button
-              className={activeView === "search" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("search")}
-              type="button"
-            >
-              <Search size={17} />
-              <span>
-                <strong>搜索任务</strong>
-                <small>会话与文件</small>
-              </span>
-            </button>
-            <button
-              className={activeView === "scheduled" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("scheduled")}
-              type="button"
-            >
-              <CircleDot size={17} />
-              <span>
-                <strong>定时任务</strong>
-              </span>
-            </button>
-            <button
-              className={activeView === "runtime" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("runtime")}
-              type="button"
-            >
-              <Zap size={17} />
-              <span>
-                <strong>运行监控</strong>
-              </span>
-            </button>
-            <button
-              className={activeView === "skills" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("skills")}
-              type="button"
-            >
-              <Workflow size={17} />
-              <span>
-                <strong>技能</strong>
-              </span>
-              <b>{enabledSkills.length}</b>
-            </button>
-            <button
-              className={activeView === "mcp" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("mcp")}
-              type="button"
-            >
-              <Terminal size={17} />
-              <span>
-                <strong>MCP</strong>
-              </span>
-            </button>
-            <button
-              className={activeView === "agents" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("agents")}
-              type="button"
-            >
-              <Users size={17} />
-              <span>
-                <strong>我的 Agent</strong>
-                <small>助手与团队</small>
-              </span>
-              <b>{snapshot.agents.filter((agent) => agent.enabled).length}</b>
-            </button>
-            <button
-              className={activeView === "memory" ? "nav-item nav-button active" : "nav-item nav-button"}
-              onClick={() => handleOpenView("memory")}
-              type="button"
-            >
-              <Brain size={17} />
-              <span>
-                <strong>记忆</strong>
-                <small>项目 · 会话 · 长期</small>
-              </span>
-              <b>{(settings.memoryEntries ?? []).length}</b>
-            </button>
-          </nav>
-        </section>
-
-        <button className="sidebar-branch-card" onClick={() => handleOpenSettings("assistants")} type="button">
-          <span className="branch-icon">main</span>
-          <span>
-            <strong>{activeAgent?.name ?? "Cowork 助手"}</strong>
-            <small>
-              {teamAgents.length} 个助手 · {activeRuntimeModel || "未选择模型"}
-            </small>
-          </span>
-        </button>
-
-        <section className="sidebar-section history-section grow">
-          <div className="section-heading">
-            <span>任务记录</span>
-            <div className="section-heading-actions">
-              <button className="mini-button" onClick={() => handleOpenView("search")} type="button">
-                搜索
-              </button>
-              <button className="mini-button" onClick={() => setSessionBatchMode((current) => !current)} type="button">
-                {sessionBatchMode ? "取消" : "批量"}
-              </button>
-            </div>
-          </div>
-          {sessionBatchMode ? (
-            <div className="session-batch-bar">
-              <span>已选 {selectedSessionIds.size}</span>
-              <button
-                className="mini-button danger-mini-button"
-                disabled={selectedSessionIds.size === 0}
-                onClick={() => void handleDeleteSelectedSessions()}
-                type="button"
-              >
-                删除
-              </button>
-            </div>
-          ) : null}
-          <div className="session-history-list">
-            {orderedSessions.map((session) => (
-              <button
-                className={
-                  session.id === activeSession?.id && activeView === "thread"
-                    ? "session-history-card active"
-                    : "session-history-card"
-                }
-                key={session.id}
-                onClick={() =>
-                  sessionBatchMode ? handleToggleSessionSelection(session.id) : handleOpenSession(session.id)
-                }
-                type="button"
-              >
-                {sessionBatchMode ? (
-                  <input
-                    aria-label={`选择 ${session.title}`}
-                    checked={selectedSessionIds.has(session.id)}
-                    onChange={() => handleToggleSessionSelection(session.id)}
-                    onClick={(event) => event.stopPropagation()}
-                    type="checkbox"
-                  />
-                ) : (
-                  <span className={session.pinned ? "history-status-dot pinned" : "history-status-dot"} />
-                )}
-                {renamingSessionId === session.id ? (
-                  <span className="session-rename-inline" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      value={renameSessionDraft}
-                      onChange={(event) => setRenameSessionDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          void handleConfirmRenameSession(session.id);
-                        }
-                        if (event.key === "Escape") {
-                          setRenamingSessionId(null);
-                          setRenameSessionDraft("");
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <button
-                      className="mini-button"
-                      onClick={() => void handleConfirmRenameSession(session.id)}
-                      type="button"
-                    >
-                      保存
-                    </button>
-                  </span>
-                ) : (
-                  <span>
-                    <strong>{session.title}</strong>
-                    <small>
-                      {formatRelativeTime(session.updatedAt)} · {sessionMessageCounts.get(session.id) ?? 0} 条消息 ·{" "}
-                      {runtimeSettings.workspace.defaultWorkspace || session.workspace}
-                    </small>
-                  </span>
-                )}
-                <span className="session-card-actions" onClick={(event) => event.stopPropagation()}>
-                  <button
-                    className={session.pinned ? "icon-button active-icon-button" : "icon-button"}
-                    onClick={() => void handleToggleSessionPin(session)}
-                    type="button"
-                    aria-label="置顶任务"
-                  >
-                    <Pin size={13} />
-                  </button>
-                  <button
-                    className="icon-button"
-                    onClick={() => handleStartRenameSession(session)}
-                    type="button"
-                    aria-label="重命名任务"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    className="icon-button danger-icon-button"
-                    onClick={() => void handleDeleteSession(session.id)}
-                    type="button"
-                    aria-label="删除任务"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </span>
-              </button>
-            ))}
-            <article className="session-history-card muted-history-card">
-              <span className="history-status-dot muted" />
-              <span>
-                <strong>桌面发布 QA</strong>
-                <small>安装包、保留数据、私有分发</small>
-              </span>
-              <b>计划</b>
-            </article>
-          </div>
-        </section>
-
-        <div className="sidebar-user-bar">
-          <UpdateBadge onClick={() => setUpdateModalOpen(true)} />
-          <button className="sidebar-user-button" onClick={() => handleOpenSettings("desktop")} type="button">
-            <span className="sidebar-user-avatar">N</span>
-            <span>
-              <strong>NexaDesk</strong>
-              <small>{mode === "live" ? "本地 API 已连接" : "演示模式"}</small>
-            </span>
-          </button>
-          <button
-            className={settingsOpen ? "sidebar-settings-button active" : "sidebar-settings-button"}
-            onClick={() => handleOpenSettings("providers")}
-            type="button"
-          >
-            <Settings size={16} />
-            设置
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        activeView={activeView}
+        activeSession={activeSession}
+        activeAgent={activeAgent}
+        activeRuntimeModel={activeRuntimeModel}
+        enabledSkills={enabledSkills.length}
+        teamAgents={teamAgents}
+        snapshot={snapshot}
+        settings={settings}
+        settingsOpen={settingsOpen}
+        mode={mode}
+        sidebarCollapsed={sidebarCollapsed}
+        orderedSessions={orderedSessions}
+        sessionMessageCounts={sessionMessageCounts}
+        sessionBatchMode={sessionBatchMode}
+        selectedSessionIds={selectedSessionIds}
+        renamingSessionId={renamingSessionId}
+        renameSessionDraft={renameSessionDraft}
+        runtimeSettings={runtimeSettings}
+        UpdateBadge={UpdateBadge}
+        onOpenView={handleOpenView}
+        onOpenSettings={handleOpenSettings}
+        onOpenSession={handleOpenSession}
+        onToggleSessionPin={handleToggleSessionPin}
+        onDeleteSession={handleDeleteSession}
+        onStartRenameSession={handleStartRenameSession}
+        onConfirmRenameSession={handleConfirmRenameSession}
+        onToggleSessionSelection={handleToggleSessionSelection}
+        onDeleteSelectedSessions={handleDeleteSelectedSessions}
+        onToggleBatchMode={() => setSessionBatchMode((current) => !current)}
+        onSetRenameSessionDraft={setRenameSessionDraft}
+        onSetRenamingSessionId={setRenamingSessionId}
+        onSetUpdateModalOpen={setUpdateModalOpen}
+        onToggleSidebarCollapsed={() => setSidebarCollapsed((current) => !current)}
+        formatRelativeTime={formatRelativeTime}
+      />
 
       <section className="main-stage">
         <div className="sidebar-collapse-trigger">
