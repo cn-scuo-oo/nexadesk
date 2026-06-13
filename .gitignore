@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 release/
+bundled-node/
 .vite/
 .env
 .env.local

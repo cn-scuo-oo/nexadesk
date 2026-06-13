@@ -2007,6 +2007,7 @@ export function App() {
             </button>
             <button
               className={activeView === "runtime" ? "nav-item nav-button active" : "nav-item nav-button"}
+              data-testid="nav-runtime"
               onClick={() => handleOpenView("runtime")}
               type="button"
             >
@@ -2513,6 +2514,7 @@ export function App() {
             <section
               className={`panel-block workspace-context-block${workspaceContextCollapsed ? " collapsed" : ""}`}
               id="workspace-context"
+              data-testid="workspace-context-panel"
             >
               <div className="panel-heading compact">
                 <div>
@@ -2523,6 +2525,7 @@ export function App() {
                   <button
                     aria-expanded={!workspaceContextCollapsed}
                     className="mini-button workspace-context-toggle"
+                    data-testid="workspace-context-toggle"
                     onClick={() => setWorkspaceContextCollapsed((current) => !current)}
                     type="button"
                   >
@@ -4131,13 +4134,13 @@ function RuntimeDashboardView({
   const selectedTelemetry = telemetry.find((entry) => entry.id === selectedTelemetryId) ?? telemetry[0];
 
   return (
-    <section className="workspace module-workspace runtime-dashboard-workspace">
+    <section className="workspace module-workspace runtime-dashboard-workspace" data-testid="runtime-dashboard-view">
       <ModuleHeader
         eyebrow="Runtime"
         title="AI Runtime Dashboard"
         detail="模型、Agent、技能、审批和执行趋势集中在独立运行监控台。"
       />
-      <div className="runtime-dashboard-shell">
+      <div className="runtime-dashboard-shell" data-testid="runtime-dashboard-shell">
         <section className="runtime-dashboard-main">
           <div className="dashboard-filter-row">
             <select>
@@ -4167,7 +4170,7 @@ function RuntimeDashboardView({
             </button>
           </div>
 
-          <div className="dashboard-kpi-grid">
+          <div className="dashboard-kpi-grid" data-testid="runtime-dashboard-metrics">
             <div className="kpi-card">
               <strong>{runtimeStats.totalCalls}</strong>
               <span>总调用</span>
@@ -4215,7 +4218,7 @@ function RuntimeDashboardView({
             </div>
           </div>
 
-          <div className="dashboard-chart-grid">
+          <div className="dashboard-chart-grid" data-testid="runtime-dashboard-charts">
             <div className="chart-card">
               <h4>调用趋势</h4>
               <div className="runtime-chart-visual" aria-label="调用趋势图">
@@ -4288,7 +4291,7 @@ function RuntimeDashboardView({
             </div>
           </div>
 
-          <section className="panel-block runtime-call-detail-panel">
+          <section className="panel-block runtime-call-detail-panel" data-testid="runtime-call-detail-panel">
             <div className="panel-heading compact">
               <div>
                 <p className="eyebrow">Calls</p>
@@ -4320,7 +4323,7 @@ function RuntimeDashboardView({
                   ))
                 )}
               </div>
-              <div className="runtime-call-inspector">
+              <div className="runtime-call-inspector" data-testid="runtime-call-inspector">
                 {selectedTelemetry ? (
                   <>
                     <div className="runtime-call-inspector-head">
@@ -4368,7 +4371,7 @@ function RuntimeDashboardView({
           </section>
         </section>
 
-        <aside className="runtime-side-stack">
+        <aside className="runtime-side-stack" data-testid="runtime-side-stack">
           <section className="panel-block runtime-health-card">
             <div className="panel-heading compact">
               <div>
@@ -5981,6 +5984,9 @@ function SettingsCenter({
   ).filter(Boolean);
   const canPickDirectory = Boolean(window.nexadeskDesktop?.selectDirectory);
   const activeSettingsTab = settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
+  const installedEngineCount = draft.assistant.engines.filter((engine) => engine.installed).length;
+  const enabledEngineCount = draft.assistant.engines.filter((engine) => engine.enabled).length;
+  const localCliEngineCount = draft.assistant.engines.filter((engine) => engine.configSource === "local_cli").length;
 
   function updateAgent(agentId: string, patch: Partial<AgentProfile>) {
     updateDraft({
@@ -6196,7 +6202,7 @@ function SettingsCenter({
             ) : null}
 
             {activeTab === "engines" ? (
-              <section className="panel-block settings-section engine-settings">
+              <section className="panel-block settings-section engine-settings" data-testid="agent-engine-center">
                 <div className="panel-heading compact">
                   <div>
                     <p className="eyebrow">Agent Engine Center</p>
@@ -6216,6 +6222,12 @@ function SettingsCenter({
                     这里把模型 Provider 和 Agent 执行器拆开管理：Provider 负责 API/模型，Agent 引擎负责本机
                     CLI、运行时、权限模式和后续启动检测。
                   </p>
+                  <div className="engine-status-row">
+                    <span className="runtime-pill">{draft.assistant.engines.length} engines</span>
+                    <span className="runtime-pill">{enabledEngineCount} enabled</span>
+                    <span className="runtime-pill">{installedEngineCount} installed</span>
+                    <span className="runtime-pill">{localCliEngineCount} local CLI</span>
+                  </div>
                   <div className="collapse-list">
                     {draft.assistant.engines.map((engine) => {
                       const detection = engineDetections.find((item) => item.engineId === engine.id);
@@ -6263,7 +6275,7 @@ function SettingsCenter({
                               {detection?.version ? <span className="runtime-pill">{detection.version}</span> : null}
                             </div>
                             {detection ? (
-                              <div className="engine-detection-card">
+                              <div className="engine-detection-card" data-testid={`engine-detection-${engine.id}`}>
                                 <strong>{detection.message}</strong>
                                 {detection.resolvedPath ? <span>命令路径：{detection.resolvedPath}</span> : null}
                                 {detection.configPath ? <span>配置路径：{detection.configPath}</span> : null}
@@ -8210,10 +8222,10 @@ function PrivacyDialog({ onAccept, onReject }: { onAccept: () => void; onReject:
           智能体工作台。您的对话数据默认保存在本地设备上。使用前请阅读并同意我们的服务条款和隐私政策。
         </p>
         <div className="privacy-dialog-actions">
-          <button className="secondary-button" onClick={onReject} type="button">
+          <button className="secondary-button" data-testid="privacy-reject" onClick={onReject} type="button">
             不同意
           </button>
-          <button className="primary-button" onClick={onAccept} type="button">
+          <button className="primary-button" data-testid="privacy-accept" onClick={onAccept} type="button">
             同意并继续
           </button>
         </div>
@@ -8583,13 +8595,20 @@ function WorkspaceFilePanel({
     path: file.path,
     kind: file.kind
   }));
+  const recentCount = recentFiles.length;
+  const entryCount = entries.length;
 
   return (
-    <div className="workspace-file-panel">
+    <div className="workspace-file-panel" data-testid="workspace-file-panel">
       <div className="workspace-file-panel-toolbar">
         <strong>{configuredWorkspace}</strong>
         <small>{currentPath}</small>
         {error ? <small>{error}</small> : null}
+      </div>
+      <div className="engine-status-row workspace-file-panel-summary">
+        <span className="runtime-pill">{result?.root ?? configuredWorkspace}</span>
+        <span className="runtime-pill">最近 {recentCount}</span>
+        <span className="runtime-pill">文件 {entryCount}</span>
       </div>
       <div className="workspace-file-panel-actions">
         <button disabled={loading} onClick={onRefresh} type="button">
@@ -8602,7 +8621,7 @@ function WorkspaceFilePanel({
           ????
         </button>
       </div>
-      <div className="workspace-file-panel-list">
+      <div className="workspace-file-panel-list" data-testid="workspace-file-panel-list">
         {[...recentFiles, ...entries].slice(0, 8).map((entry) => (
           <button key={entry.path} onClick={() => onOpenFile(entry)} type="button">
             {entry.name ?? entry.path}
@@ -8647,7 +8666,7 @@ function WorkspaceFilePreviewDrawer({
 }) {
   if (!preview) return null;
   return (
-    <div className="workspace-file-preview-drawer">
+    <div className="workspace-file-preview-drawer" data-testid="workspace-file-preview-drawer">
       <strong>{preview.name || entry.name}</strong>
       {loading ? <small>???...</small> : null}
       {error ? <small>{error}</small> : null}

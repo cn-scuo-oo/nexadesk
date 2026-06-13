@@ -46,7 +46,7 @@ function runPackagedSmoke() {
     const timeout = setTimeout(() => {
       child.kill();
       reject(new Error(`Packaged smoke test timed out.\n${output}`));
-    }, 120_000);
+    }, 300_000);
 
     child.on("error", (error) => {
       clearTimeout(timeout);

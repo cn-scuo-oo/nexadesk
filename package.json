@@ -64,10 +64,26 @@
       "output": "release"
     },
     "afterPack": "scripts/after-pack.mjs",
+    "extraResources": [
+      {
+        "from": "apps/server/dist/index.cjs",
+        "to": "server-dist/index.cjs"
+      },
+      {
+        "from": "apps/server/dist/node_modules",
+        "to": "server-dist/node_modules"
+      },
+      {
+        "from": "bundled-node",
+        "to": "node-runtime"
+      }
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "files": [
       "apps/desktop/**/*",
       "apps/web/dist/**/*",
-      "apps/server/dist/**/*",
       "build-resources/**/*",
       "package.json"
     ],

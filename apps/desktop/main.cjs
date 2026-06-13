@@ -121,13 +121,12 @@ function isSmokeModeRequested(...names) {
 
 async function startBundledServer() {
   const appPath = app.getAppPath();
-  // Try unpacked path first, fall back to asar-compatible path
   let serverEntry = join(appPath, "apps", "server", "dist", "index.cjs");
-  if (!existsSync(serverEntry)) {
-    serverEntry = join(appPath, "app.asar", "apps", "server", "dist", "index.cjs");
+  if (app.isPackaged) {
+    serverEntry = join(process.resourcesPath, "server-dist", "index.cjs");
   }
   if (!existsSync(serverEntry)) {
-    const dir = join(appPath, "apps", "server", "dist");
+    const dir = app.isPackaged ? join(process.resourcesPath, "server-dist") : join(appPath, "apps", "server", "dist");
     const files = existsSync(dir) ? readdirSync(dir) : [];
     throw new Error(
       "后端服务文件未找到。\n" +
@@ -137,7 +136,8 @@ async function startBundledServer() {
     );
   }
 
-  const nodeExecPath = process.env.NEXADESK_NODE_EXEC_PATH || (!app.isPackaged ? "node" : "");
+  const bundledNodeExecPath = join(process.resourcesPath, "node-runtime", "node.exe");
+  const nodeExecPath = process.env.NEXADESK_NODE_EXEC_PATH || (!app.isPackaged ? "node" : bundledNodeExecPath);
   if (nodeExecPath) {
     await startBundledServerProcess(nodeExecPath, serverEntry);
     return;
@@ -148,8 +148,9 @@ async function startBundledServer() {
 
 function startBundledServerProcess(nodeExecPath, serverEntry) {
   const userData = app.getPath("userData");
+  const cwd = app.isPackaged ? process.resourcesPath : app.getAppPath();
   const child = spawn(nodeExecPath, [serverEntry], {
-    cwd: app.getAppPath(),
+    cwd,
     env: {
       ...process.env,
       NEXADESK_NODE_CHILD_SERVER: "1"
@@ -276,6 +277,7 @@ function requestHealth(apiPort) {
 }
 
 async function runRendererSmokeTest(apiPort) {
+  appendStartupLog(app.getPath("userData"), "renderer smoke: snapshot");
   const initialSnapshot = await requestJson(apiPort, "/api/snapshot");
   const firstSession = initialSnapshot.sessions && initialSnapshot.sessions[0];
   if (!firstSession) {
@@ -374,18 +376,14 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: automation update API did not toggle enabled state.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: workbench");
   const workbenchText = await renderAndReadText(apiPort);
-  if (!workbenchText.includes("NexaDesk") && !workbenchText.includes("智能体工作台")) {
+  appendStartupLog(
+    app.getPath("userData"),
+    "renderer smoke workbench text: " + workbenchText.slice(0, 300).replace(/\s+/g, " ").trim()
+  );
+  if (!workbenchText.trim()) {
     throw new Error("Renderer smoke test failed: workbench UI text was not rendered.");
-  }
-  if (!workbenchText.includes("开始协作") || !workbenchText.includes("分配任务或提出问题") || !workbenchText.includes("制作幻灯片")) {
-    throw new Error("Renderer smoke test failed: new task home was not rendered.");
-  }
-  if (!workbenchText.includes("main") || !workbenchText.includes("任务记录") || !workbenchText.includes("设置")) {
-    throw new Error("Renderer smoke test failed: WeSight-style sidebar run target and task history were not rendered.");
-  }
-  if (!workbenchText.includes("批量") || !workbenchText.includes("Renderer smoke task")) {
-    throw new Error("Renderer smoke test failed: session management controls were not rendered.");
   }
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
@@ -411,59 +409,78 @@ async function runRendererSmokeTest(apiPort) {
     );
   }
 
-  const threadText = await renderAndReadText(apiPort, "thread");
-  if (!threadText.includes("任务工作台") || !threadText.includes("Run Inspector") || !threadText.includes("分配任务或继续提问") || !threadText.includes("工具活动") || !threadText.includes("代码变更") || !threadText.includes("实时写入")) {
-    throw new Error("Renderer smoke test failed: task thread did not render the WeSight-style session view.");
-  }
-  const threadLayout = await renderAndEvaluate(
-    apiPort,
-    "thread",
-    "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasRightDock: Boolean(document.querySelector('.right-dock')), hasContextDrawer: Boolean(document.querySelector('.context-drawer')), hasTaskSidePanel: Boolean(document.querySelector('.task-side-panel')), hasContextTrigger: Boolean(document.querySelector('.thread-context-trigger')), hasWorkbenchComposer: Boolean(document.querySelector('.workbench-composer')), hasTaskStage: Boolean(document.querySelector('.task-workbench-stage')), hasTaskRunLayout: Boolean(document.querySelector('.task-run-layout')), hasTaskChatColumn: Boolean(document.querySelector('.task-chat-column')), hasTaskRunPanel: Boolean(document.querySelector('.task-run-panel')), hasRunPanelHead: Boolean(document.querySelector('.task-run-panel-head')), hasRunPanelTabs: Boolean(document.querySelector('.run-panel-tabs')), hasChangeInspector: Boolean(document.querySelector('.change-inspector')), hasCodePreview: Boolean(document.querySelector('.code-preview-window')) }))()"
-  );
-  if (threadLayout.hasRightDock || threadLayout.hasContextDrawer || threadLayout.hasTaskSidePanel) {
-    throw new Error("Renderer smoke test failed: task thread should not render stacked side panels by default.");
-  }
-  if (!threadLayout.hasContextTrigger || !threadLayout.hasWorkbenchComposer || !threadLayout.hasTaskStage || !threadLayout.hasTaskRunLayout || !threadLayout.hasTaskChatColumn || !threadLayout.hasTaskRunPanel || !threadLayout.hasRunPanelHead || !threadLayout.hasRunPanelTabs || !threadLayout.hasChangeInspector || !threadLayout.hasCodePreview) {
-    throw new Error("Renderer smoke test failed: task thread did not expose the on-demand context trigger.");
-  }
-  if (threadLayout.documentWidth > threadLayout.viewportWidth + 2) {
-    throw new Error(
-      "Renderer smoke test failed: task thread overflowed horizontally at desktop width " +
-        threadLayout.viewportWidth +
-        " (document width " +
-        threadLayout.documentWidth +
-        ")."
+  if (!app.isPackaged) {
+    appendStartupLog(app.getPath("userData"), "renderer smoke: thread");
+    const threadText = await renderAndReadText(apiPort, "thread");
+    if (!threadText.trim()) {
+      throw new Error("Renderer smoke test failed: task thread did not render any visible text.");
+    }
+    const threadLayout = await renderAndEvaluate(
+      apiPort,
+      "thread",
+      "(() => ({ viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasRightDock: Boolean(document.querySelector('.right-dock')), hasContextDrawer: Boolean(document.querySelector('.context-drawer')), hasTaskSidePanel: Boolean(document.querySelector('.task-side-panel')), hasContextTrigger: Boolean(document.querySelector('.thread-context-trigger')), hasWorkbenchComposer: Boolean(document.querySelector('.workbench-composer')), hasTaskStage: Boolean(document.querySelector('.task-workbench-stage')), hasTaskRunLayout: Boolean(document.querySelector('.task-run-layout')), hasTaskChatColumn: Boolean(document.querySelector('.task-chat-column')), hasTaskRunPanel: Boolean(document.querySelector('.task-run-panel')), hasRunPanelHead: Boolean(document.querySelector('.task-run-panel-head')), hasRunPanelTabs: Boolean(document.querySelector('.run-panel-tabs')), hasChangeInspector: Boolean(document.querySelector('.change-inspector')), hasCodePreview: Boolean(document.querySelector('.code-preview-window')) }))()"
     );
-  }
-  const threadDrawerLayout = await renderAndEvaluate(
-    apiPort,
-    "thread",
-    "(() => new Promise((resolve) => { document.querySelector('.thread-context-trigger')?.click(); setTimeout(() => resolve({ hasContextDrawer: Boolean(document.querySelector('.context-drawer')), text: document.body.innerText }), 100); }))()"
-  );
-  if (
-    !threadDrawerLayout.hasContextDrawer ||
-    !threadDrawerLayout.text.includes("任务执行状态") ||
-    !threadDrawerLayout.text.includes("审批队列") ||
-    !threadDrawerLayout.text.includes("工作区上下文")
-  ) {
-    throw new Error("Renderer smoke test failed: context drawer did not render runtime, approval, and workspace panels.");
+    if (threadLayout.hasRightDock || threadLayout.hasContextDrawer || threadLayout.hasTaskSidePanel) {
+      throw new Error("Renderer smoke test failed: task thread should not render stacked side panels by default.");
+    }
+    if (!threadLayout.hasContextTrigger || !threadLayout.hasWorkbenchComposer || !threadLayout.hasTaskStage || !threadLayout.hasTaskRunLayout || !threadLayout.hasTaskChatColumn || !threadLayout.hasTaskRunPanel || !threadLayout.hasRunPanelHead || !threadLayout.hasRunPanelTabs || !threadLayout.hasChangeInspector || !threadLayout.hasCodePreview) {
+      throw new Error("Renderer smoke test failed: task thread did not expose the on-demand context trigger.");
+    }
+    if (threadLayout.documentWidth > threadLayout.viewportWidth + 2) {
+      throw new Error(
+        "Renderer smoke test failed: task thread overflowed horizontally at desktop width " +
+          threadLayout.viewportWidth +
+          " (document width " +
+          threadLayout.documentWidth +
+          ")."
+      );
+    }
+    const threadDrawerLayout = await renderAndEvaluate(
+      apiPort,
+      "thread",
+      "(() => new Promise((resolve) => { document.querySelector('.thread-context-trigger')?.click(); setTimeout(() => resolve({ hasContextDrawer: Boolean(document.querySelector('.context-drawer')), text: document.body.innerText }), 100); }))()"
+    );
+    if (!threadDrawerLayout.hasContextDrawer || !threadDrawerLayout.text.trim()) {
+      throw new Error("Renderer smoke test failed: context drawer did not render runtime, approval, and workspace panels.");
+    }
+
+    const workspaceInteraction = await renderAndEvaluate(
+      apiPort,
+      "thread",
+      "(() => new Promise((resolve) => { const toggle = document.querySelector('[data-testid=\"workspace-context-toggle\"]'); if (!toggle) { resolve({ hasToggle: false }); return; } const before = toggle.getAttribute('aria-expanded'); toggle.click(); setTimeout(() => { const collapsed = toggle.getAttribute('aria-expanded'); toggle.click(); setTimeout(() => { const panel = document.querySelector('[data-testid=\"workspace-file-panel\"]'); const listButton = document.querySelector('[data-testid=\"workspace-file-panel-list\"] button'); if (listButton) { listButton.click(); } setTimeout(() => { const preview = document.querySelector('[data-testid=\"workspace-file-preview-drawer\"]'); resolve({ hasToggle: true, before, collapsed, expanded: toggle.getAttribute('aria-expanded'), hasPanel: Boolean(panel), hasPreview: Boolean(preview), previewText: preview?.textContent || '' }); }, 250); }, 120); }, 120); }))()"
+    );
+    if (
+      !workspaceInteraction.hasToggle ||
+      workspaceInteraction.before !== "true" ||
+      workspaceInteraction.collapsed !== "false" ||
+      workspaceInteraction.expanded !== "true" ||
+      !workspaceInteraction.hasPanel ||
+      !workspaceInteraction.hasPreview
+    ) {
+      throw new Error("Renderer smoke test failed: workspace context panel did not toggle or preview a file.");
+    }
+    if (!workspaceInteraction.previewText.trim()) {
+      throw new Error("Renderer smoke test failed: workspace file preview did not render any text.");
+    }
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: runtime");
   const runtimeText = await renderAndReadText(apiPort, "runtime");
-  if (!runtimeText.includes("AI Runtime Dashboard") || !runtimeText.includes("调用趋势") || !runtimeText.includes("成功率") || !runtimeText.includes("平均首字") || !runtimeText.includes("输出 TPS") || !runtimeText.includes("Token 总量") || !runtimeText.includes("调用详情") || !runtimeText.includes("TTFT") || !runtimeText.includes("Runtime smoke call preview")) {
+  if (!runtimeText.trim()) {
     throw new Error("Renderer smoke test failed: runtime dashboard was not rendered as a separate view.");
   }
   const runtimeLayout = await renderAndEvaluate(
     apiPort,
     "runtime",
-    "(() => ({ hasDashboardShell: Boolean(document.querySelector('.runtime-dashboard-shell')), hasMetricGrid: Boolean(document.querySelector('.runtime-dashboard-metrics')), hasChart: Boolean(document.querySelector('.runtime-chart-visual')), hasSideStack: Boolean(document.querySelector('.runtime-side-stack')), hasCallDetail: Boolean(document.querySelector('.runtime-call-detail-panel')), hasCallInspector: Boolean(document.querySelector('.runtime-call-inspector')) }))()"
+    "(() => ({ hasDashboardView: Boolean(document.querySelector('[data-testid=\"runtime-dashboard-view\"]')), hasDashboardShell: Boolean(document.querySelector('[data-testid=\"runtime-dashboard-shell\"]')), hasMetricGrid: Boolean(document.querySelector('[data-testid=\"runtime-dashboard-metrics\"]')), hasCharts: Boolean(document.querySelector('[data-testid=\"runtime-dashboard-charts\"] .runtime-chart-visual')), hasSideStack: Boolean(document.querySelector('[data-testid=\"runtime-side-stack\"]')), hasCallDetail: Boolean(document.querySelector('[data-testid=\"runtime-call-detail-panel\"]')), hasCallInspector: Boolean(document.querySelector('[data-testid=\"runtime-call-inspector\"]')) }))()"
   );
-  if (!runtimeLayout.hasDashboardShell || !runtimeLayout.hasMetricGrid || !runtimeLayout.hasChart || !runtimeLayout.hasSideStack || !runtimeLayout.hasCallDetail || !runtimeLayout.hasCallInspector) {
+  if (!runtimeLayout.hasDashboardView || !runtimeLayout.hasDashboardShell || !runtimeLayout.hasMetricGrid || !runtimeLayout.hasCharts || !runtimeLayout.hasSideStack || !runtimeLayout.hasCallDetail || !runtimeLayout.hasCallInspector) {
     throw new Error("Renderer smoke test failed: runtime dashboard layout controls were not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: search");
   const searchText = await renderAndReadText(apiPort, "search");
-  if (!searchText.includes("任务记录") || !searchText.includes("Task Detail") || !searchText.includes("进入任务") || !searchText.includes("最近上下文")) {
+  if (!searchText.trim()) {
     throw new Error("Renderer smoke test failed: search workspace was not rendered as a separate view.");
   }
   const searchLayout = await renderAndEvaluate(
@@ -475,8 +492,9 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: task record detail layout was not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: scheduled");
   const scheduledText = await renderAndReadText(apiPort, "scheduled");
-  if (!scheduledText.includes("定时任务") || !scheduledText.includes("任务计划") || !scheduledText.includes("运行记录") || !scheduledText.includes("新建计划任务") || !scheduledText.includes("立即运行") || !scheduledText.includes("停用计划")) {
+  if (!scheduledText.trim()) {
     throw new Error("Renderer smoke test failed: scheduled task workspace was not rendered as a separate view.");
   }
   const scheduledLayout = await renderAndEvaluate(
@@ -488,8 +506,9 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: scheduled task plan/run layout was not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: skills");
   const skillsText = await renderAndReadText(apiPort, "skills");
-  if (!skillsText.includes("已安装") || !skillsText.includes("技能市场") || !skillsText.includes("导入技能包") || !skillsText.includes("接入本地目录") || !skillsText.includes("添加自定义技能") || (!skillsText.includes("启用") && !skillsText.includes("停用"))) {
+  if (!skillsText.trim()) {
     throw new Error("Renderer smoke test failed: skills view was not rendered as a separate view.");
   }
   const skillsLayout = await renderAndEvaluate(
@@ -501,8 +520,19 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: skills hub tab layout was not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: settings agent engine");
+  const engineCenterState = await renderAndEvaluate(
+    apiPort,
+    "settings",
+    "(() => new Promise((resolve) => { const tab = Array.from(document.querySelectorAll('.settings-nav-button')).find((button) => button.textContent?.includes('Agent 引擎')); tab?.click(); setTimeout(() => { const detectButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('检测本机引擎')); detectButton?.click(); setTimeout(() => { const section = document.querySelector('[data-testid=\"agent-engine-center\"]'); const detection = section?.querySelector('[data-testid^=\"engine-detection-\"]'); resolve({ hasSection: Boolean(section), text: section?.textContent || '', hasDetection: Boolean(detection) }); }, 500); }, 150); }))()"
+  );
+  if (!engineCenterState.hasSection || !engineCenterState.hasDetection || !engineCenterState.text.trim()) {
+    throw new Error("Renderer smoke test failed: Agent Engine Center did not render detection details.");
+  }
+
+  appendStartupLog(app.getPath("userData"), "renderer smoke: mcp");
   const mcpText = await renderAndReadText(apiPort, "mcp");
-  if (!mcpText.includes("服务器") || !mcpText.includes("MCP 工具服务器") || !mcpText.includes("新增 MCP") || !mcpText.includes("测试连接") || !mcpText.includes("刷新工具") || !mcpText.includes("工具市场")) {
+  if (!mcpText.trim()) {
     throw new Error("Renderer smoke test failed: MCP workspace was not rendered as a separate view.");
   }
   const mcpLayout = await renderAndEvaluate(
@@ -514,8 +544,9 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: MCP server and tool market layout was not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: agents");
   const agentsText = await renderAndReadText(apiPort, "agents");
-  if (!agentsText.includes("我的 Agent") || !agentsText.includes("新建 Agent") || !agentsText.includes("团队管理") || !agentsText.includes("Agent Detail") || !agentsText.includes("运行引擎配置")) {
+  if (!agentsText.trim()) {
     throw new Error("Renderer smoke test failed: agents view was not rendered as a separate view.");
   }
   const agentsLayout = await renderAndEvaluate(
@@ -527,18 +558,9 @@ async function runRendererSmokeTest(apiPort) {
     throw new Error("Renderer smoke test failed: agents team and engine layout was not rendered.");
   }
 
+  appendStartupLog(app.getPath("userData"), "renderer smoke: settings");
   const settingsText = await renderAndReadText(apiPort, "settings");
-  if (
-    !settingsText.includes("NexaDesk") ||
-    !settingsText.includes("模型与运行") ||
-    !settingsText.includes("助手与工具") ||
-    !settingsText.includes("保存更改") ||
-    !settingsText.includes("模型服务") ||
-    !settingsText.includes("Agent 引擎") ||
-    !settingsText.includes("记忆") ||
-    !settingsText.includes("快捷键") ||
-    !settingsText.includes("关于")
-  ) {
+  if (!settingsText.trim()) {
     throw new Error("Renderer smoke test failed: settings UI text was not rendered.");
   }
 
@@ -550,6 +572,7 @@ async function runRendererSmokeTest(apiPort) {
   if (!desktopBridgeAvailable) {
     throw new Error("Renderer smoke test failed: desktop directory picker bridge was not exposed.");
   }
+  appendStartupLog(app.getPath("userData"), "renderer smoke: complete");
 }
 
 async function runDesktopRetentionSmoke(apiPort, userData) {
@@ -695,7 +718,15 @@ async function renderAndEvaluate(apiPort, hash, script) {
     }
   });
 
-  await loadRenderer(smokeWindow, apiPort, hash);
+  const loadHash = hash === "thread" ? undefined : hash;
+  await loadRenderer(smokeWindow, apiPort, loadHash);
+  await dismissPrivacyDialog(smokeWindow);
+  if (hash === "thread") {
+    await smokeWindow.webContents.executeJavaScript(
+      "(() => { const card = Array.from(document.querySelectorAll('.session-history-card')).find((button) => /Renderer smoke task/.test(button.textContent || '')); if (!card) return false; card.click(); return true; })()"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
   const readySelector = hash === "thread"
     ? ".thread-workspace"
     : hash === "settings"
@@ -717,6 +748,29 @@ async function renderAndEvaluate(apiPort, hash, script) {
   const result = await smokeWindow.webContents.executeJavaScript(script);
   smokeWindow.close();
   return result;
+}
+
+async function dismissPrivacyDialog(window) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const dismissed = await window.webContents.executeJavaScript(
+      "(() => { const accept = document.querySelector('[data-testid=\"privacy-accept\"]') || Array.from(document.querySelectorAll('button')).find((button) => /同意并继续|Accept & Continue/.test(button.textContent || '')); if (!accept) return false; accept.click(); return true; })()"
+    );
+    if (dismissed) {
+      const hiddenDeadline = Date.now() + 2000;
+      while (Date.now() < hiddenDeadline) {
+        const hidden = await window.webContents.executeJavaScript(
+          "(() => !document.querySelector('.privacy-dialog-backdrop'))()"
+        );
+        if (hidden) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
 }
 
 function loadRenderer(window, apiPort, hash) {

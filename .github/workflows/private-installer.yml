@@ -30,6 +30,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Settings persistence smoke
+        run: npm run settings:smoke
+
       - name: Runtime smoke
         run: npm run runtime:smoke
 
