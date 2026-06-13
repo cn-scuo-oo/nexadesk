@@ -23,7 +23,9 @@ import {
   Users,
   Workflow,
   X,
-  Zap
+  Zap,
+  PanelLeftClose,
+  PanelLeftOpen
 } from "lucide-react";
 import { FormEvent, type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -149,6 +151,7 @@ type ProviderMatrixItem = {
 };
 
 const workspaceContextCollapsedStorageKey = "nexadesk.workspaceContext.collapsed";
+const sidebarCollapsedStorageKey = "nexadesk.sidebar.collapsed";
 const workspaceRecentFilesStorageKey = "nexadesk.workspaceContext.recentFiles";
 const runtimeTelemetryStorageKey = "nexadesk.runtime.telemetry";
 const maxWorkspaceRecentFiles = 8;
@@ -688,6 +691,9 @@ export function App() {
   const [workspaceContextCollapsed, setWorkspaceContextCollapsed] = useState(() =>
     readStoredBoolean(workspaceContextCollapsedStorageKey, false)
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readStoredBoolean(sidebarCollapsedStorageKey, false)
+  );
   const [threadContextOpen, setThreadContextOpen] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<WorkspaceTreeEntry[]>(() =>
     readStoredWorkspaceRecentFiles()
@@ -727,6 +733,9 @@ export function App() {
     } else {
       root.classList.remove("dark");
     }
+
+    root.classList.add("nexadesk-theme-transition");
+    window.setTimeout(() => root.classList.remove("nexadesk-theme-transition"), 350);
     try {
       localStorage.setItem(themeStorageKey, themeId);
     } catch {}
@@ -865,6 +874,10 @@ export function App() {
   useEffect(() => {
     writeStoredBoolean(workspaceContextCollapsedStorageKey, workspaceContextCollapsed);
   }, [workspaceContextCollapsed]);
+
+  useEffect(() => {
+    writeStoredBoolean(sidebarCollapsedStorageKey, sidebarCollapsed);
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     writeStoredWorkspaceRecentFiles(recentWorkspaceFiles);
@@ -1900,7 +1913,7 @@ export function App() {
   }
 
   return (
-    <main className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}`}>
+    <main className={`app-shell no-context${settingsOpen ? " overlay-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <WindowTitleBar title={`NexaDesk — ${activeAgent?.name ?? "Cowork 助手"}`} />
 
       <aside className="rail">
@@ -2205,6 +2218,16 @@ export function App() {
       </aside>
 
       <section className="main-stage">
+        <div className="sidebar-collapse-trigger">
+          <button
+            aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            className="icon-button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            type="button"
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        </div>
         {activeView === "new" ? (
           <NewTaskView
             activeRuntimeModel={activeRuntimeModel}
