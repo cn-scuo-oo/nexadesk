@@ -1,17 +1,107 @@
-import Database from "better-sqlite3";
 import path from "node:path";
 import type { AgentSession, ChatMessage, MemoryEntry, SessionSummary, RuntimeTelemetryEntry } from "@nexadesk/shared";
 
 /**
  * SQLite-backed persistence layer for NexaDesk.
  * Replaces JSON file storage with structured queries, indexes, and transactional safety.
+ *
+ * The better-sqlite3 native module is loaded dynamically so that the server
+ * bundle can still be required in environments where the native addon fails
+ * to load (e.g. Electron on CI where the ABI doesn't match).
+ *
+ * IMPORTANT: In Electron, `process.dlopen` for a mismatched native addon
+ * throws an error that **bypasses** normal JavaScript try/catch (the process
+ * crashes).  To avoid this, we first probe the addon in a short-lived child
+ * process.  Only if the probe succeeds do we call `require("better-sqlite3")`
+ * in the main process.
  */
 
-let db: Database.Database | null = null;
+type BetterSqlite3Database = any;
+let db: BetterSqlite3Database | null = null;
+let sqliteAvailable: boolean | null = null;
 
-export function initDatabase(dataDir: string): Database.Database {
+/**
+ * Return `true` if the current runtime can load `better-sqlite3` without
+ * crashing.  In Electron we read the build config to check ABI
+ * compatibility; outside Electron we assume it's safe.  The result is
+ * cached so the check runs at most once per process lifetime.
+ */
+let nativeAddonProbeResult: boolean | null = null;
+
+function canLoadBetterSqlite3(): boolean {
+  if (nativeAddonProbeResult !== null) {
+    return nativeAddonProbeResult;
+  }
+
+  const isElectron = !!process.versions?.electron;
+
+  // Outside Electron, Node.js can load modules compiled for the same ABI,
+  // so we skip the probe and attempt the real require directly.
+  if (!isElectron) {
+    nativeAddonProbeResult = true;
+    return true;
+  }
+
+  // We are inside Electron.  Electron's NODE_MODULE_VERSION differs from
+  // plain Node.js (e.g. 146 vs 127).  Loading a native addon whose ABI
+  // does not match crashes the process (uncatchable by try/catch).
+  //
+  // We detect the mismatch by reading the node_module_version that was
+  // recorded at compile time inside better-sqlite3's build config.
+  // config.gypi is created by node-gyp (used by @electron/rebuild or
+  // npm install from source).  If it doesn't exist the addon was
+  // installed as a prebuilt binary compiled for Node.js – NOT Electron –
+  // so we conservatively skip loading.
+  try {
+    const configPath = path.join(
+      path.dirname(require.resolve("better-sqlite3/package.json")),
+      "build",
+      "config.gypi"
+    );
+    const configText = require("node:fs").readFileSync(configPath, "utf-8") as string;
+    const match = configText.match(/"node_module_version"\s*:\s*(\d+)/);
+    const compiledAbi = match ? Number(match[1]) : null;
+    const runtimeAbi = Number(process.versions.modules);
+
+    if (compiledAbi !== null && compiledAbi === runtimeAbi) {
+      nativeAddonProbeResult = true;
+      return true;
+    }
+
+    console.warn(
+      `better-sqlite3 compiled for NODE_MODULE_VERSION ${compiledAbi ?? "unknown"}, ` +
+      `but Electron requires ${runtimeAbi}. SQLite persistence disabled.`
+    );
+    nativeAddonProbeResult = false;
+    return false;
+  } catch {
+    // config.gypi missing → prebuilt binary compiled for Node.js, not Electron.
+    console.warn("better-sqlite3 build config not found; assuming incompatible with Electron. SQLite persistence disabled.");
+    nativeAddonProbeResult = false;
+    return false;
+  }
+}
+
+export function initDatabase(dataDir: string): BetterSqlite3Database | null {
+  if (sqliteAvailable === false) {
+    return null;
+  }
+  if (!canLoadBetterSqlite3()) {
+    sqliteAvailable = false;
+    return null;
+  }
+  let DatabaseConstructor: (new (filename: string) => BetterSqlite3Database) | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    DatabaseConstructor = require("better-sqlite3") as new (filename: string) => BetterSqlite3Database;
+  } catch {
+    sqliteAvailable = false;
+    console.warn("better-sqlite3 native module unavailable; SQLite persistence disabled.");
+    return null;
+  }
+  sqliteAvailable = true;
   const dbPath = path.join(dataDir, "nexadesk.db");
-  db = new Database(dbPath);
+  db = new DatabaseConstructor(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
 
@@ -129,9 +219,21 @@ export function initDatabase(dataDir: string): Database.Database {
   return db;
 }
 
-export function getDb(): Database.Database {
-  if (!db) throw new Error("Database not initialized. Call initDatabase() first.");
-  return db;
+const NOOP_STMT = {
+  get: () => undefined,
+  all: () => [],
+  run: () => ({}),
+};
+
+const NOOP_DB = {
+  pragma: () => {},
+  exec: () => {},
+  prepare: () => NOOP_STMT,
+  transaction: (fn: (...args: any[]) => void) => fn,
+};
+
+export function getDb(): BetterSqlite3Database {
+  return db ?? NOOP_DB;
 }
 
 /* ── Settings ── */

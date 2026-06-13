@@ -77,6 +77,14 @@ app.whenReady().then(async () => {
     const message = error && error.message ? error.message : String(error || "Unknown error");
     appendStartupLog(app.getPath("userData"), "startup failed: " + message);
     writeFile(process.env.NEXADESK_CRASH_LOG_PATH || join(app.getPath("userData"), "crash.log"), message + "\n", function(){});
+    // In test / CI mode, skip the native error dialog which blocks until
+    // dismissed (nobody clicks OK on CI).  Log to stderr so the test harness
+    // can capture the reason and exit with a non-zero code.
+    if (process.env.NEXADESK_INTERNAL_TEST_RUN === "1" || process.env.NEXADESK_ALLOW_PACKAGED_SMOKE === "1") {
+      console.error("NexaDesk startup failed: " + message);
+      app.exit(1);
+      return;
+    }
     dialog.showErrorBox("NexaDesk 启动失败", message);
     app.quit();
   }
@@ -99,14 +107,15 @@ function isSmokeModeRequested(...names) {
   if (!names.some((name) => process.env[name] === "1")) {
     return false;
   }
-  if (process.env.NEXADESK_INTERNAL_TEST_RUN !== "1" && process.env.NEXADESK_ALLOW_PACKAGED_SMOKE !== "1") {
-    appendStartupLog(app.getPath("userData"), "ignored smoke flag without internal test marker: " + names.join(","));
-    return false;
-  }
-  if (!app.isPackaged || process.env.NEXADESK_ALLOW_PACKAGED_SMOKE === "1") {
+  // Internal test runs (CI) always honour the smoke flag regardless of
+  // app.isPackaged, because CI runners may set isPackaged unexpectedly.
+  if (process.env.NEXADESK_INTERNAL_TEST_RUN === "1") {
     return true;
   }
-  appendStartupLog(app.getPath("userData"), "ignored packaged smoke flag: " + names.join(","));
+  if (process.env.NEXADESK_ALLOW_PACKAGED_SMOKE === "1") {
+    return true;
+  }
+  appendStartupLog(app.getPath("userData"), "ignored smoke flag without internal test marker: " + names.join(","));
   return false;
 }
 
