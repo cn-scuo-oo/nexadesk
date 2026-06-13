@@ -149,7 +149,25 @@ function withCheckedAt<T extends { checkedAt?: string }>(result: T): T {
   return { ...result, checkedAt: result.checkedAt ?? new Date().toISOString() };
 }
 
-async function persistProviderStatus(): Promise<void> {
+async function persistProviderStatus(
+  providerId: string,
+  update: { test?: any; modelRefresh?: any }
+): Promise<void> {
+  if (!currentSettings.providerStatus) {
+    currentSettings.providerStatus = { tests: {}, modelRefreshes: {} } as any;
+  }
+  if (update.test) {
+    if (!currentSettings.providerStatus.tests) {
+      (currentSettings.providerStatus as any).tests = {};
+    }
+    (currentSettings.providerStatus as any).tests[providerId] = update.test;
+  }
+  if (update.modelRefresh) {
+    if (!(currentSettings.providerStatus as any).modelRefreshes) {
+      (currentSettings.providerStatus as any).modelRefreshes = {};
+    }
+    (currentSettings.providerStatus as any).modelRefreshes[providerId] = update.modelRefresh;
+  }
   await saveSettings(currentSettings);
 }
 
@@ -550,6 +568,7 @@ app.put("/api/settings", async (req, res, next) => {
     }
 
     const settings = await saveSettings(body.settings, snapshot.providers, body.providerSecrets);
+    currentSettings = settings;
     snapshot.providers = settings.providers;
     snapshot.agents = settings.assistant.agents;
     snapshot.skills = settings.assistant.skills;
@@ -750,12 +769,9 @@ async function runModelExchange(
   }
   const activeEngine = resolveAgentEngine(settings, activeAgent);
   const externalEngine = canRunExternalAgentEngine(activeEngine) ? activeEngine : undefined;
-  const runtime: ResolvedModelRuntime | undefined = externalEngine
-    ? undefined
-    : await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
-  let activityDetail = externalEngine
-    ? `${externalEngine.name} used codex exec in read-only mode to answer a workbench message.`
-    : `${runtime?.provider.name} used ${runtime?.model} to answer a workbench message.`;
+
+  // Create and push user/assistant messages BEFORE resolveRuntime so that
+  // user messages are always persisted even if provider resolution fails.
   const createdAt = new Date().toISOString();
   const userMessage: ChatMessage = {
     id: randomUUID(),
@@ -778,13 +794,29 @@ async function runModelExchange(
         name: "model.stream",
         status: "running",
         risk: "low",
-        summary: externalEngine ? `${externalEngine.name} / codex exec (read-only)` : modelRuntimeLabel(runtime)
+        summary: externalEngine ? `${externalEngine.name} / codex exec (read-only)` : "Resolving model…"
       }
     ]
   };
 
   snapshot.messages.push(userMessage, assistantMessage);
   onEvent?.({ type: "user_message", message: userMessage });
+
+  const runtime: ResolvedModelRuntime | undefined = externalEngine
+    ? undefined
+    : await resolveRuntime(settings, input.providerId, input.model, activeAgent?.providerId);
+
+  // Update the tool summary with resolved runtime info
+  if (runtime && assistantMessage.toolCalls) {
+    assistantMessage.toolCalls = assistantMessage.toolCalls.map((tool) =>
+      tool.name === "model.stream" ? { ...tool, summary: modelRuntimeLabel(runtime) } : tool
+    );
+  }
+
+  let activityDetail = externalEngine
+    ? `${externalEngine.name} used codex exec in read-only mode to answer a workbench message.`
+    : `${runtime?.provider.name} used ${runtime?.model} to answer a workbench message.`;
+
   onEvent?.({
     type: "assistant_start",
     message: assistantMessage,

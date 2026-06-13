@@ -196,7 +196,7 @@ try {
   const savedState = JSON.parse(await readFile(runtimeStatePath, "utf8"));
   assert(
     savedState.messages.some((message) => message.role === "user" && message.content === userPrompt),
-    "user message was not written to runtime state"
+    `user message was not written to runtime state (expected content=${JSON.stringify(userPrompt)})`
   );
   assert(
     savedState.messages.some((message) => message.role === "assistant" && message.content.includes(fakeReply)),
