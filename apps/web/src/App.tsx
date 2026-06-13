@@ -2011,7 +2011,6 @@ export function App() {
               <CircleDot size={17} />
               <span>
                 <strong>定时任务</strong>
-                <small>计划与自动化</small>
               </span>
             </button>
             <button
@@ -2022,7 +2021,6 @@ export function App() {
               <Zap size={17} />
               <span>
                 <strong>运行监控</strong>
-                <small>调用与成本</small>
               </span>
             </button>
             <button
@@ -2033,7 +2031,6 @@ export function App() {
               <Workflow size={17} />
               <span>
                 <strong>技能</strong>
-                <small>市场与启用</small>
               </span>
               <b>{enabledSkills.length}</b>
             </button>
@@ -2045,7 +2042,6 @@ export function App() {
               <Terminal size={17} />
               <span>
                 <strong>MCP</strong>
-                <small>工具服务器</small>
               </span>
             </button>
             <button
@@ -3400,6 +3396,7 @@ function TaskThreadView({
                 ) : (
                   activeMessages.map((message) => <MessageBubble key={message.id} message={message} compactTools />)
                 )}
+                {sending ? <div className="message streaming"><p>正在思考...</p></div> : null}
               </div>
 
               <form className="workbench-composer run-composer" onSubmit={onSend}>
