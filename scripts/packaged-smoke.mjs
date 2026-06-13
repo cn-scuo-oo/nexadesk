@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const executable = resolve("release", "win-unpacked", process.platform === "win32" ? "NexaDesk.exe" : "NexaDesk");
 const userDataDir = await mkdtemp(join(tmpdir(), "nexadesk-packaged-smoke-"));
-const apiPort = "49396";
+const apiPort = String(await findFreePort());
 let smokePassed = false;
 
 if (!existsSync(executable)) {
@@ -42,6 +43,15 @@ function runPackagedSmoke() {
     });
 
     let output = "";
+    let settled = false;
+    const settle = (callback) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      callback();
+    };
     child.stdout.on("data", (chunk) => {
       output += chunk.toString();
     });
@@ -50,23 +60,67 @@ function runPackagedSmoke() {
     });
 
     const timeout = setTimeout(() => {
-      child.kill();
-      reject(new Error(`Packaged smoke test timed out.\n${output}`));
+      void stopPackagedApp(child).finally(() => {
+        settle(() => reject(new Error(`Packaged smoke test timed out on port ${apiPort}.\n${output}`)));
+      });
     }, 300_000);
 
     child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
+      settle(() => reject(error));
     });
 
     child.on("exit", (code) => {
+      settle(() => {
+        if (code === 0) {
+          process.stdout.write(output);
+          resolvePromise();
+          return;
+        }
+        reject(new Error(`Packaged smoke test failed with code ${code}.\n${output}`));
+      });
+    });
+  });
+}
+
+function stopPackagedApp(child) {
+  if (!child.pid || child.exitCode !== null) {
+    return Promise.resolve();
+  }
+  if (process.platform !== "win32") {
+    child.kill("SIGKILL");
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    const timeout = setTimeout(resolve, 5000);
+    killer.once("error", () => {
       clearTimeout(timeout);
-      if (code === 0) {
-        process.stdout.write(output);
-        resolvePromise();
-        return;
-      }
-      reject(new Error(`Packaged smoke test failed with code ${code}.\n${output}`));
+      resolve();
+    });
+    killer.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : null;
+      server.close(() => {
+        if (!port) {
+          reject(new Error("Packaged smoke could not reserve a free port."));
+          return;
+        }
+        resolve(port);
+      });
     });
   });
 }

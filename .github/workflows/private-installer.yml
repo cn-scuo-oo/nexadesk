@@ -1,6 +1,28 @@
 name: Private Installer
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/private-installer.yml"
+      - "apps/**"
+      - "packages/**"
+      - "scripts/**"
+      - "build-resources/**"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/private-installer.yml"
+      - "apps/**"
+      - "packages/**"
+      - "scripts/**"
+      - "build-resources/**"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
     inputs:
       artifact_label:
@@ -8,11 +30,17 @@ on:
         required: false
         default: manual
 
+concurrency:
+  group: private-installer-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-installer:
     name: Build Windows installer
     runs-on: windows-latest
     timeout-minutes: 40
+    env:
+      ARTIFACT_LABEL: ${{ github.event.inputs.artifact_label || github.event_name }}
 
     steps:
       - name: Checkout
@@ -51,7 +79,7 @@ jobs:
       - name: Upload private installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nexadesk-windows-installer-${{ inputs.artifact_label }}-${{ github.sha }}
+          name: nexadesk-windows-installer-${{ env.ARTIFACT_LABEL }}-${{ github.sha }}
           path: |
             release/*.exe
             release/*.blockmap
