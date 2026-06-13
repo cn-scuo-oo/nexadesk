@@ -301,7 +301,9 @@ try {
   if (fakeModelServer) {
     await new Promise((resolve) => fakeModelServer.close(resolve));
   }
-  await rm(dataDir, { recursive: true, force: true });
+  // On Windows, better-sqlite3 may keep the .db file locked briefly after the
+  // child process exits. Retry the cleanup with exponential back-off.
+  await cleanupWithRetry(dataDir);
 }
 
 function startApi(port) {
@@ -460,6 +462,22 @@ function assert(condition, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function cleanupWithRetry(dir) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (error?.code === "EBUSY" || error?.code === "EPERM") {
+        await sleep(500 * (attempt + 1));
+      } else {
+        throw error;
+      }
+    }
+  }
+  console.warn(`Warning: could not clean up ${dir}`);
 }
 
 function quoteCommandArg(value) {

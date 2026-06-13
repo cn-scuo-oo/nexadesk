@@ -258,8 +258,18 @@ try {
 
   console.log(`NexaDesk settings persistence smoke test passed on port ${port}.`);
 } finally {
-  child.kill();
-  await rm(dataDir, { recursive: true, force: true });
+  // Wait for the child process to exit so that file handles (especially
+  // better-sqlite3 database locks) are released before cleaning up the temp
+  // directory. On Windows, the unlink may still briefly fail with EBUSY, so
+  // we retry a few times with exponential back-off.
+  if (child.exitCode === null) {
+    await new Promise((resolve) => {
+      child.once("exit", resolve);
+      child.kill();
+      setTimeout(resolve, 3000).unref();
+    });
+  }
+  await cleanupWithRetry(dataDir);
 }
 
 async function waitForHealth() {
@@ -299,4 +309,20 @@ function assert(condition, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function cleanupWithRetry(dir) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (error?.code === "EBUSY" || error?.code === "EPERM") {
+        await sleep(500 * (attempt + 1));
+      } else {
+        throw error;
+      }
+    }
+  }
+  console.warn(`Warning: could not clean up ${dir}`);
 }

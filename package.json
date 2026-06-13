@@ -39,7 +39,6 @@
     "node": ">=22 <25"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^10.0.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
