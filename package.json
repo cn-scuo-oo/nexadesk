@@ -72,6 +72,7 @@
       "package.json"
     ],
     "asar": true,
+    "npmRebuild": false,
     "win": {
       "icon": "build-resources/icon.ico",
       "legalTrademarks": "NexaDesk",
