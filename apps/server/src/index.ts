@@ -2299,6 +2299,22 @@ function uniqueStrings(values: Array<string | undefined>) {
     });
 }
 
+function hasPathSegment(value: string): boolean {
+  return value.includes("/") || value.includes("\\");
+}
+
+function runProcess(command: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on("close", (code) => { resolve({ code: code ?? 1, stdout, stderr }); });
+    child.on("error", () => { resolve({ code: 1, stdout, stderr }); });
+  });
+}
+
 async function resolveCommandCandidate(command: string): Promise<{ resolvedPath?: string } | null> {
   if (hasPathSegment(command)) {
     try {

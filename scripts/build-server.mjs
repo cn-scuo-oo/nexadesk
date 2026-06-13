@@ -11,5 +11,6 @@ await build({
   format: "cjs",
   target: "node22",
   sourcemap: false,
-  packages: "bundle"
+  packages: "bundle",
+  external: ["better-sqlite3"]
 });
