@@ -18,7 +18,7 @@
     "dev:server": "npm run dev --workspace @nexadesk/server",
     "build": "npm run build --workspaces --if-present",
     "build:server-bundle": "node scripts/build-server.mjs",
-    "build:desktop": "npm run build && npm run build:server-bundle",
+    "build:desktop": "npm run build && npm run build:server-bundle && npx @electron/rebuild",
     "desktop": "npm run build:desktop && electron .",
     "desktop:smoke": "npm run build:desktop && node scripts/desktop-smoke.mjs",
     "desktop:retention-smoke": "npm run build:desktop && node scripts/desktop-retention-smoke.mjs",
@@ -39,6 +39,7 @@
     "node": ">=22 <25"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^10.0.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
