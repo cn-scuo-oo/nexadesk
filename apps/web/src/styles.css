@@ -6110,3 +6110,72 @@ pre code {
 .provider-matrix-row {
   display: grid;
 }
+
+/* ══════════════════════════════════════════
+   Loading Screen
+   ══════════════════════════════════════════ */
+
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 12px;
+  color: var(--text, #231f18);
+  background: var(--bg, #fff4c8);
+  font-family: "Inter", "Microsoft YaHei", sans-serif;
+}
+
+.loading-screen strong {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.loading-screen span {
+  font-size: 0.85rem;
+  color: var(--muted, #9a8e7c);
+}
+
+/* ══════════════════════════════════════════
+   Privacy Dialog
+   ══════════════════════════════════════════ */
+
+.privacy-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+}
+
+.privacy-dialog {
+  background: var(--surface, #fffdf8);
+  border-radius: 12px;
+  padding: 32px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.privacy-dialog h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--text, #231f18);
+}
+
+.privacy-dialog p {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-secondary, #6f675b);
+  margin: 0 0 20px;
+}
+
+.privacy-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
