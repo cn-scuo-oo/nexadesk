@@ -2531,6 +2531,63 @@ h4 {
   gap: 8px;
 }
 
+.artifact-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.artifact-item > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifact-item p {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.artifact-kind {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-muted, #e5e7eb);
+  color: var(--text);
+}
+
+.artifact-kind.diff { background: #dbeafe; color: #1e40af; }
+.artifact-kind.file { background: #dcfce7; color: #166534; }
+.artifact-kind.report { background: #fef3c7; color: #92400e; }
+.artifact-kind.command { background: #f3e8ff; color: #7c3aed; }
+
+.artifact-status {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.artifact-status.ready { background: #fef3c7; color: #92400e; }
+.artifact-status.applied { background: #dcfce7; color: #166534; }
+.artifact-status.draft { background: #e5e7eb; color: #6b7280; }
+
+.artifact-path {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.active-toggle {
+  font-weight: 600;
+}
+
 .change-selected-summary {
   display: grid;
   min-width: 0;
@@ -4476,6 +4533,24 @@ h4 {
   display: flex !important;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+.risk-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.risk-badge.high {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+.risk-badge.medium {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .market-card-actions {

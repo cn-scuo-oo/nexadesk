@@ -66,6 +66,7 @@ import {
   type ProviderTestResult,
   type RuntimeTelemetryEntry,
   type SkillProfile,
+  type SkillHubListing,
   type ToolCall,
   type WorkspaceFilePreviewResult,
   type WorkspaceFile,
@@ -2314,6 +2315,7 @@ export function App() {
         ) : activeView === "skills" ? (
           <SkillsHubView
             skills={snapshot.skills}
+            skillHub={snapshot.skillHub}
             onImportPluginDirectory={() => void handleImportPluginDirectory()}
             onImportSkillPackage={(raw, fileName) => void handleImportSkillPackage(raw, fileName)}
             onOpenSettings={() => handleOpenSettings("skills")}
@@ -2636,6 +2638,7 @@ export function App() {
           <SettingsCenter
             initialTab={settingsInitialTab}
             settings={settings}
+            imChannels={snapshot.imChannels}
             status={settingsStatus}
             onSave={handleSaveSettings}
           />
@@ -3437,6 +3440,7 @@ function TaskThreadView({
             activeRuntimeModel={activeRuntimeModel}
             activeRuntimeProvider={activeRuntimeProvider}
             approvals={activeApprovals}
+            artifacts={snapshot.artifacts}
             completedTasks={completedTasks}
             messageCount={activeMessages.length}
             pendingTasks={pendingTasks}
@@ -3456,6 +3460,7 @@ function TaskRunPanel({
   activeRuntimeModel,
   activeRuntimeProvider,
   approvals,
+  artifacts,
   completedTasks,
   messageCount,
   pendingTasks,
@@ -3468,6 +3473,7 @@ function TaskRunPanel({
   activeRuntimeModel: string;
   activeRuntimeProvider?: ProviderSettings;
   approvals: number;
+  artifacts?: import("./lib/types").WorkspaceArtifact[];
   completedTasks: number;
   messageCount: number;
   pendingTasks: number;
@@ -3478,6 +3484,7 @@ function TaskRunPanel({
 }) {
   const [activePanel, setActivePanel] = useState<"changes" | "activity" | "overview">("changes");
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
+  const [artifactView, setArtifactView] = useState<"tools" | "artifacts">("tools");
   const fileChanges = toolActivity.filter((tool) => {
     const name = String(tool.name);
     return name.includes("write") || name.includes("file") || name.includes("command");
@@ -3492,6 +3499,7 @@ function TaskRunPanel({
   const previewTools = selectedChange
     ? [selectedChange, ...visibleChanges.filter((tool) => tool.id !== selectedChange.id).slice(0, 2)]
     : [];
+  const visibleArtifacts = artifacts ?? [];
   const codePreviewLines =
     previewTools.length > 0
       ? previewTools.map((tool) => ({
@@ -3549,10 +3557,56 @@ function TaskRunPanel({
           <div className="task-run-heading">
             <div>
               <p className="eyebrow">代码变更</p>
-              <h3>文件与命令</h3>
+              <h3>{artifactView === "artifacts" ? "工作区工件" : "文件与命令"}</h3>
             </div>
-            <FileText size={17} />
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                className={artifactView === "tools" ? "secondary-button active-toggle" : "ghost-button"}
+                onClick={() => setArtifactView("tools")}
+                type="button"
+                style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+              >
+                实时活动
+              </button>
+              <button
+                className={artifactView === "artifacts" ? "secondary-button active-toggle" : "ghost-button"}
+                onClick={() => setArtifactView("artifacts")}
+                type="button"
+                style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+              >
+                工件沉淀
+              </button>
+            </div>
           </div>
+
+          {artifactView === "artifacts" ? (
+            <div className="change-inspector">
+              <div className="change-file-list" aria-label="工作区工件列表">
+                {visibleArtifacts.length === 0 ? (
+                  <article className="change-empty-card">
+                    <strong>暂无工件</strong>
+                    <span>Agent 生成的 diff、报告、文件会沉淀在这里供审阅。</span>
+                  </article>
+                ) : (
+                  visibleArtifacts.map((artifact) => (
+                    <article className="artifact-item" key={artifact.id}>
+                      <div>
+                        <span className={`artifact-kind ${artifact.kind}`}>
+                          {artifact.kind === "diff" ? "Diff" : artifact.kind === "file" ? "文件" : artifact.kind === "report" ? "报告" : "命令"}
+                        </span>
+                        <strong>{artifact.title}</strong>
+                        <span className={`artifact-status ${artifact.status}`}>
+                          {artifact.status === "applied" ? "已应用" : artifact.status === "ready" ? "待审阅" : "草稿"}
+                        </span>
+                      </div>
+                      <p>{artifact.summary}</p>
+                      {artifact.path && <small className="artifact-path">{artifact.path}</small>}
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
           <div className="change-inspector">
             <div className="change-file-list" aria-label="代码变更列表">
               {visibleChanges.length === 0 ? (
@@ -3599,6 +3653,7 @@ function TaskRunPanel({
               </div>
             </div>
           </div>
+          )}
         </section>
       ) : activePanel === "activity" ? (
         <section className="task-run-card task-run-primary">
@@ -4469,12 +4524,14 @@ function RuntimeDashboardView({
 
 function SkillsHubView({
   skills,
+  skillHub,
   onImportPluginDirectory,
   onImportSkillPackage,
   onOpenSettings,
   onToggleSkill
 }: {
   skills: SkillProfile[];
+  skillHub?: SkillHubListing[];
   onImportPluginDirectory: () => void;
   onImportSkillPackage: (raw: string, fileName: string) => void;
   onOpenSettings: () => void;
@@ -4484,17 +4541,33 @@ function SkillsHubView({
   const [activeCategory, setActiveCategory] = useState("全部");
   const [query, setQuery] = useState("");
   const skillPackageInputRef = useRef<HTMLInputElement | null>(null);
-  const categories = ["全部", "推荐", "编程开发", "办公文档", "数据分析", "自动化", "研究写作"];
+  const categories = ["全部", "推荐", "编程开发", "办公文档", "研究写作", "自动化", "集成"];
   const enabledSkills = skills.filter((skill) => skill.enabled);
-  const visibleSkills = skills.filter((skill) => {
+
+  // Use backend skillHub data for marketplace when available, fall back to skills
+  const hubListings: SkillHubListing[] = skillHub && skillHub.length > 0
+    ? skillHub
+    : skills.map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        category: skillHubCategoryFromSkill(skill),
+        source: skill.source,
+        installed: true,
+        enabled: skill.enabled,
+        riskLevel: "low" as const,
+        tags: []
+      }));
+
+  const visibleListings = hubListings.filter((listing) => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchesQuery =
       !normalizedQuery ||
-      skill.name.toLowerCase().includes(normalizedQuery) ||
-      skill.description.toLowerCase().includes(normalizedQuery);
-    const category = skillCategoryLabel(skill);
-    const matchesCategory = activeCategory === "全部" || activeCategory === "推荐" || category === activeCategory;
-    const matchesTab = activeTab === "market" || skill.enabled;
+      listing.name.toLowerCase().includes(normalizedQuery) ||
+      listing.description.toLowerCase().includes(normalizedQuery);
+    const categoryLabel = skillHubCategoryLabel(listing.category);
+    const matchesCategory = activeCategory === "全部" || categoryLabel === activeCategory;
+    const matchesTab = activeTab === "market" || listing.installed;
     return matchesQuery && matchesCategory && matchesTab;
   });
 
@@ -4585,39 +4658,49 @@ function SkillsHubView({
               <p className="eyebrow">{activeTab === "installed" ? "Installed" : "Marketplace"}</p>
               <h3>{activeTab === "installed" ? "已安装技能" : "技能市场"}</h3>
             </div>
-            <b className="status ready">{visibleSkills.length}</b>
+            <b className="status ready">{visibleListings.length}</b>
           </div>
 
           <div className={activeTab === "installed" ? "installed-skill-grid" : "skill-market-grid"}>
-            {visibleSkills.length === 0 ? (
+            {visibleListings.length === 0 ? (
               <EmptyState title="没有匹配的技能" detail="换一个分类或搜索词，或者到设置里添加自定义技能。" />
             ) : (
-              visibleSkills.map((skill) => (
+              visibleListings.map((listing) => (
                 <article
-                  className={skill.enabled ? "market-card skill-card enabled" : "market-card skill-card"}
-                  key={skill.id}
+                  className={listing.enabled ? "market-card skill-card enabled" : "market-card skill-card"}
+                  key={listing.id}
                 >
                   <div>
                     <Workflow size={17} />
-                    <strong>{skill.name}</strong>
-                    <span>{skillCategoryLabel(skill)}</span>
+                    <strong>{listing.name}</strong>
+                    <span>{skillHubCategoryLabel(listing.category)}</span>
+                    {listing.riskLevel === "high" && <span className="risk-badge high">高风险</span>}
+                    {listing.riskLevel === "medium" && <span className="risk-badge medium">中风险</span>}
                   </div>
-                  <p>{skill.description}</p>
+                  <p>{listing.description}</p>
                   <div className="skill-card-meta">
-                    <span>{skillSourceLabel(skill.source)}</span>
-                    <span>{skill.enabled ? "已安装" : "可安装"}</span>
+                    <span>{skillSourceLabel(listing.source)}</span>
+                    <span>{listing.installed ? (listing.enabled ? "已启用" : "已安装") : "可安装"}</span>
                   </div>
                   <div className="market-card-actions">
-                    <button
-                      className={skill.enabled ? "secondary-button danger-soft-button" : "primary-button"}
-                      onClick={() => onToggleSkill(skill.id, !skill.enabled)}
-                      type="button"
-                    >
-                      {skill.enabled ? "停用" : "启用"}
-                    </button>
-                    <button className="secondary-button" onClick={onOpenSettings} type="button">
-                      配置
-                    </button>
+                    {listing.installed ? (
+                      <>
+                        <button
+                          className={listing.enabled ? "secondary-button danger-soft-button" : "primary-button"}
+                          onClick={() => onToggleSkill(listing.id, !listing.enabled)}
+                          type="button"
+                        >
+                          {listing.enabled ? "停用" : "启用"}
+                        </button>
+                        <button className="secondary-button" onClick={onOpenSettings} type="button">
+                          配置
+                        </button>
+                      </>
+                    ) : (
+                      <button className="secondary-button" onClick={onOpenSettings} type="button">
+                        了解更多
+                      </button>
+                    )}
                   </div>
                 </article>
               ))
@@ -4653,6 +4736,26 @@ function skillCategoryLabel(skill: SkillProfile) {
     return "研究写作";
   }
   return "推荐";
+}
+
+function skillHubCategoryLabel(category: SkillHubListing["category"]): string {
+  const labels: Record<SkillHubListing["category"], string> = {
+    productivity: "推荐",
+    engineering: "编程开发",
+    office: "办公文档",
+    research: "研究写作",
+    integration: "集成"
+  };
+  return labels[category] ?? "推荐";
+}
+
+function skillHubCategoryFromSkill(skill: SkillProfile): SkillHubListing["category"] {
+  const text = `${skill.id} ${skill.name} ${skill.description}`.toLowerCase();
+  if (/word|excel|ppt|office|报告|文档|表格/.test(text)) return "office";
+  if (/code|terminal|filesystem|search|workspace|代码|命令/.test(text)) return "engineering";
+  if (/web|research|搜索|网页/.test(text)) return "research";
+  if (/mcp|im|email|integration|集成|邮件/.test(text)) return "integration";
+  return "productivity";
 }
 
 function skillSourceLabel(source: SkillProfile["source"]) {
@@ -5895,11 +5998,13 @@ function ModuleHeader({
 function SettingsCenter({
   initialTab,
   settings,
+  imChannels,
   status,
   onSave
 }: {
   initialTab: SettingsTab;
   settings: AppSettings;
+  imChannels?: import("./lib/types").ImAgentChannel[];
   status: string | null;
   onSave: (settings: AppSettings, providerSecrets?: ProviderSecretUpdate[]) => Promise<AppSettings>;
 }) {
@@ -6899,7 +7004,7 @@ function SettingsCenter({
               </section>
             ) : null}
 
-            {activeTab === "im" ? <IMSettingsPanel onClose={() => {}} /> : null}
+            {activeTab === "im" ? <IMSettingsPanel channels={imChannels} onClose={() => {}} /> : null}
 
             {activeTab === "email" ? <EmailConfigPanel onClose={() => {}} /> : null}
 
@@ -8288,8 +8393,31 @@ const IM_PLATFORMS = [
   { id: "discord", name: "Discord", emoji: "\u{1F3AE}", category: "国际" }
 ];
 
-function IMSettingsPanel() {
-  const [selectedPlatform, setSelectedPlatform] = useState(null);
+function IMSettingsPanel({
+  channels
+}: {
+  channels?: import("./lib/types").ImAgentChannel[];
+}) {
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+
+  // Build platform entries: real channels when available, fallback to static list
+  const channelMap = new Map((channels ?? []).map((ch) => [ch.kind, ch]));
+  const platforms = IM_PLATFORMS.map((p) => {
+    const ch = channelMap.get(p.id as import("./lib/types").ImChannelKind);
+    return {
+      ...p,
+      channel: ch ?? null,
+      statusText: ch
+        ? ch.status === "ready" ? "已连接" : ch.status === "needs_setup" ? "待配置" : "已禁用"
+        : p.category === "筹备中" ? "筹备中" : "未连接",
+      statusClass: ch
+        ? ch.status === "ready" ? "connected" : ch.status === "needs_setup" ? "pending" : "offline"
+        : p.category === "筹备中" ? "pending" : "offline"
+    };
+  });
+
+  const selected = platforms.find((p) => p.id === selectedPlatform);
+
   return (
     <section className="panel-block settings-section">
       <div className="panel-heading compact">
@@ -8301,19 +8429,20 @@ function IMSettingsPanel() {
       </div>
       <div className="settings-form">
         <div className="im-platform-grid">
-          {IM_PLATFORMS.map((platform) => (
+          {platforms.map((platform) => (
             <article
-              className={selectedPlatform === platform.id ? "im-platform-card connected" : "im-platform-card"}
+              className={selectedPlatform === platform.id ? `im-platform-card ${platform.statusClass}` : `im-platform-card ${platform.statusClass}`}
               key={platform.id}
               onClick={() => setSelectedPlatform(platform.id)}
             >
               <span className="im-platform-icon">{platform.emoji}</span>
               <strong>{platform.name}</strong>
-              <small>{platform.category} · 点击配置</small>
+              <small>{platform.statusText} · 点击配置</small>
+              {platform.channel?.webhookConfigured && <small className="im-webhook-badge">Webhook ✓</small>}
             </article>
           ))}
         </div>
-        {selectedPlatform && (
+        {selected && (
           <div
             style={{
               padding: 12,
@@ -8323,8 +8452,17 @@ function IMSettingsPanel() {
             }}
           >
             <h4 style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", margin: "0 0 8px" }}>
-              {IM_PLATFORMS.find((p) => p.id === selectedPlatform)?.name} 配置
+              {selected.name} 配置
             </h4>
+            {selected.channel && (
+              <div style={{ marginBottom: 8, fontSize: 12, color: "var(--muted)" }}>
+                <p>状态: {selected.statusText}</p>
+                {selected.channel.agentId && <p>绑定 Agent: {selected.channel.agentId}</p>}
+                {selected.channel.lastEventAt && (
+                  <p>最近事件: {new Date(selected.channel.lastEventAt).toLocaleString("zh-CN")}</p>
+                )}
+              </div>
+            )}
             <label className="field-label">
               <span>App ID</span>
               <input placeholder="输入 App ID" />
