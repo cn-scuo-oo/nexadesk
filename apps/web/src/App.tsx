@@ -3385,6 +3385,30 @@ function TaskRunPanel({
                       </div>
                       <p>{artifact.summary}</p>
                       {artifact.path && <small className="artifact-path">{artifact.path}</small>}
+                      {artifact.kind === "diff" && (
+                        <div className="artifact-diff-preview">
+                          <pre>
+                            {artifact.summary.split("\n").slice(0, 12).map((line, i) => (
+                              <code
+                                className={line.startsWith("-") ? "removed" : line.startsWith("+") ? "added" : ""}
+                                key={i}
+                              >
+                                {line}
+                              </code>
+                            ))}
+                          </pre>
+                        </div>
+                      )}
+                      {artifact.status === "ready" && (
+                        <div className="artifact-actions">
+                          <button className="primary-button" type="button" style={{ fontSize: "0.72rem", padding: "4px 12px" }}>
+                            应用变更
+                          </button>
+                          <button className="secondary-button" type="button" style={{ fontSize: "0.72rem", padding: "4px 12px" }}>
+                            查看详情
+                          </button>
+                        </div>
+                      )}
                     </article>
                   ))
                 )}
@@ -7938,6 +7962,11 @@ function IMSettingsPanel({
   channels?: import("./lib/types").ImAgentChannel[];
 }) {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [appId, setAppId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Build platform entries: real channels when available, fallback to static list
   const channelMap = new Map((channels ?? []).map((ch) => [ch.kind, ch]));
@@ -7956,6 +7985,44 @@ function IMSettingsPanel({
   });
 
   const selected = platforms.find((p) => p.id === selectedPlatform);
+
+  const handleTestConnection = async () => {
+    if (!selected?.channel) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`/api/im/channels/${selected.channel.id}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appId })
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch {
+      setTestResult({ success: false, message: "连接测试失败，请检查网络" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selected?.channel) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/im/channels/${selected.channel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true, appId, appSecret })
+      });
+      if (res.ok) {
+        setTestResult({ success: true, message: "配置已保存" });
+      }
+    } catch {
+      setTestResult({ success: false, message: "保存失败" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <section className="panel-block settings-section">
@@ -8004,18 +8071,23 @@ function IMSettingsPanel({
             )}
             <label className="field-label">
               <span>App ID</span>
-              <input placeholder="输入 App ID" />
+              <input placeholder="输入 App ID" value={appId} onChange={(e) => setAppId(e.target.value)} />
             </label>
             <label className="field-label">
               <span>App Secret</span>
-              <input type="password" placeholder="输入 App Secret" />
+              <input type="password" placeholder="输入 App Secret" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} />
             </label>
+            {testResult && (
+              <div style={{ fontSize: 12, color: testResult.success ? "#166534" : "#b91c1c", marginTop: 4, padding: "4px 8px", borderRadius: 6, background: testResult.success ? "#dcfce7" : "#fde8e8" }}>
+                {testResult.message}
+              </div>
+            )}
             <div className="mcp-card-actions" style={{ marginTop: 8 }}>
-              <button className="secondary-button" type="button">
-                测试连接
+              <button className="secondary-button" type="button" onClick={handleTestConnection} disabled={testing}>
+                {testing ? "测试中..." : "测试连接"}
               </button>
-              <button className="primary-button" type="button">
-                保存
+              <button className="primary-button" type="button" onClick={handleSave} disabled={saving}>
+                {saving ? "保存中..." : "保存"}
               </button>
             </div>
           </div>

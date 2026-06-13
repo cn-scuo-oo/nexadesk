@@ -2584,6 +2584,43 @@ h4 {
   font-family: var(--font-mono, monospace);
 }
 
+.artifact-diff-preview {
+  margin-top: 6px;
+  border-radius: var(--radius);
+  background: var(--surface-muted, #f3f4f6);
+  overflow: hidden;
+}
+
+.artifact-diff-preview pre {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  font-family: var(--font-mono, monospace);
+}
+
+.artifact-diff-preview code {
+  display: block;
+  white-space: pre;
+}
+
+.artifact-diff-preview code.added {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.artifact-diff-preview code.removed {
+  color: #b91c1c;
+  background: #fde8e8;
+}
+
+.artifact-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .active-toggle {
   font-weight: 600;
 }
