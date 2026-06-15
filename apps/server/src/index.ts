@@ -25,7 +25,7 @@ import { registerEventsRoutes } from "./events-route.js";
 import { registerEncryptionRoutes } from "./encryption.js";
 import { registerDesktopRoutes } from "./desktop.js";
 import { registerArtifactsRoutes } from "./artifacts-route.js";
-import { registerTeamsRoutes } from "./teams.js";
+import { registerTeamsRoutes, initTeamsWebSocket } from "./teams.js";
 import { registerDesktopAutomationRoutes } from "./desktop-automation.js";
 
 const app = express();
