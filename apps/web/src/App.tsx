@@ -1947,7 +1947,9 @@ export function App() {
           <Sparkles size={19} />
         </button>
         <button
-          className={activeView === "artifacts" ? "rail-button active" : "rail-button"} onClick={() => handleOpenView("artifacts")}&#x0A;          &#x0A;          <div className={activeView === "agents" ? "rail-button active" : "rail-button"}
+          className={activeView === "artifacts" ? "rail-button active" : "rail-button"} onClick={() => handleOpenView("artifacts")}
+          
+          <div className={activeView === "agents" ? "rail-button active" : "rail-button"}
           aria-label="Agents"
           onClick={() => handleOpenView("agents")}
           type="button"
