@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 // @ts-nocheck
 import { createInterface } from "node:readline";
 import type { AgentEngineSettings } from "@nexadesk/shared";
@@ -50,7 +51,6 @@ async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): Asyn
     "read-only",
     prompt
   ];
-  const { spawn } = require("node:child_process");
   const child = spawn(command, args, {
     cwd: request.cwd || process.cwd(),
     env: process.env,
