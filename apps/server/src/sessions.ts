@@ -634,20 +634,3 @@ async function handleAgentToolRequests({
     ? `工具状态：\n${[...resultLines, ...approvalLines].join("\n\n")}`
     : "";
 }
-function upsertRuntimeTelemetry(entry: RuntimeTelemetryEntry) {
-  runtimeTelemetry = [entry, ...runtimeTelemetry.filter((item) => item.id !== entry.id)].slice(0, 100);
-  persistTelemetryEntry(entry);
-}
-
-function updateModelStreamSummary(assistantMessage: ChatMessage, summary: string) {
-  assistantMessage.toolCalls = assistantMessage.toolCalls?.map((tool) =>
-    tool.name === "model.stream" ? { ...tool, summary } : tool
-  );
-}
-function stripToolBlocks(content: string) {
-  return content.replace(/```(?:nexadesk-tool|aion-tool)\s*[\s\S]*?```/g, "").trim();
-}
-
-function writeChatEvent(res: express.Response, event: ChatStreamEvent) {
-  res.write(`event: chat\ndata: ${JSON.stringify(event)}\n\n`);
-}
