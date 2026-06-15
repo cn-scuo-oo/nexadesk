@@ -52,12 +52,6 @@ async function findAgentEngineConfigPath(engineId: string): Promise<string | und
   return undefined;
 }
 
-// ── Server-side helpers (restored) ──
-let currentSettings: AppSettings = createDefaultSettings(snapshot.providers);
-
-async function saveCurrentSettings(): Promise<void> {
-  await saveSettings(currentSettings);
-}
 
 function withCheckedAt<T extends { checkedAt?: string }>(result: T): T {
   return { ...result, checkedAt: result.checkedAt ?? new Date().toISOString() };
