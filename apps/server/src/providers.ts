@@ -168,9 +168,25 @@ app.post("/api/providers/test", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = withCheckedAt(
-      await testProviderConnection(body.provider, body.apiKey?.trim() || storedKey, body.timeoutMs ?? 8000)
-    );
+    
+    // Inline testProviderConnection
+    const baseUrl = body.provider.baseUrl?.replace(/\/+$/, "");
+    let testResult;
+    if (!baseUrl) {
+      testResult = { ok: false, message: "Provider has no base URL" };
+    } else {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), body.timeoutMs ?? 8000);
+        const response = await fetch(baseUrl, { method: "HEAD", signal: controller.signal });
+        clearTimeout(timer);
+        testResult = { ok: response.ok, message: response.ok ? "Connection successful" : "HTTP " + response.status };
+      } catch (error) {
+        testResult = { ok: false, message: error instanceof Error ? error.message : "Connection failed" };
+      }
+    }
+    
+    const result = withCheckedAt(testResult);
     await persistProviderStatus(body.provider.id, { test: result });
     res.json(result);
   } catch (error) {
@@ -187,9 +203,49 @@ app.post("/api/providers/models", async (req, res, next) => {
     }
 
     const storedKey = await getProviderApiKey(body.provider.id);
-    const result = withCheckedAt(
-      await fetchProviderModels(body.provider, body.apiKey?.trim() || storedKey, body.timeoutMs ?? 10000)
-    );
+    const provider = body.provider;
+    const apiKey = body.apiKey?.trim() || storedKey;
+    const timeoutMs = body.timeoutMs ?? 10000;
+
+    // Inline fetchProviderModels to avoid esbuild bundling issues
+    let modelResult;
+    if (provider.models && provider.models.length > 0 && !provider.baseUrl) {
+      modelResult = { ok: true, models: provider.models };
+    } else {
+      const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
+      if (!baseUrl) {
+        modelResult = { ok: false, models: [], message: "Provider has no base URL" };
+      } else {
+        try {
+          const endpoints = [];
+          const mode = provider.apiMode || "chat_completions";
+          if (mode === "embeddings") endpoints.push(baseUrl + "/embeddings");
+          else { endpoints.push(baseUrl + "/models"); endpoints.push(baseUrl + "/v1/models"); }
+          
+          let fetched = false;
+          for (const url of endpoints) {
+            try {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(), timeoutMs);
+              const headers = { "Content-Type": "application/json" };
+              if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+              const response = await fetch(url, { headers, signal: controller.signal });
+              clearTimeout(timer);
+              if (response.ok) {
+                const body = await response.json();
+                const models = extractModelNames(body);
+                if (models.length > 0) { modelResult = { ok: true, models }; fetched = true; break; }
+              }
+            } catch {}
+          }
+          if (!fetched) modelResult = { ok: false, models: [], message: "Could not fetch models" };
+        } catch (error) {
+          modelResult = { ok: false, models: [], message: error instanceof Error ? error.message : "Unknown error" };
+        }
+      }
+    }
+    
+    const result = withCheckedAt(modelResult);
     await persistProviderStatus(body.provider.id, { modelRefresh: result });
     res.json(result);
   } catch (error) {
