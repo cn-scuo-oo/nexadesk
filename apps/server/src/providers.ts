@@ -3,6 +3,11 @@ import { z } from "zod";
 import { snapshot } from "./state.js";
 import { loadSettings, getProviderApiKey } from "./settings-store.js";
 import { getEnv } from "./server-utils.js";
+import { currentSettings } from "./state.js";
+import { saveSettings, loadSettings, getProviderApiKey } from "./settings-store.js";
+import { homedir } from "node:os";
+import { access } from "node:fs/promises";
+import { spawn } from "node:child_process";
 
 function buildProviderModelHeaders(apiKey?: string): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -79,6 +84,66 @@ async function persistProviderStatus(
   await saveSettings(currentSettings);
 }
 
+
+async function runProcess(command: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on("close", (code) => { resolve({ code: code ?? 1, stdout, stderr }); });
+    child.on("error", () => { resolve({ code: 1, stdout, stderr }); });
+  });
+}
+
+async function fetchProviderModels(provider: { baseUrl?: string; models?: string[]; apiMode?: string; apiKeyConfigured?: boolean }, apiKey?: string, timeoutMs = 10000): Promise<{ ok: boolean; models: string[]; message?: string }> {
+  if (provider.models && provider.models.length > 0 && !provider.baseUrl) {
+    return { ok: true, models: provider.models };
+  }
+  const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
+  if (!baseUrl) return { ok: false, models: [], message: "Provider has no base URL" };
+
+  try {
+    const endpoints: string[] = [];
+    const mode = provider.apiMode || "chat_completions";
+    if (mode === "embeddings") endpoints.push(`${baseUrl}/embeddings`);
+    else {
+      endpoints.push(`${baseUrl}/models`);
+      endpoints.push(`${baseUrl}/v1/models`);
+    }
+    for (const url of endpoints) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const response = await fetch(url, { headers: buildProviderModelHeaders(apiKey), signal: controller.signal });
+        clearTimeout(timer);
+        if (response.ok) {
+          const body = await response.json();
+          const models = extractModelNames(body) as string[];
+          if (models.length > 0) return { ok: true, models };
+        }
+      } catch {}
+    }
+    return { ok: false, models: [], message: "Could not fetch models from provider endpoint" };
+  } catch (error) {
+    return { ok: false, models: [], message: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
+async function testProviderConnection(provider: { baseUrl?: string; apiKeyConfigured?: boolean }, apiKey?: string, timeoutMs = 8000): Promise<{ ok: boolean; message?: string }> {
+  const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
+  if (!baseUrl) return { ok: false, message: "Provider has no base URL" };
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(baseUrl, { method: "HEAD", signal: controller.signal });
+    clearTimeout(timer);
+    return { ok: response.ok, message: response.ok ? "Connection successful" : `HTTP ${response.status}` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Connection failed" };
+  }
+}
 export function registerProvidersRoutes(app: Express): void {
 app.get("/api/providers", async (_req, res, next) => {
   try {
