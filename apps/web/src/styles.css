@@ -1,4 +1,11 @@
 /* ══════════════════════════════════════════
+   Tailwind CSS — Base Layer
+   ══════════════════════════════════════════ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════
    NexaDesk Theme System — 15 themes
    ══════════════════════════════════════════ */
 
