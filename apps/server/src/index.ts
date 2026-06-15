@@ -5,7 +5,7 @@
 
 import cors from "cors";
 import express from "express";
-import { host, port, snapshot, runtimeTelemetry, setRuntimeTelemetry, persistRuntimeState, syncSessionAgents } from "./state.js";
+import { host, port, snapshot, persistRuntimeState, syncSessionAgents } from "./state.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerSnapshotRoutes } from "./snapshot-route.js";
 import { registerProvidersRoutes } from "./providers.js";
@@ -28,7 +28,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-// Register all route modules
 registerHealthRoutes(app);
 registerSnapshotRoutes(app);
 registerProvidersRoutes(app);
@@ -47,16 +46,14 @@ registerEventsRoutes(app);
 registerEncryptionRoutes(app);
 registerDesktopRoutes(app);
 
-// Global error handler
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);
   res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected server error" });
 });
 
-// Heartbeat timer
 setInterval(() => {
   snapshot.activity.unshift({
-    id: hb-,
+    id: "hb-" + Date.now(),
     level: "info",
     title: "Heartbeat",
     detail: "Server is alive",
@@ -65,14 +62,13 @@ setInterval(() => {
   if (snapshot.activity.length > 200) { snapshot.activity.length = 200; }
 }, 30_000).unref();
 
-// Start server
 async function startServer() {
   try {
     await persistRuntimeState();
     syncSessionAgents();
-    console.log([nexadesk] Server starting on http://System.Management.Automation.Internal.Host.InternalHost:);
+    console.log("[nexadesk] Server starting on http://" + host + ":" + port);
     app.listen(port, host, () => {
-      console.log([nexadesk] Server ready at http://System.Management.Automation.Internal.Host.InternalHost:);
+      console.log("[nexadesk] Server ready at http://" + host + ":" + port);
     });
   } catch (error) {
     console.error("[nexadesk] Failed to start server:", error);
