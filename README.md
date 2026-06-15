@@ -1,153 +1,151 @@
-# NexaDesk
+<p align="center">
+  <img src="https://github.com/cn-scuo-oo/nexadesk/raw/main/build-resources/icon.png" alt="NexaDesk" width="120" height="120" />
+</p>
 
-NexaDesk is a private incubation build of a local-first, multi-agent desktop workbench. It is not a public product yet. The repo exists to keep the project safe in a private GitHub repository, preserve development history, and make every phase easier to test and extend.
+<h1 align="center">NexaDesk</h1>
 
-The core idea is simple: users should be able to run assistants locally, inspect tool activity, approve risky actions, manage model providers, and keep workspace context visible while the system works.
+<p align="center">
+  <strong>涓嬩竴浠ｅ鏅鸿兘浣撴闈㈠伐浣滃彴 路 Next-Gen Multi-Agent Desktop Workbench</strong>
+</p>
 
-## What This Repo Is For
+<p align="center">
+  <a href="https://github.com/cn-scuo-oo/nexadesk/releases">
+    <img src="https://img.shields.io/github/v/release/cn-scuo-oo/nexadesk?style=flat-square&label=Release&color=1f6b50" />
+  </a>
+  <a href="https://github.com/cn-scuo-oo/nexadesk/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/cn-scuo-oo/nexadesk/ci.yml?style=flat-square&label=CI&color=2e8b68" />
+  </a>
+  <a href="https://github.com/cn-scuo-oo/nexadesk/actions/workflows/release.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/cn-scuo-oo/nexadesk/release.yml?style=flat-square&label=Release&color=4b5563" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/License-UNLICENSED-red?style=flat-square" />
+  </a>
+  <br/>
+  <img src="https://img.shields.io/badge/Node-22-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/React-19-blueviolet?style=flat-square" />
+  <img src="https://img.shields.io/badge/Tailwind-3-38bdf8?style=flat-square" />
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178c6?style=flat-square" />
+  <img src="https://img.shields.io/badge/Electron-42-47848f?style=flat-square" />
+</p>
 
-- A private desktop workbench for running and observing agents
-- A local API that mediates models, tools, approvals, and persistence
-- A desktop shell that keeps the workspace and runtime state on the user's machine
-- A testable base for agent behavior, not just a chat UI
+---
 
-## Current Position
+## 鎴浘 / Screenshots
 
-- Visibility: private GitHub repository only
-- License: proprietary private incubation notice for now
-- Distribution: do not publish public releases yet
-- Intended users: project owner and trusted testers only
-- Stability: prototype with real model calls, tools, approvals, settings, and installer basics, but not fully hardened
+<table>
+<tr>
+  <td align="center"><strong>Chat View</strong></td>
+  <td align="center"><strong>Runtime Dashboard</strong></td>
+  <td align="center"><strong>Agent Hub</strong></td>
+</tr>
+<tr>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=Chat+View" width="400" /></td>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=Runtime+Dashboard" width="400" /></td>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=Agent+Hub" width="400" /></td>
+</tr>
+<tr>
+  <td align="center"><strong>Settings Center</strong></td>
+  <td align="center"><strong>MCP Hub</strong></td>
+  <td align="center"><strong>Memory</strong></td>
+</tr>
+<tr>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=Settings" width="400" /></td>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=MCP+Hub" width="400" /></td>
+  <td><img src="https://via.placeholder.com/400x250/1a1d27/2e8b68?text=Memory" width="400" /></td>
+</tr>
+</table>
 
-## Agent Contract
+> 馃摳 鎴浘灏嗗湪棣栨姝ｅ紡鍙戝竷鍚庢浛鎹负鐪熷疄鐣岄潰鎴浘銆?
+---
 
-The most important product rule is that agent behavior must stay explicit and inspectable.
+## 鐗规€?/ Features
 
-- Model providers can be swapped without changing the UI contract
-- Tool calls must flow through the local API and approval queue
-- Low-risk actions can be executed automatically when the runtime allows it
-- High-risk actions must be approved before they write files, run shells, browse the web, or generate images
-- Session state, settings, and diagnostics should remain local-first and recoverable
-- New agent capabilities should be added with clear schemas, error handling, and tests
+- 馃 **澶氭櫤鑳戒綋绯荤粺** 鈥?Cowork銆佷唬鐮併€佹枃妗ｇ瓑澶氱 Agent锛屾敮鎸佸唴缃拰澶栭儴 CLI 寮曟搸
+- 馃 **澶氭ā鍨嬫彁渚涘晢** 鈥?Ollama銆丱penAI銆丏eepSeek銆丟oogle Gemini銆丟itHub Copilot 绛?- 馃洜锔?**MCP 鍗忚鏀寔** 鈥?鍙戠幇銆佹祴璇曘€佺鐞?AI 宸ュ叿鏈嶅姟鍣?- 馃挰 **Markdown 娓叉煋** 鈥?璇硶楂樹寒 + Mermaid 鍥捐〃 + KaTeX 鏁板鍏紡
+- 馃搳 **杩愯鏃朵华琛ㄧ洏** 鈥?瀹炴椂鐩戞帶寤惰繜銆乀oken銆乀PS
+- 馃敀 **瀹℃壒闃熷垪** 鈥?鎸夐闄╃骇鍒嚜鍔?鎵嬪姩瀹℃壒
+- 鈴?**鑷姩鍖栦换鍔?* 鈥?瀹氭椂鎵ц Agent 浠诲姟
+- 馃З **鎶€鑳?/ Hub** 鈥?鍙垏鎹㈡妧鑳芥ā鍧?- 馃寪 **IM 闆嗘垚** 鈥?椋炰功/閽夐拤 Webhook 妗ユ帴
+- 馃梻锔?**宸ヤ綔鍖烘祻瑙?* 鈥?鏂囦欢娴忚銆佹悳绱€侀瑙?- 馃寵 **浜殫涓婚** 鈥?澶氫富棰樺垏鎹?
+---
 
-## What Is Included
+## 蹇€熷紑濮?/ Quick Start
 
-- React + TypeScript workbench UI in `apps/web`
-- Node + Express local API in `apps/server`
-- Electron desktop shell in `apps/desktop`
-- Shared app types and demo data in `packages/shared`
-- Model center, streaming chat, agent tools, approval queue, built-in assistants, custom skills, and Windows packaging
-- Provider management hardening, settings recovery, encrypted API key persistence, and copyable desktop diagnostics
-- Private GitHub readiness docs and CI checks
+### 鍓嶇疆瑕佹眰
+- Node.js >= 22
+- pnpm 鎴?npm
 
-## Quick Start
+### 瀹夎 & 杩愯
 
-```bash
+\\\ash
+# 鍏嬮殕浠撳簱
+git clone https://github.com/cn-scuo-oo/nexadesk.git
+cd nexadesk
+
+# 瀹夎渚濊禆
 npm install
-npm run dev
-```
 
-If your npm config omits dev dependencies, use:
+# 寮€鍙戞ā寮忓惎鍔紙Server + Web锛?npm run dev
 
-```bash
-npm install --include=dev
-```
+# 鏋勫缓妗岄潰搴旂敤
+npm run build:desktop
 
-Open the web app at:
+# 杩愯娴嬭瘯
+npm run test
+\\\
 
-```text
-http://127.0.0.1:5173
-```
+### One-Click CLI 瀹夎
 
-The API runs at:
+\\\powershell
+# Windows
+iwr -useb https://raw.githubusercontent.com/cn-scuo-oo/nexadesk/main/install.ps1 | iex
+\\\
 
-```text
-http://127.0.0.1:3939
-```
+\\\ash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/cn-scuo-oo/nexadesk/main/install.sh | sh
+\\\
 
-The web app falls back to built-in demo data if the API is not running.
+---
 
-## Validation
+## 椤圭洰缁撴瀯 / Project Structure
 
-Run type checks:
+\\\
+nexadesk/
+鈹溾攢鈹€ apps/
+鈹?  鈹溾攢鈹€ web/          # React 19 + Vite 鍓嶇
+鈹?  鈹溾攢鈹€ server/       # Express 鍚庣
+鈹?  鈹斺攢鈹€ desktop/      # Electron 澹?鈹溾攢鈹€ packages/
+鈹?  鈹斺攢鈹€ shared/       # 鍏变韩绫诲瀷鍜岄粯璁ゅ€?鈹溾攢鈹€ scripts/          # 鏋勫缓鍜屽伐鍏疯剼鏈?鈹溾攢鈹€ build-resources/  # 鍥炬爣銆佺鍚嶃€佸畨瑁呰祫婧?鈹斺攢鈹€ docs/             # 鏂囨。
+\\\
 
-```bash
-npm run typecheck
-```
+---
 
-Run the settings persistence and encrypted secret smoke test:
+## 鎶€鏈爤 / Tech Stack
 
-```bash
-npm run settings:smoke
-```
+| 灞?| 鎶€鏈?|
+|----|------|
+| 鍓嶇 | React 19, TypeScript 5.8, Vite 7, Tailwind CSS 3 |
+| 鍚庣 | Express 5, tsx, Zod |
+| 妗岄潰 | Electron 42, electron-builder |
+| 鍥捐〃 | Recharts, Mermaid |
+| Markdown | react-markdown, react-syntax-highlighter, KaTeX |
+| UI | Headless UI, Heroicons, Lucide |
+| 鐘舵€?| Redux Toolkit |
 
-Run the domestic provider defaults matrix check:
+---
 
-```bash
-npm run provider:matrix
-```
+## 鏂囨。 / Docs
 
-Run the desktop smoke test:
+- [AGENTS.md](./AGENTS.md) 鈥?Agent 绯荤粺鏋舵瀯
+- [CLAUDE.md](./CLAUDE.md) 鈥?寮€鍙戞寚鍗?- [IDENTITY.md](./IDENTITY.md) 鈥?鍝佺墝鏍囪瘑
+- [CHANGELOG.md](./CHANGELOG.md) 鈥?鍙樻洿鏃ュ織
 
-```bash
-npm run desktop:smoke
-```
+---
 
-Run the desktop user-data retention smoke test:
-
-```bash
-npm run desktop:retention-smoke
-```
-
-## Desktop App
-
-Build and run the desktop app:
-
-```bash
-npm run desktop
-```
-
-Build the Windows installer:
-
-```bash
-npm run dist:win
-```
-
-The installer is written to `release/NexaDesk Setup 0.1.0.exe`. Desktop mode stores settings under Electron's user data directory and encrypts provider API keys at rest with a key protected by Electron `safeStorage`.
-
-## Project Layout
-
-```text
-apps/
-  desktop/       Electron shell, local data paths, secure desktop startup
-  server/        Local API, event stream, agent runtime and tool approvals
-  web/           Agent workbench UI
-packages/
-  shared/        Shared TypeScript types and default data
-docs/
-  architecture.md
-  github-private.md
-  private-backlog.md
-  private-release-checklist.md
-  provider-matrix.md
-  roadmap.md
-scripts/
-  build-server.mjs
-  desktop-smoke.mjs
-  desktop-retention-smoke.mjs
-  provider-matrix-check.mjs
-  settings-persistence-smoke.mjs
-  dev.mjs
-```
-
-## Roadmap Status
-
-- Phase 1: Model center and real streaming model calls are in place
-- Phase 2: Cowork agent tools and approval queue are in place
-- Phase 3: Built-in assistants and editable skills are in place
-- Phase 4: Desktop shell, user data directory, encrypted API key storage, settings layout, and Windows installer are in place
-- Phase 5: Private GitHub repository readiness is complete
-- Phase 6: Product usability hardening is complete
-- Phase 7: Installer QA and agent-engine-shell polish are in progress
-
-Automatic updates, app signing, deeper installer QA, full model-provider test coverage, and public open-source release work are intentionally left for later phases.
+<p align="center">
+  <sub>Built with 鉂わ笍 by the NexaDesk Team</sub>
+  <br/>
+  <sub>漏 2026 NexaDesk Contributors. All rights reserved.</sub>
+</p>
