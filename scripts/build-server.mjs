@@ -12,5 +12,5 @@ await build({
   target: "node22",
   sourcemap: false,
   packages: "bundle",
-  external: ["better-sqlite3"]
+  external: ["better-sqlite3", "node:child_process"]
 });
