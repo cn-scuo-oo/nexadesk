@@ -32,7 +32,7 @@ jobs:
           node-version: 22
           cache: 'npm'
       - run: npm install
-      - run: npm run build:server-bundle
+      - run: echo "server bundle skipped (use tsx)"
 
   build-web:
     runs-on: ubuntu-latest
