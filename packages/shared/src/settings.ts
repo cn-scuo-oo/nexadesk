@@ -1,4 +1,4 @@
-import type { ProviderSettings, ProviderStatusSettings } from "./provider.js";
+import type { ProviderSettings, ProviderStatusSettings, ProviderSecretUpdate } from "./provider.js";
 import type { AgentProfile, AgentEngineSettings } from "./agent.js";
 import type { SkillProfile } from "./skill.js";
 import type { PermissionPolicy } from "./permission.js";
