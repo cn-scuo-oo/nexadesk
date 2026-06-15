@@ -12,7 +12,7 @@ import { persistTelemetryEntry } from "./runtime-state-store.js";
 import { estimateTokenCount, formatRuntimeError, getEnv } from "./server-utils.js";
 import type { ChatStreamEvent, ChatMessage, SendMessageRequest, RuntimeTelemetryEntry, ActivityEvent, ProviderSettings, AgentEngineSettings } from "@nexadesk/shared";
 
-function appendToolMessage(sessionId: string, toolName: string, content: string) {
+export function appendToolMessage(sessionId: string, toolName: string, content: string) {
   const message: ChatMessage = {
     id: randomUUID(),
     sessionId,
@@ -25,7 +25,7 @@ function appendToolMessage(sessionId: string, toolName: string, content: string)
   return message;
 }
 
-async function createToolContext(settings: AppSettings): Promise<AgentToolContext> {
+export async function createToolContext(settings: AppSettings): Promise<AgentToolContext> {
   const imageBaseUrl = getEnv("NEXADESK_IMAGE_BASE_URL", "AION_LITE_IMAGE_BASE_URL")?.trim();
   const imageApiKey = getEnv("NEXADESK_IMAGE_API_KEY", "AION_LITE_IMAGE_API_KEY")?.trim();
   const imageProvider =
