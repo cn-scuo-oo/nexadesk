@@ -10,7 +10,7 @@ const mcpTestSchema = z.object({
   server: z.object({
     id: z.string().trim().min(1),
     name: z.string().trim().min(1),
-    description: z.string().trim().optional().default(""),
+    description: z.string().trim().optional(),
     transport: z.enum(["stdio", "http"]),
     enabled: z.boolean(),
     command: z.string().trim().optional(),
@@ -20,61 +20,37 @@ const mcpTestSchema = z.object({
   timeoutMs: z.number().int().positive().max(15000).optional()
 });
 
-app.post("/api/mcp/test", async (req, res, next) => {
-  try {
-    const parsed = mcpTestSchema.safeParse(req.body as McpServerTestRequest);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
-      return;
-    }
-    res.json(await testMcpServer(parsed.data.server, parsed.data.timeoutMs ?? 5000));
-  } catch (error) {
-    next(error);
-  }
-});
+export function registerMcpRoutes(app: Express): void {
+  app.post("/api/mcp/test", async (req, res, next) => {
+    const parsed = mcpTestSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const result = await testMcpServer(parsed.data.server, parsed.data.timeoutMs ?? 5000);
+      res.json(result);
+    } catch (error) { next(error); }
+  });
 
-app.post("/api/mcp/tools", async (req, res, next) => {
-  try {
-    const parsed = mcpTestSchema.safeParse(req.body as McpServerToolsRequest);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
-      return;
-    }
-    res.json(await discoverMcpTools(parsed.data.server, parsed.data.timeoutMs ?? 8000));
-  } catch (error) {
-    next(error);
-  }
-});
+  app.post("/api/mcp/tools", async (req, res, next) => {
+    const parsed = mcpTestSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const result = await discoverMcpTools(parsed.data.server, parsed.data.timeoutMs ?? 8000);
+      res.json(result);
+    } catch (error) { next(error); }
+  });
 
   app.post("/api/mcp-bridge/execute", async (req, res, next) => {
     try {
-      const {
-        toolName,
-        arguments: toolArgs,
-        serverId
-      } = req.body as { toolName: string; arguments: Record<string, unknown>; serverId: string };
-      if (!toolName || !serverId) {
-        res.status(400).json({ ok: false, message: "Missing toolName or serverId" });
-        return;
-      }
-      publishActivity({ level: "info", title: "MCP Bridge 调用", detail: `${serverId}/${toolName}` });
-      res.json({ ok: true, message: `Bridge executed ${toolName}`, toolName, serverId, result: null });
-    } catch (error) {
-      next(error);
-    }
+      const { serverId, toolName, args } = req.body;
+      res.json({ ok: true, serverId, toolName, args, message: "MCP bridge execute - stub" });
+    } catch (error) { next(error); }
   });
 
-  /* ── MCP Bridge: health check ── */
   app.get("/api/mcp-bridge/health", (_req, res) => {
-    res.json({ ok: true, bridge: "nexadesk", version: "0.1.0" });
+    res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
   });
-
-export function registerMcpRoutes(app: Express): void {
-  app.post("/api/mcp/test", async (req, res, next) => { /* registered above */ });
-  app.post("/api/mcp/tools", async (req, res, next) => { /* registered above */ });
-  app.post("/api/mcp-bridge/execute", async (req, res, next) => { /* registered above */ });
-  app.get("/api/mcp-bridge/health", (_req, res) => { /* registered above */ });
 }
+
 async function testMcpServer(server: McpServerTestRequest["server"], timeoutMs: number): Promise<McpServerTestResult> {
   const checkedAt = new Date().toISOString();
   if (server.transport === "http") {
