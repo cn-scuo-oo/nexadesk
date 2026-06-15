@@ -63,6 +63,38 @@ export function registerMcpRoutes(app: Express): void {
     res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
   });
 
+
+export function registerMcpRoutes(app: Express): void {
+  app.post("/api/mcp/test", async (req, res, next) => {
+    const parsed = mcpTestSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const result = await testMcpServer(parsed.data.server, parsed.data.timeoutMs ?? 5000);
+      res.json(result);
+    } catch (error) { next(error); }
+  });
+
+  app.post("/api/mcp/tools", async (req, res, next) => {
+    const parsed = mcpTestSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const result = await discoverMcpTools(parsed.data.server, parsed.data.timeoutMs ?? 8000);
+      res.json(result);
+    } catch (error) { next(error); }
+  });
+
+  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
+    try {
+      const { serverId, toolName, args } = req.body;
+      res.json({ ok: true, serverId, toolName, args, message: "MCP bridge execute - stub" });
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/mcp-bridge/health", (_req, res) => {
+    res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
+  });
+}
+
 async function testMcpServer(server: McpServerTestRequest["server"], timeoutMs: number): Promise<McpServerTestResult> {
   const checkedAt = new Date().toISOString();
   if (server.transport === "http") {
