@@ -24,6 +24,9 @@ import { registerSkillsRoutes } from "./skills.js";
 import { registerEventsRoutes } from "./events-route.js";
 import { registerEncryptionRoutes } from "./encryption.js";
 import { registerDesktopRoutes } from "./desktop.js";
+import { registerArtifactsRoutes } from "./artifacts-route.js";
+import { registerTeamsRoutes } from "./teams.js";
+import { registerDesktopAutomationRoutes } from "./desktop-automation.js";
 
 const app = express();
 app.use(cors());
@@ -47,6 +50,9 @@ registerSkillsRoutes(app);
 registerEventsRoutes(app);
 registerEncryptionRoutes(app);
 registerDesktopRoutes(app);
+registerArtifactsRoutes(app);
+registerTeamsRoutes(app);
+registerDesktopAutomationRoutes(app);
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);
