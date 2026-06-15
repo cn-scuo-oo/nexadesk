@@ -1948,8 +1948,12 @@ export function App() {
         </button>
         <button
           className={activeView === "artifacts" ? "rail-button active" : "rail-button"} onClick={() => handleOpenView("artifacts")}
-          
-          <div className={activeView === "agents" ? "rail-button active" : "rail-button"}
+          type="button"
+        >
+          <Folder size={19} />
+        </button>
+        <button
+          className={activeView === "agents" ? "rail-button active" : "rail-button"}
           aria-label="Agents"
           onClick={() => handleOpenView("agents")}
           type="button"
