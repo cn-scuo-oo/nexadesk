@@ -4,6 +4,7 @@ import { loadSettings, saveSettings } from "./settings-store.js";
 import { publishActivity } from "./events.js";
 import { randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import type { AgentEngineDetectionRecord } from "@nexadesk/shared";
 
