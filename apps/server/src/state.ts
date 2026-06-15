@@ -44,17 +44,11 @@ export function syncSessionAgents() {
 }
 
 export async function persistRuntimeState(): Promise<void> {
-  await saveRuntimeState({
-    pendingToolApprovals: pendingToolApprovalRecords(),
-    runtimeTelemetry: runtimeTelemetry.slice(0, 100),
-    sessions: snapshot.sessions,
-    messages: snapshot.messages,
-    approvals: snapshot.approvals,
-    approvalHistory: snapshot.approvalHistory,
-    automations: snapshot.automations,
-    automationRuns: snapshot.automationRuns,
-    settings: currentSettings
-  });
+  await saveRuntimeState(
+    snapshot,
+    pendingToolApprovalRecords(),
+    runtimeTelemetry
+  );
 }
 
 export function pendingToolApprovalRecords(): PendingToolApprovalRecord[] {
