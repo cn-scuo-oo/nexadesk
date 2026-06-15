@@ -51,6 +51,18 @@ export function registerMcpRoutes(app: Express): void {
   });
 }
 
+
+  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
+    try {
+      const { serverId, toolName, args } = req.body;
+      res.json({ ok: true, serverId, toolName, args, message: "MCP bridge execute - stub" });
+    } catch (error) { next(error); }
+  });
+
+  app.get("/api/mcp-bridge/health", (_req, res) => {
+    res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
+  });
+
 async function testMcpServer(server: McpServerTestRequest["server"], timeoutMs: number): Promise<McpServerTestResult> {
   const checkedAt = new Date().toISOString();
   if (server.transport === "http") {
