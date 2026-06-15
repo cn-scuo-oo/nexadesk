@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-      - run: npm ci
+      - run: npm install
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-      - run: npm ci
+      - run: npm install
       - run: npm run build:server-bundle
 
   build-web:
@@ -42,5 +42,5 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-      - run: npm ci
+      - run: npm install
       - run: npm run build --workspace @nexadesk/web
