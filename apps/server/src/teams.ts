@@ -1,4 +1,5 @@
 // @ts-nocheck
+// NexaDesk Teams - WebSocket-based desktop pairing & real-time collaboration
 import type { Express } from "express";
 import { createServer } from "http";
 import { randomUUID } from "node:crypto";
@@ -19,69 +20,78 @@ interface TeamRoom {
 }
 
 const rooms = new Map<string, TeamRoom>();
+let WebSocket: any = null;
+let WebSocketServer: any = null;
 let wss: any = null;
 
-export function initTeamsWebSocket(httpServer: ReturnType<typeof createServer>): void {
+async function ensureWs() {
+  if (WebSocket) return true;
   try {
-    const { WebSocketServer, WebSocket } = require("ws");
-    wss = new WebSocketServer({ server: httpServer, path: "/ws/teams" });
-    wss.on("connection", (ws: any, req: any) => {
-      const peerId = randomUUID();
-      let currentRoom: string | null = null;
-      let peerName = "Anonymous";
+    const ws = await import("ws");
+    WebSocket = ws.WebSocket;
+    WebSocketServer = ws.WebSocketServer;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-      ws.on("message", (raw: Buffer) => {
-        try {
-          const msg = JSON.parse(raw.toString());
-          switch (msg.type) {
-            case "join": {
-              peerName = msg.name || "Anonymous";
-              const roomId = msg.teamId || "default";
-              currentRoom = roomId;
-              if (!rooms.has(roomId)) {
-                rooms.set(roomId, { id: roomId, name: msg.teamName || "Team Room", peers: [], createdAt: new Date().toISOString() });
-              }
-              const room = rooms.get(roomId)!;
-              room.peers = room.peers.filter((p: TeamPeer) => p.ws.readyState === WebSocket.OPEN);
-              room.peers.push({ id: peerId, name: peerName, ws, teamId: roomId, joinedAt: new Date().toISOString() });
-              broadcast(roomId, { type: "peer_joined", peerId, name: peerName, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) });
-              ws.send(JSON.stringify({ type: "joined", peerId, roomId, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) }));
-              break;
+export async function initTeamsWebSocket(httpServer: ReturnType<typeof createServer>): Promise<void> {
+  const loaded = await ensureWs();
+  if (!loaded) {
+    console.warn("[teams] ws module not available, WebSocket disabled");
+    return;
+  }
+
+  wss = new WebSocketServer({ server: httpServer, path: "/ws/teams" });
+
+  wss.on("connection", (ws: any) => {
+    const peerId = randomUUID();
+    let currentRoom: string | null = null;
+    let peerName = "Anonymous";
+
+    ws.on("message", (raw: Buffer) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        switch (msg.type) {
+          case "join": {
+            peerName = msg.name || "Anonymous";
+            const roomId = msg.teamId || "default";
+            currentRoom = roomId;
+            if (!rooms.has(roomId)) {
+              rooms.set(roomId, { id: roomId, name: msg.teamName || "Team Room", peers: [], createdAt: new Date().toISOString() });
             }
-            case "chat": {
-              if (currentRoom) broadcast(currentRoom, { type: "chat", from: peerId, fromName: peerName, text: msg.text, timestamp: new Date().toISOString() });
-              break;
-            }
-            case "cursor": {
-              if (currentRoom) broadcast(currentRoom, { type: "cursor", from: peerId, fromName: peerName, x: msg.x, y: msg.y });
-              break;
-            }
-            case "action": {
-              if (currentRoom) broadcast(currentRoom, { type: "action", from: peerId, fromName: peerName, action: msg.action, payload: msg.payload });
-              break;
-            }
-            case "signal": {
-              if (currentRoom) { broadcast(currentRoom, { type: "signal", from: peerId, fromName: peerName, signal: msg.signal }, peerId); }
-              break;
-            }
+            const room = rooms.get(roomId)!;
+            room.peers = room.peers.filter((p: TeamPeer) => p.ws.readyState === WebSocket.OPEN);
+            room.peers.push({ id: peerId, name: peerName, ws, teamId: roomId, joinedAt: new Date().toISOString() });
+            broadcast(roomId, { type: "peer_joined", peerId, name: peerName, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) });
+            ws.send(JSON.stringify({ type: "joined", peerId, roomId, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) }));
+            break;
           }
-        } catch {}
-      });
-
-      ws.on("close", () => {
-        if (currentRoom && rooms.has(currentRoom)) {
-          const room = rooms.get(currentRoom)!;
-          room.peers = room.peers.filter((p: TeamPeer) => p.id !== peerId);
-          broadcast(currentRoom, { type: "peer_left", peerId, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) });
-          if (room.peers.length === 0) rooms.delete(currentRoom);
+          case "chat": {
+            if (currentRoom) broadcast(currentRoom, { type: "chat", from: peerId, fromName: peerName, text: msg.text, timestamp: new Date().toISOString() });
+            break;
+          }
+          case "signal": {
+            if (currentRoom) { broadcast(currentRoom, { type: "signal", from: peerId, fromName: peerName, signal: msg.signal }, peerId); }
+            break;
+          }
         }
-      });
+      } catch {}
     });
-  } catch(e) { console.warn("[teams] WebSocket not available:", (e as Error).message); }
+
+    ws.on("close", () => {
+      if (currentRoom && rooms.has(currentRoom)) {
+        const room = rooms.get(currentRoom)!;
+        room.peers = room.peers.filter((p: TeamPeer) => p.id !== peerId);
+        broadcast(currentRoom, { type: "peer_left", peerId, peers: room.peers.map((p: TeamPeer) => ({ id: p.id, name: p.name })) });
+        if (room.peers.length === 0) rooms.delete(currentRoom);
+      }
+    });
+  });
 }
 
 function broadcast(roomId: string, message: object, excludeId?: string): void {
-  const { WebSocket } = require("ws");
   const room = rooms.get(roomId);
   if (!room) return;
   const data = JSON.stringify(message);
