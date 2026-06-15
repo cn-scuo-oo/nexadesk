@@ -26,7 +26,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci --include=dev
+        run: npm install --include=dev
 
       - name: Typecheck
         run: npm run typecheck
