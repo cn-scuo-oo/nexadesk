@@ -24,7 +24,7 @@ export function registerMemoryRoutes(app: Express): void {
           updatedAt: new Date().toISOString()
         }
       ];
-      setCurrentSettings({ ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
+      setCurrentSettings({ ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() });
       await saveCurrentSettings();
       res.json({ ok: true, entry });
     } catch (error) {
@@ -35,7 +35,7 @@ export function registerMemoryRoutes(app: Express): void {
   app.delete("/api/memory/entries/:entryId", async (req, res, next) => {
     try {
       const entries = (currentSettings.memoryEntries ?? []).filter((e) => e.id !== req.params.entryId);
-      setCurrentSettings({ ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() };
+      setCurrentSettings({ ...currentSettings, memoryEntries: entries, updatedAt: new Date().toISOString() });
       await saveCurrentSettings();
       res.json({ ok: true });
     } catch (error) {
