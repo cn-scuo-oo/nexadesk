@@ -505,7 +505,7 @@ function formatExternalFallbackNotice(
 }
 
 function upsertRuntimeTelemetry(entry: RuntimeTelemetryEntry) {
-  runtimeTelemetry = [entry, ...runtimeTelemetry.filter((item) => item.id !== entry.id)].slice(0, 100);
+  setRuntimeTelemetry([entry, ...runtimeTelemetry.filter((item) => item.id !== entry.id)].slice(0, 100));
   persistTelemetryEntry(entry);
 }
 
