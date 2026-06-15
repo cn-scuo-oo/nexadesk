@@ -1,0 +1,40 @@
+{
+  "name": "@nexadesk/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "build": "echo desktop build noop"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.0"
+  },
+  "build": {
+    "appId": "com.nexadesk.desktop",
+    "productName": "NexaDesk",
+    "directories": {
+      "output": "../../release"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "cn-scuo-oo",
+      "repo": "nexadesk",
+      "releaseType": "draft"
+    },
+    "win": {
+      "icon": "../../build-resources/icon.ico",
+      "target": ["nsis"],
+      "certificateFile": "",
+      "certificatePassword": ""
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "NexaDesk",
+      "createDesktopShortcut": "always",
+      "installerIcon": "../../build-resources/icon.ico",
+      "uninstallIcon": "../../build-resources/icon.ico"
+    }
+  }
+}
