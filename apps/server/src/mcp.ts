@@ -7,6 +7,18 @@ import { spawn } from "node:child_process";
 import type { McpServerTestRequest, McpServerToolsRequest, McpToolDefinition } from "@nexadesk/shared";
 
 const mcpTestSchema = z.object({
+  server: z.object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    description: z.string().trim().optional(),
+    transport: z.enum(["stdio", "http"]),
+    enabled: z.boolean(),
+    command: z.string().trim().optional(),
+    args: z.array(z.string()).optional(),
+    url: z.string().trim().optional()
+  }),
+  timeoutMs: z.number().int().positive().max(15000).optional()
+});
 
 export function registerMcpRoutes(app: Express): void {
   app.post("/api/mcp/test", async (req, res, next) => {
