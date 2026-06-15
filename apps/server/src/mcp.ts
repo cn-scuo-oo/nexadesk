@@ -7,62 +7,6 @@ import { spawn } from "node:child_process";
 import type { McpServerTestRequest, McpServerToolsRequest, McpToolDefinition } from "@nexadesk/shared";
 
 const mcpTestSchema = z.object({
-  server: z.object({
-    id: z.string().trim().min(1),
-    name: z.string().trim().min(1),
-    description: z.string().trim().optional(),
-    transport: z.enum(["stdio", "http"]),
-    enabled: z.boolean(),
-    command: z.string().trim().optional(),
-    args: z.array(z.string()).optional(),
-    url: z.string().trim().optional()
-  }),
-  timeoutMs: z.number().int().positive().max(15000).optional()
-});
-
-export function registerMcpRoutes(app: Express): void {
-  app.post("/api/mcp/test", async (req, res, next) => {
-    const parsed = mcpTestSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
-    try {
-      const result = await testMcpServer(parsed.data.server, parsed.data.timeoutMs ?? 5000);
-      res.json(result);
-    } catch (error) { next(error); }
-  });
-
-  app.post("/api/mcp/tools", async (req, res, next) => {
-    const parsed = mcpTestSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
-    try {
-      const result = await discoverMcpTools(parsed.data.server, parsed.data.timeoutMs ?? 8000);
-      res.json(result);
-    } catch (error) { next(error); }
-  });
-
-  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
-    try {
-      const { serverId, toolName, args } = req.body;
-      res.json({ ok: true, serverId, toolName, args, message: "MCP bridge execute - stub" });
-    } catch (error) { next(error); }
-  });
-
-  app.get("/api/mcp-bridge/health", (_req, res) => {
-    res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
-  });
-}
-
-
-  app.post("/api/mcp-bridge/execute", async (req, res, next) => {
-    try {
-      const { serverId, toolName, args } = req.body;
-      res.json({ ok: true, serverId, toolName, args, message: "MCP bridge execute - stub" });
-    } catch (error) { next(error); }
-  });
-
-  app.get("/api/mcp-bridge/health", (_req, res) => {
-    res.json({ ok: true, servers: snapshot.mcp?.servers?.length ?? 0 });
-  });
-
 
 export function registerMcpRoutes(app: Express): void {
   app.post("/api/mcp/test", async (req, res, next) => {
