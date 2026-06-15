@@ -1,60 +1,41 @@
 # Changelog
 
-All notable changes to NexaDesk will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to NexaDesk are documented here.
 
 ## [Unreleased]
 
 ### Added
 - **Multi-Agent System**: Built-in + external CLI engine support
 - **Agent Engine Adapters**: Codex CLI integration; Claude Code, OpenClaw, Hermes stubs
-- **Model Providers**: Ollama, OpenAI, DeepSeek, Google Gemini, GitHub Copilot, OpenRouter, 闃块噷浜戠櫨鐐? 纭呭熀娴佸姩, 鏈堜箣鏆楅潰 Kimi, 鏅鸿氨 GLM, Anthropic
+- **Model Providers**: 12 providers including OpenAI, DeepSeek, Google Gemini, GitHub Copilot, etc.
 - **MCP Protocol**: Server discovery, testing, tool management, marketplace
-- **Markdown Rendering**: react-markdown with GFM, KaTeX math, Mermaid diagrams, Prism syntax highlighting
+- **Markdown Rendering**: react-markdown with GFM, KaTeX math, Mermaid diagrams, Prism highlighting
 - **Runtime Dashboard**: Real-time telemetry, TPS metrics, provider/model tracking
 - **Slash Commands**: 13 built-in commands with categorized panel UI
 - **Desktop Studio**: Canvas view with layout templates and widget library
-- **IM Bridge**: Feishu (椋炰功) and DingTalk (閽夐拤) webhook integration
-- **IM Channel Management**: Enable/disable channels, test notifications
+- **IM Bridge**: Feishu and DingTalk webhook integration
 - **Approval Queue**: Risk-based auto/manual approval with history
 - **Automation Scheduler**: Cron-based scheduled agent tasks
 - **Workspace File Browser**: Directory listing, file preview, search
 - **Memory Management**: Session summaries, long-term memory, retention config
-- **Skills Hub**: Built-in 13 skills with import/scan support
-- **Theme System**: Multiple theme modes with dark/light support
-- **Desktop Pet**: Companion overlay widget
-- **Privacy Dialog**: First-run privacy acknowledgement
+- **Skills Hub**: 13 built-in skills with marketplace support
+- **Teams Collaboration**: WebSocket-based desktop pairing and real-time chat
+- **Desktop Automation**: Mouse/keyboard control via robotjs API
+- **CI/CD Pipeline**: GitHub Actions for quality checks and automated releases
+- **Husky + Commitlint**: Pre-commit hooks and commit message conventions
+- **Code Signing**: Authenticode signing script for Windows builds
+- **One-Click Installer**: Cross-platform CLI install scripts (Windows/macOS/Linux)
 
 ### Changed
-- **Refactored** packages/shared/src/index.ts (39KB 鈫?14 domain modules)
-- **Refactored** pps/server/src/index.ts (82KB 鈫?18 route modules)
-- **Refactored** pps/web/src/App.tsx (300KB 鈫?25+ extracted files)
+- Refactored packages/shared/src/index.ts (39KB -> 14 domain modules)
+- Refactored apps/server/src/index.ts (82KB -> 18 route modules)
+- Refactored apps/web/src/App.tsx (300KB -> 25+ extracted files)
 - Shared package: migrated to compiled .js output for Node.js ESM resolution
-- Vite config: added esolve.alias for workspace module resolution
 
 ### Fixed
 - Missing ProviderSecretUpdate import in settings.ts
 - Duplicate function declarations in sessions.ts
-- PowerShell heredoc syntax corruption in server/index.ts
 - Module-level route registrations in mcp.ts
 - Incorrect parameter passing in state.ts persistRuntimeState
 
-## [0.1.0] - Initial Development Build
-
-### Added
-- Project scaffolding (npm workspaces, TypeScript, Vite, Electron)
-- Basic Express server with CORS and JSON API
-- React frontend with Tailwind CSS and dark theme
-- Agent chat interface with streaming responses
-- Provider configuration and model selection
-- Settings persistence and recovery
-- Runtime telemetry collection and display
-- Activity event stream (SSE)
-- Basic encryption/decryption utilities
-- Desktop status endpoint
-- Heartbeat monitoring
-
-[Unreleased]: https://github.com/cn-scuo-oo/nexadesk/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/cn-scuo-oo/nexadesk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/cn-scuo-oo/nexadesk/compare/initial...HEAD
