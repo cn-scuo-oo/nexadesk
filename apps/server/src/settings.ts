@@ -21,7 +21,7 @@ app.put("/api/settings", async (req, res, next) => {
     }
 
     const settings = await saveSettings(body.settings, snapshot.providers, body.providerSecrets);
-    currentSettings = settings;
+    setCurrentSettings(settings);
     snapshot.providers = settings.providers;
     snapshot.agents = settings.assistant.agents;
     snapshot.skills = settings.assistant.skills;
