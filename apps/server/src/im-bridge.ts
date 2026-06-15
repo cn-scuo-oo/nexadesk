@@ -1,6 +1,4 @@
 // @ts-nocheck
-// NexaDesk IM Bridge - Webhook integration for Feishu, DingTalk, etc.
-// Handles incoming messages and relay to agent engine, outgoing responses.
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
 
@@ -30,18 +28,14 @@ interface ImOutgoingMessage {
   messageType: "text" | "markdown" | "image";
 }
 
-// Registered IM platform handlers
 const platformHandlers: Record<string, ImPlatformConfig> = {};
 
 export function registerImPlatform(kind: string, config: ImPlatformConfig): void {
   platformHandlers[kind] = config;
 }
 
-// Feishu webhook handler
 async function handleFeishuWebhook(body: any): Promise<ImIncomingMessage | null> {
   try {
-    // Feishu webhook event format:
-    // { header: { event_id, event_type, ... }, event: { sender, message, ... } }
     if (body?.header?.event_type === "im.message.receive_v1") {
       const event = body.event;
       return {
@@ -58,10 +52,8 @@ async function handleFeishuWebhook(body: any): Promise<ImIncomingMessage | null>
   return null;
 }
 
-// DingTalk webhook handler
 async function handleDingTalkWebhook(body: any): Promise<ImIncomingMessage | null> {
   try {
-    // DingTalk webhook event format
     if (body?.msgtype === "text") {
       return {
         platform: "dingtalk",
@@ -80,14 +72,12 @@ async function handleDingTalkWebhook(body: any): Promise<ImIncomingMessage | nul
 async function sendImMessage(platform: string, channelId: string, content: string, messageType: "text" | "markdown" = "markdown"): Promise<boolean> {
   const config = platformHandlers[platform];
   if (!config?.webhookUrl) return false;
-
   try {
     const payload = platform === "feishu"
       ? { msg_type: "interactive", receive_id: channelId, content: JSON.stringify({ zh_cn: { title: "NexaDesk", content } }) }
       : platform === "dingtalk"
         ? { msgtype: "markdown", markdown: { title: "NexaDesk", text: content } }
         : { text: content };
-
     const { default: fetch } = await import("node-fetch");
     const response = await fetch(config.webhookUrl, {
       method: "POST",
@@ -101,19 +91,15 @@ async function sendImMessage(platform: string, channelId: string, content: strin
 }
 
 async function processImMessage(msg: ImIncomingMessage): Promise<string> {
-  // Route message to agent engine
-  // For now, return a simple echo
-  return [/] 宸叉敹鍒版秷鎭細;
+  return "[" + msg.platform + "/" + msg.userName + "] Message received: " + msg.content;
 }
 
 export function registerImBridgeRoutes(app: Express): void {
-  // Feishu webhook endpoint
   app.post("/api/im/feishu/webhook", async (req, res) => {
     const msg = await handleFeishuWebhook(req.body);
     if (msg) {
       const reply = await processImMessage(msg);
       await sendImMessage("feishu", msg.channelId, reply);
-      // Feishu requires challenge response for URL verification
       if (req.body?.challenge) {
         res.json({ challenge: req.body.challenge });
         return;
@@ -124,7 +110,6 @@ export function registerImBridgeRoutes(app: Express): void {
     }
   });
 
-  // DingTalk webhook endpoint
   app.post("/api/im/dingtalk/webhook", async (req, res) => {
     const msg = await handleDingTalkWebhook(req.body);
     if (msg) {
@@ -136,7 +121,6 @@ export function registerImBridgeRoutes(app: Express): void {
     }
   });
 
-  // Generic IM send endpoint (for agent to send messages to IM platforms)
   app.post("/api/im/send", async (req, res) => {
     const { platform, channelId, content, messageType } = req.body;
     if (!platform || !channelId || !content) {
@@ -147,7 +131,6 @@ export function registerImBridgeRoutes(app: Express): void {
     res.json({ ok });
   });
 
-  // Health check for IM bridge
   app.get("/api/im/bridge/health", (_req, res) => {
     const platforms = Object.entries(platformHandlers).map(([kind, cfg]) => ({
       kind,
