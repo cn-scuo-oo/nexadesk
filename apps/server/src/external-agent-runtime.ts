@@ -50,7 +50,7 @@ async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): Asyn
     "read-only",
     prompt
   ];
-  const { spawn } = await import("node:child_process");
+  const { spawn } = require("node:child_process");
   const child = spawn(command, args, {
     cwd: request.cwd || process.cwd(),
     env: process.env,
