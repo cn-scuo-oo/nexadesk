@@ -119,6 +119,7 @@ import {
 import { buildRuntimeDashboardStats, estimateTokenCount } from "./lib/runtime-metrics";
 import { Sidebar } from "./components/Sidebar";
 import { SkillsHubView } from "./components/SkillsHubView";
+import { WorkspaceArtifactsView } from "./views/WorkspaceArtifactsView";
 import { EmptyState } from "./components/EmptyState";
 
 declare global {
@@ -1946,7 +1947,7 @@ export function App() {
           <Sparkles size={19} />
         </button>
         <button
-          className={activeView === "agents" ? "rail-button active" : "rail-button"}
+          className={activeView === "artifacts" ? "rail-button active" : "rail-button"} onClick={() => handleOpenView("artifacts")}&#x0A;          &#x0A;          <div className={activeView === "agents" ? "rail-button active" : "rail-button"}
           aria-label="Agents"
           onClick={() => handleOpenView("agents")}
           type="button"
@@ -2061,7 +2062,7 @@ export function App() {
             onRuntimeChange={handleWorkbenchRuntimeChange}
             onSend={handleSend}
           />
-        ) : activeView === "search" ? (
+        ) : activeView === "artifacts" ? (<WorkspaceArtifactsView />) : activeView === "search" ? (
           <TaskSearchView
             activeSessionId={activeSession?.id ?? null}
             files={snapshot.files}
