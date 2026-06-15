@@ -75,9 +75,10 @@ async function startServer() {
     await persistRuntimeState();
     syncSessionAgents();
     console.log("[nexadesk] Server starting on http://" + host + ":" + port);
-    app.listen(port, host, () => {
+    const server = app.listen(port, host, () => {
       console.log("[nexadesk] Server ready at http://" + host + ":" + port);
     });
+    initTeamsWebSocket(server);
   } catch (error) {
     console.error("[nexadesk] Failed to start server:", error);
     process.exit(1);
