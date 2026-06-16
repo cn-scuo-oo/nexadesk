@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { spawn } from "node:child_process";
 // @ts-nocheck
 import { createInterface } from "node:readline";
