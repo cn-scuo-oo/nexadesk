@@ -587,7 +587,7 @@ h4 {
   position: relative;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: hidden auto;
   padding: 8px 8px 8px 0;
   background: var(--app-bg);
 }
@@ -1590,7 +1590,9 @@ h4 {
 .welcome-workspace {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden auto;
+  flex: 1;
+  min-height: 0;
   background: #fffaf0;
 }
 
@@ -1686,6 +1688,8 @@ h4 {
   gap: 16px;
   padding: 24px 20px 58px;
   text-align: center;
+  max-width: 100%;
+  overflow: visible;
 }
 
 .assignment-bot-mark {
@@ -1704,6 +1708,7 @@ h4 {
   display: grid;
   gap: 8px;
   max-width: 640px;
+  width: 100%;
 }
 
 .start-canvas h2 {
@@ -1715,11 +1720,14 @@ h4 {
   color: #6b614f;
   font-size: 15px;
   line-height: 1.55;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .new-task-composer {
   display: grid;
   width: min(760px, 100%);
+  min-width: 280px;
   min-height: 132px;
   overflow: hidden;
   border: 1px solid #d6c9ad;
