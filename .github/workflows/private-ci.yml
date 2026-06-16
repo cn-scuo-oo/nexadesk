@@ -40,8 +40,6 @@ jobs:
       - name: Settings persistence smoke
         run: npm run settings:smoke
 
-      - name: Runtime state smoke (skipped - async generator CJS bundle issue)
-        run: echo "SKIPPED: async generator for-await-of not compatible with esbuild CJS bundle"
 
       - name: Desktop smoke
         run: npm run desktop:smoke
