@@ -328,7 +328,7 @@ async function runRendererSmokeTest(apiPort) {
   const workbenchLayout = await renderAndEvaluate(
     apiPort,
     undefined,
-    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasAssignmentComposer: Boolean(document.querySelector('.new-task-composer')), hasAssignmentQuickRow: Boolean(document.querySelector('.assignment-quick-row')), hasRightDock: Boolean(document.querySelector('.right-dock')), hasBranchCard: Boolean(document.querySelector('.sidebar-branch-card')), hasUserBar: Boolean(document.querySelector('.sidebar-user-bar')), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '' }; })()"
+    "(() => { const rail = document.querySelector('.rail'); const shell = document.querySelector('.app-shell'); const rect = (selector) => { const el = document.querySelector(selector); if (!el) return null; const r = el.getBoundingClientRect(); return { top: r.top, right: r.right, bottom: r.bottom, left: r.left, width: r.width, height: r.height }; }; return { viewportWidth: window.innerWidth, documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth), hasMainStage: Boolean(document.querySelector('.main-stage')), hasStartCanvas: Boolean(document.querySelector('.start-canvas')), hasAssignmentComposer: Boolean(document.querySelector('.new-task-composer')), hasAssignmentQuickRow: Boolean(document.querySelector('.assignment-quick-row')), hasRightDock: Boolean(document.querySelector('.right-dock')), hasBranchCard: Boolean(document.querySelector('.sidebar-branch-card')), hasUserBar: Boolean(document.querySelector('.sidebar-user-bar')), hasWindowTitleBar: Boolean(document.querySelector('.window-title-bar')), titleRect: rect('.window-title-bar'), sidebarRect: rect('.sidebar'), mainRect: rect('.main-stage'), railDisplay: rail ? getComputedStyle(rail).display : 'missing', shellColumns: shell ? getComputedStyle(shell).gridTemplateColumns : '', shellRows: shell ? getComputedStyle(shell).gridTemplateRows : '' }; })()"
   );
   if (!workbenchLayout.hasMainStage || !workbenchLayout.hasStartCanvas || !workbenchLayout.hasAssignmentComposer || !workbenchLayout.hasAssignmentQuickRow) {
     throw new Error("Renderer smoke test failed: WeSight-style workbench shell was not rendered.");
@@ -338,6 +338,21 @@ async function runRendererSmokeTest(apiPort) {
   }
   if (workbenchLayout.railDisplay !== "none" || !workbenchLayout.hasBranchCard || !workbenchLayout.hasUserBar || String(workbenchLayout.shellColumns).split(" ").length !== 2) {
     throw new Error("Renderer smoke test failed: workbench shell did not use the WeSight-style two-column layout.");
+  }
+  if (
+    !workbenchLayout.hasWindowTitleBar ||
+    !workbenchLayout.titleRect ||
+    !workbenchLayout.sidebarRect ||
+    !workbenchLayout.mainRect ||
+    workbenchLayout.titleRect.left > 1 ||
+    workbenchLayout.titleRect.right < workbenchLayout.viewportWidth - 1 ||
+    workbenchLayout.sidebarRect.top < workbenchLayout.titleRect.bottom - 1 ||
+    workbenchLayout.mainRect.top < workbenchLayout.titleRect.bottom - 1 ||
+    workbenchLayout.mainRect.left <= workbenchLayout.sidebarRect.left
+  ) {
+    throw new Error(
+      "Renderer smoke test failed: window title bar, sidebar, and main stage were not arranged in stable rows."
+    );
   }
   if (workbenchLayout.documentWidth > workbenchLayout.viewportWidth + 2) {
     throw new Error(
@@ -685,6 +700,26 @@ function registerDesktopIpc() {
     return;
   }
 
+  ipcMain.on("nexadesk:window:minimize", (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+
+  ipcMain.on("nexadesk:window:toggle-maximize", (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      return;
+    }
+    if (window.isMaximized()) {
+      window.unmaximize();
+      return;
+    }
+    window.maximize();
+  });
+
+  ipcMain.on("nexadesk:window:close", (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+
   ipcMain.handle("nexadesk:select-directory", async (_event, options) => {
     const owner = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
     const result = await dialog.showOpenDialog(owner, {
@@ -760,4 +795,3 @@ function findFreePort() {
     });
   });
 }
-

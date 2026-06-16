@@ -109,6 +109,25 @@ export function createDefaultProviders() {
             baseUrl: "http://127.0.0.1:3000/v1",
             models: ["gpt-4.1", "deepseek-chat", "qwen-plus"],
             capabilities: ["streaming", "function_calling", "vision", "structured_output"]
+        }, {
+            id: "google-gemini",
+            name: "Google Gemini",
+            kind: "google",
+            apiMode: "chat_completions",
+            connected: false,
+            baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+            models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+            capabilities: ["streaming", "function_calling", "vision", "structured_output"]
+        },
+        {
+            id: "github-copilot",
+            name: "GitHub Copilot",
+            kind: "openai_compatible",
+            apiMode: "chat_completions",
+            connected: false,
+            baseUrl: "https://api.githubcopilot.com",
+            models: ["gpt-4o-copilot", "claude-sonnet-copilot"],
+            capabilities: ["streaming", "function_calling"]
         },
         {
             id: "anthropic",
