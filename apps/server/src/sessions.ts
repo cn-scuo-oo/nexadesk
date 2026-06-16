@@ -473,13 +473,22 @@ async function collectRuntimeEvents(
   let content = "";
   const toolRequests: AgentToolRequest[] = [];
 
-  for await (const event of events) {
-    if (event.type === "text") {
-      content += event.delta;
-      options.onText?.(event.delta);
-      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
-    } else {
-      toolRequests.push(event.request);
+  // Use Symbol.asyncIterator polling instead of for-await-of
+  // for better CJS bundle compatibility
+  const iterator = events[Symbol.asyncIterator]();
+  let done = false;
+  while (!done) {
+    const result = await iterator.next();
+    done = result.done;
+    if (result.value) {
+      const event = result.value;
+      if (event.type === "text") {
+        content += event.delta;
+        options.onText?.(event.delta);
+        onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
+      } else {
+        toolRequests.push(event.request);
+      }
     }
   }
 
