@@ -406,6 +406,7 @@ h4 {
   min-height: 0;
   overflow: hidden;
   background: var(--app-bg);
+  box-sizing: border-box;
 }
 
 .app-shell.sidebar-collapsed {
@@ -421,7 +422,16 @@ h4 {
 }
 
 .app-shell.sidebar-collapsed .main-stage {
-  padding: 8px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 8px 8px 0;
+  background: var(--app-bg);
+  box-sizing: border-box;
 }
 
 .app-shell.context-collapsed {
@@ -1590,10 +1600,12 @@ h4 {
 .welcome-workspace {
   display: flex;
   flex-direction: column;
-  overflow: hidden auto;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #fffaf0;
+  box-sizing: border-box;
 }
 
 .minimal-topbar,
@@ -1680,16 +1692,17 @@ h4 {
 
 .start-canvas {
   display: flex;
-  min-height: 0;
   flex: 1;
+  min-height: 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 24px 20px 58px;
   text-align: center;
+  box-sizing: border-box;
+  width: 100%;
   max-width: 100%;
-  overflow: visible;
 }
 
 .assignment-bot-mark {
@@ -1709,11 +1722,16 @@ h4 {
   gap: 8px;
   max-width: 640px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .start-canvas h2 {
-  font-size: 34px;
+  font-size: clamp(24px, 5vw, 34px);
   letter-spacing: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  margin: 0;
+  padding: 0;
 }
 
 .assignment-heading p {
@@ -1722,30 +1740,33 @@ h4 {
   line-height: 1.55;
   word-break: break-word;
   overflow-wrap: break-word;
+  margin: 0;
 }
 
 .new-task-composer {
   display: grid;
   width: min(760px, 100%);
-  min-width: 280px;
+  min-width: 260px;
   min-height: 132px;
   overflow: hidden;
   border: 1px solid #d6c9ad;
   border-radius: 14px;
   background: #fffdf8;
   box-shadow: 0 12px 26px rgba(145, 105, 33, 0.12);
+  box-sizing: border-box;
 }
 
 .new-task-composer textarea {
   width: 100%;
-  min-height: 82px;
-  resize: none;
-  border: 0;
-  padding: 17px 18px;
-  color: #1f241f;
-  background: transparent;
-  outline: 0;
+  min-height: 80px;
+  padding: 16px;
+  border: none;
+  resize: vertical;
+  font-family: inherit;
   font-size: 15px;
+  line-height: 1.5;
+  background: transparent;
+  box-sizing: border-box;
 }
 
 .new-task-composer-footer {
@@ -1800,6 +1821,9 @@ h4 {
   justify-content: center;
   gap: 10px;
   margin-top: 20px;
+  max-width: 760px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .quick-prompt-row button {
@@ -1856,6 +1880,8 @@ h4 {
   justify-content: center;
   gap: 8px;
   max-width: 760px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .assignment-context-strip span {
