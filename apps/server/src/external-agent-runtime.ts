@@ -28,17 +28,18 @@ export function canRunExternalAgentEngine(engine: AgentEngineSettings | undefine
   );
 }
 
-export async function* streamExternalAgentEvents(
+export async function streamExternalAgentEvents(
   request: ExternalAgentRuntimeRequest
-): AsyncGenerator<RuntimeStreamEvent> {
+): Promise<RuntimeStreamEvent[]> {
   if (request.engine.id !== "codex_cli") {
     throw new ProviderRuntimeError(`${request.engine.name} 还没有接入外部运行适配器。`);
   }
 
-  yield* streamCodexCliEvents(request);
+  return collectCodexCliEvents(request);
 }
 
-async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): AsyncGenerator<RuntimeStreamEvent> {
+async function collectCodexCliEvents(request: ExternalAgentRuntimeRequest): Promise<RuntimeStreamEvent[]> {
+  const events: RuntimeStreamEvent[] = [];
   const commandLine = splitCommandLine(request.engine.command?.trim() || "codex");
   const command = commandLine[0] || "codex";
   const commandArgs = commandLine.slice(1);
@@ -102,7 +103,7 @@ async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): Asyn
         const text = extractAgentText(parsed);
         if (text) {
           emittedText = true;
-          yield { type: "text", delta: text };
+          events.push({ type: "text", delta: text });
         }
       }
     }
@@ -131,6 +132,8 @@ async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): Asyn
   } finally {
     clearTimeout(timeout);
   }
+
+  return events;
 }
 
 function buildCodexPrompt(messages: RuntimeChatMessage[]) {
