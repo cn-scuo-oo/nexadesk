@@ -33,7 +33,7 @@ async function persistProviderStatus(providerId: string, update: any): Promise<v
     if (!currentSettings.providerStatus.modelRefreshes) currentSettings.providerStatus.modelRefreshes = {};
     currentSettings.providerStatus.modelRefreshes[providerId] = update.modelRefresh;
   }
-  await saveSettings(currentSettings);
+  await saveSettings(currentSettings, snapshot.providers);
 }
 
 export function registerProvidersRoutes(app: Express): void {
