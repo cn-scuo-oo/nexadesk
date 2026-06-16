@@ -54,35 +54,24 @@ export function registerProvidersRoutes(app: Express): void {
       let testResult;
       if (!baseUrl) testResult = { ok: false, message: "Provider has no base URL" };
       else {
-        // Try multiple endpoints to test connectivity
-        const testUrls = [baseUrl + "/models", baseUrl + "/v1/models", baseUrl];
-        let connected = false;
-        for (const url of testUrls) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), body.timeoutMs ?? 8000);
+          // Try GET /v1/models instead of HEAD - most providers support this
+          const modelsUrl = baseUrl.endsWith("/v1") ? baseUrl + "/models" : baseUrl + "/v1/models";
+          const response = await fetch(modelsUrl, { signal: controller.signal });
+          clearTimeout(timer);
+          testResult = { ok: response.ok || response.status === 401, message: response.ok ? "Connection successful" : "HTTP " + response.status };
+        } catch (error) {
+          // If models endpoint fails, try just the base URL with GET
           try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), body.timeoutMs ?? 8000);
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timer);
-            testResult = { ok: true, message: "Connection successful to " + url };
-            connected = true;
-            break;
-          } catch {}
-        }
-        if (!connected) {
-          // Even if no endpoint responded, if we can connect to the server, it's "reachable"
-          try {
-            const net = await import("node:net");
-            const reachable = await new Promise((resolve) => {
-              const socket = net.default.createConnection({ host: new URL(baseUrl).hostname, port: parseInt(new URL(baseUrl).port) }, () => {
-                socket.destroy();
-                resolve(true);
-              });
-              socket.on("error", () => resolve(false));
-              setTimeout(() => { socket.destroy(); resolve(false); }, 2000);
-            });
-            testResult = reachable ? { ok: true, message: "Server reachable at " + baseUrl } : { ok: false, message: "Could not connect to provider" };
-          } catch {
-            testResult = { ok: false, message: "Could not connect to provider" };
+            const controller2 = new AbortController();
+            const timer2 = setTimeout(() => controller2.abort(), body.timeoutMs ?? 3000);
+            const response2 = await fetch(baseUrl, { signal: controller2.signal });
+            clearTimeout(timer2);
+            testResult = { ok: response2.ok || response2.status === 401, message: "Base URL responded" };
+          } catch (error2) {
+            testResult = { ok: false, message: error instanceof Error ? error.message : "Connection failed" };
           }
         }
       }
