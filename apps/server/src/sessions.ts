@@ -462,7 +462,7 @@ async function resolveRuntime(
   return { provider, model, apiKey };
 }
 
-async async function collectRuntimeEvents(
+async function collectRuntimeEvents(
   events: AsyncIterable<RuntimeStreamEvent>,
   assistantMessage: ChatMessage,
   onEvent?: (event: ChatStreamEvent) => void,
