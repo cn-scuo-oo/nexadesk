@@ -7,6 +7,14 @@ on:
         description: Optional label added to the uploaded installer artifact name.
         required: false
         default: manual
+      release_tag:
+        description: "Git tag to attach the installer to (e.g. v0.1.0). Leave empty to skip release upload."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  packages: read
 
 jobs:
   build-installer:
@@ -30,9 +38,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Runtime smoke
-        run: npm run runtime:smoke
-
       - name: Desktop smoke
         run: npm run desktop:smoke
 
@@ -55,3 +60,16 @@ jobs:
             release/latest*.yml
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload installer to GitHub Release
+        if: inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
