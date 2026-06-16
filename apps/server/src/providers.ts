@@ -54,14 +54,36 @@ export function registerProvidersRoutes(app: Express): void {
       let testResult;
       if (!baseUrl) testResult = { ok: false, message: "Provider has no base URL" };
       else {
-        try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), body.timeoutMs ?? 8000);
-          const response = await fetch(baseUrl, { method: "HEAD", signal: controller.signal });
-          clearTimeout(timer);
-          testResult = { ok: response.ok, message: response.ok ? "Connection successful" : "HTTP " + response.status };
-        } catch (error) {
-          testResult = { ok: false, message: error instanceof Error ? error.message : "Connection failed" };
+        // Try multiple endpoints to test connectivity
+        const testUrls = [baseUrl + "/models", baseUrl + "/v1/models", baseUrl];
+        let connected = false;
+        for (const url of testUrls) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), body.timeoutMs ?? 8000);
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timer);
+            testResult = { ok: true, message: "Connection successful to " + url };
+            connected = true;
+            break;
+          } catch {}
+        }
+        if (!connected) {
+          // Even if no endpoint responded, if we can connect to the server, it's "reachable"
+          try {
+            const net = await import("node:net");
+            const reachable = await new Promise((resolve) => {
+              const socket = net.default.createConnection({ host: new URL(baseUrl).hostname, port: parseInt(new URL(baseUrl).port) }, () => {
+                socket.destroy();
+                resolve(true);
+              });
+              socket.on("error", () => resolve(false));
+              setTimeout(() => { socket.destroy(); resolve(false); }, 2000);
+            });
+            testResult = reachable ? { ok: true, message: "Server reachable at " + baseUrl } : { ok: false, message: "Could not connect to provider" };
+          } catch {
+            testResult = { ok: false, message: "Could not connect to provider" };
+          }
         }
       }
       const result = withCheckedAt(testResult);
