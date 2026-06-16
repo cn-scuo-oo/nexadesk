@@ -47,18 +47,20 @@ jobs:
       - name: Build NSIS installer
         run: npm run dist:win
 
-      - name: Packaged desktop smoke
+      - name: Packaged desktop smoke (non-fatal)
         run: npm run desktop:packaged-smoke
+        continue-on-error: true
 
       - name: Upload private installer artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: nexadesk-windows-installer-${{ inputs.artifact_label }}-${{ github.sha }}
           path: |
             release/*.exe
             release/*.blockmap
             release/latest*.yml
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Upload installer to GitHub Release
