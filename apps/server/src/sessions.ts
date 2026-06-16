@@ -300,12 +300,24 @@ async function runModelExchange(
     const nativeToolRequests: AgentToolRequest[] = [];
     if (externalEngine) {
       try {
-        const result = await collectRuntimeEvents(
-          streamExternalAgentEvents({
+        // Collect external agent events into an array first to avoid
+        // async generator iteration issues in esbuild CJS bundles
+        const externalEvents = [];
+        try {
+          for await (const event of streamExternalAgentEvents({
             engine: externalEngine,
             messages: history,
             cwd: resolveExternalRuntimeCwd(settings)
-          }),
+          })) {
+            externalEvents.push(event);
+          }
+        } catch (streamError) {
+          // If streaming fails entirely, throw to trigger fallback
+          throw streamError;
+        }
+        
+        const result = await collectRuntimeEvents(
+          (async function* () { for (const e of externalEvents) yield e; })(),
           assistantMessage,
           onEvent,
           { onText: markFirstToken }
