@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { spawn } from "node:child_process";
-// @ts-nocheck
 import { createInterface } from "node:readline";
 import type { AgentEngineSettings } from "@nexadesk/shared";
 import { ProviderRuntimeError, type RuntimeChatMessage, type RuntimeStreamEvent } from "./provider-runtime.js";
@@ -28,18 +27,17 @@ export function canRunExternalAgentEngine(engine: AgentEngineSettings | undefine
   );
 }
 
-export async function streamExternalAgentEvents(
+export async function* streamExternalAgentEvents(
   request: ExternalAgentRuntimeRequest
-): Promise<RuntimeStreamEvent[]> {
+): AsyncGenerator<RuntimeStreamEvent> {
   if (request.engine.id !== "codex_cli") {
     throw new ProviderRuntimeError(`${request.engine.name} 还没有接入外部运行适配器。`);
   }
 
-  return collectCodexCliEvents(request);
+  yield* streamCodexCliEvents(request);
 }
 
-async function collectCodexCliEvents(request: ExternalAgentRuntimeRequest): Promise<RuntimeStreamEvent[]> {
-  const events: RuntimeStreamEvent[] = [];
+async function* streamCodexCliEvents(request: ExternalAgentRuntimeRequest): AsyncGenerator<RuntimeStreamEvent> {
   const commandLine = splitCommandLine(request.engine.command?.trim() || "codex");
   const command = commandLine[0] || "codex";
   const commandArgs = commandLine.slice(1);
@@ -83,9 +81,7 @@ async function collectCodexCliEvents(request: ExternalAgentRuntimeRequest): Prom
     if (child.stdout) {
       const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
       for await (const line of lines) {
-        if (!line.trim()) {
-          continue;
-        }
+        if (!line.trim()) continue;
 
         const parsed = parseJsonObject(line);
         if (!parsed) {
@@ -103,7 +99,7 @@ async function collectCodexCliEvents(request: ExternalAgentRuntimeRequest): Prom
         const text = extractAgentText(parsed);
         if (text) {
           emittedText = true;
-          events.push({ type: "text", delta: text });
+          yield { type: "text", delta: text };
         }
       }
     }
@@ -132,8 +128,6 @@ async function collectCodexCliEvents(request: ExternalAgentRuntimeRequest): Prom
   } finally {
     clearTimeout(timeout);
   }
-
-  return events;
 }
 
 function buildCodexPrompt(messages: RuntimeChatMessage[]) {
@@ -159,16 +153,10 @@ function buildCodexPrompt(messages: RuntimeChatMessage[]) {
 function extractAgentText(payload: any): string {
   if (payload?.type === "item.completed" || payload?.type === "item.done") {
     const item = payload.item ?? {};
-    if (isAgentMessageItem(item)) {
-      return extractTextValue(item).trim();
-    }
+    if (isAgentMessageItem(item)) return extractTextValue(item).trim();
   }
-  if (payload?.type === "agent_message" || payload?.item_type === "agent_message") {
-    return extractTextValue(payload).trim();
-  }
-  if (payload?.type === "message" && payload?.role === "assistant") {
-    return extractTextValue(payload).trim();
-  }
+  if (payload?.type === "agent_message" || payload?.item_type === "agent_message") return extractTextValue(payload).trim();
+  if (payload?.type === "message" && payload?.role === "assistant") return extractTextValue(payload).trim();
   return "";
 }
 
@@ -177,31 +165,18 @@ function isAgentMessageItem(item: any) {
 }
 
 function extractTextValue(value: any): string {
-  if (typeof value?.text === "string") {
-    return value.text;
-  }
-  if (typeof value?.content === "string") {
-    return value.content;
-  }
+  if (typeof value?.text === "string") return value.text;
+  if (typeof value?.content === "string") return value.content;
   if (Array.isArray(value?.content)) {
-    return value.content
-      .map((item: any) => item?.text ?? item?.content ?? item?.value ?? "")
-      .filter((text: unknown): text is string => typeof text === "string")
-      .join("");
+    return value.content.map((item: any) => item?.text ?? item?.content ?? item?.value ?? "").filter((text: unknown): text is string => typeof text === "string").join("");
   }
-  if (typeof value?.message === "string") {
-    return value.message;
-  }
+  if (typeof value?.message === "string") return value.message;
   return "";
 }
 
 function extractFailure(payload: any): string {
-  if (payload?.type === "error") {
-    return payload.message ?? payload.error ?? "unknown error";
-  }
-  if (payload?.type === "turn.failed") {
-    return payload.message ?? payload.error?.message ?? "turn failed";
-  }
+  if (payload?.type === "error") return payload.message ?? payload.error ?? "unknown error";
+  if (payload?.type === "turn.failed") return payload.message ?? payload.error?.message ?? "turn failed";
   return "";
 }
 
@@ -209,38 +184,19 @@ function splitCommandLine(commandLine: string) {
   const parts: string[] = [];
   let current = "";
   let quote: '"' | "'" | "" = "";
-
   for (let index = 0; index < commandLine.length; index += 1) {
     const char = commandLine[index] ?? "";
-    if ((char === '"' || char === "'") && !quote) {
-      quote = char;
-      continue;
-    }
-    if (char === quote) {
-      quote = "";
-      continue;
-    }
-    if (/\s/.test(char) && !quote) {
-      if (current) {
-        parts.push(current);
-        current = "";
-      }
-      continue;
-    }
+    if ((char === '"' || char === "'") && !quote) { quote = char; continue; }
+    if (char === quote) { quote = ""; continue; }
+    if (/\s/.test(char) && !quote) { if (current) { parts.push(current); current = ""; } continue; }
     current += char;
   }
-  if (current) {
-    parts.push(current);
-  }
+  if (current) parts.push(current);
   return parts;
 }
 
 function parseJsonObject(text: string): any | null {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 function clampDiagnostic(text: string) {
