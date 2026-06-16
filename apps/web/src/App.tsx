@@ -126,6 +126,9 @@ declare global {
   interface Window {
     nexadeskDesktop?: {
       selectDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | null>;
+      minimizeWindow?(): void;
+      toggleMaximizeWindow?(): void;
+      closeWindow?(): void;
     };
   }
 }
@@ -7836,13 +7839,28 @@ function WindowTitleBar({ title }: { title: string }) {
       <div />
       <span className="window-title-bar-center">{title}</span>
       <div className="window-title-bar-actions">
-        <button className="window-title-bar-btn" type="button">
+        <button
+          aria-label="Minimize window"
+          className="window-title-bar-btn"
+          onClick={() => window.nexadeskDesktop?.minimizeWindow?.()}
+          type="button"
+        >
           -
         </button>
-        <button className="window-title-bar-btn" type="button">
+        <button
+          aria-label="Maximize or restore window"
+          className="window-title-bar-btn"
+          onClick={() => window.nexadeskDesktop?.toggleMaximizeWindow?.()}
+          type="button"
+        >
           []
         </button>
-        <button className="window-title-bar-btn close" type="button">
+        <button
+          aria-label="Close window"
+          className="window-title-bar-btn close"
+          onClick={() => window.nexadeskDesktop?.closeWindow?.()}
+          type="button"
+        >
           x
         </button>
       </div>
