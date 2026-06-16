@@ -79,7 +79,7 @@ export function registerProvidersRoutes(app: Express): void {
       const apiKey = body.apiKey?.trim() || storedKey;
       const timeoutMs = body.timeoutMs ?? 10000;
       let modelResult;
-      if (provider.models && provider.models.length > 0 && !provider.baseUrl) {
+      if (provider.models && provider.models.length > 0) {
         modelResult = { ok: true, models: provider.models };
       } else {
         const baseUrl = provider.baseUrl?.replace(/\/+$/, "");
