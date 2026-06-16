@@ -300,21 +300,23 @@ async function runModelExchange(
     const nativeToolRequests: AgentToolRequest[] = [];
     if (externalEngine) {
       try {
-        // Use Promise-based external agent events
+        // streamExternalAgentEvents now returns Promise<RuntimeStreamEvent[]>
         const externalEvents = await streamExternalAgentEvents({
           engine: externalEngine,
           messages: history,
           cwd: resolveExternalRuntimeCwd(settings)
         });
-        
-        const result = await collectRuntimeEvents(
-          (async function* () { for (const e of externalEvents) yield e; })(),
-          assistantMessage,
-          onEvent,
-          { onText: markFirstToken }
-        );
-        assistantContent += result.content;
-        nativeToolRequests.push(...result.toolRequests);
+
+        // Process events directly - no async iteration needed
+        for (const event of externalEvents) {
+          if (event.type === "text") {
+            assistantContent += event.delta;
+            markFirstToken();
+            onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
+          } else {
+            nativeToolRequests.push(event.request);
+          }
+        }
       } catch (error) {
         let fallbackRuntime: ResolvedModelRuntime;
         try {
