@@ -300,23 +300,19 @@ async function runModelExchange(
     const nativeToolRequests: AgentToolRequest[] = [];
     if (externalEngine) {
       try {
-        // streamExternalAgentEvents now returns Promise<RuntimeStreamEvent[]>
         const externalEvents = await streamExternalAgentEvents({
           engine: externalEngine,
           messages: history,
           cwd: resolveExternalRuntimeCwd(settings)
         });
-
-        // Process events directly - no async iteration needed
-        for (const event of externalEvents) {
-          if (event.type === "text") {
-            assistantContent += event.delta;
-            markFirstToken();
-            onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
-          } else {
-            nativeToolRequests.push(event.request);
-          }
-        }
+        const result = await collectRuntimeEvents(
+          (async function* () { for (const e of externalEvents) yield e; })(),
+          assistantMessage,
+          onEvent,
+          { onText: markFirstToken }
+        );
+        assistantContent += result.content;
+        nativeToolRequests.push(...result.toolRequests);
       } catch (error) {
         let fallbackRuntime: ResolvedModelRuntime;
         try {
@@ -466,7 +462,7 @@ async function resolveRuntime(
   return { provider, model, apiKey };
 }
 
-async function collectRuntimeEvents(
+async async function collectRuntimeEvents(
   events: AsyncIterable<RuntimeStreamEvent>,
   assistantMessage: ChatMessage,
   onEvent?: (event: ChatStreamEvent) => void,
@@ -475,22 +471,13 @@ async function collectRuntimeEvents(
   let content = "";
   const toolRequests: AgentToolRequest[] = [];
 
-  // Use Symbol.asyncIterator polling instead of for-await-of
-  // for better CJS bundle compatibility
-  const iterator = events[Symbol.asyncIterator]();
-  let done = false;
-  while (!done) {
-    const result = await iterator.next();
-    done = result.done;
-    if (result.value) {
-      const event = result.value;
-      if (event.type === "text") {
-        content += event.delta;
-        options.onText?.(event.delta);
-        onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
-      } else {
-        toolRequests.push(event.request);
-      }
+  for await (const event of events) {
+    if (event.type === "text") {
+      content += event.delta;
+      options.onText?.(event.delta);
+      onEvent?.({ type: "assistant_delta", messageId: assistantMessage.id, delta: event.delta });
+    } else {
+      toolRequests.push(event.request);
     }
   }
 
