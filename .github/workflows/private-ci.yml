@@ -40,8 +40,8 @@ jobs:
       - name: Settings persistence smoke
         run: npm run settings:smoke
 
-      - name: Runtime state smoke (skipped)
-        run: echo "SKIPPED: external agent runtime needs local debugging - codex CLI SSE parsing issue in esbuild bundle"
+      - name: Runtime state smoke
+        run: npm run runtime:smoke
 
       - name: Desktop smoke
         run: npm run desktop:smoke
